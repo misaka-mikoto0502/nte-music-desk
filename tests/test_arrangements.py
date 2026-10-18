@@ -5,9 +5,22 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from nte_music_desk.midi import MidiSong, MidiNote, convert
 from nte_music_desk.segments import parse_time
+from nte_music_desk.analysis import recommend_transpositions
 
 
 class ArrangementChecks(unittest.TestCase):
+    def test_transpose_candidates_prefer_full_range_and_do_not_mutate_source(self):
+        song = MidiSong('low lead', 0, 480, [MidiNote(0, 0, pitch, 80, i, i + .5) for i, pitch in enumerate((40, 44, 47))], ['lead'], [], 3, [])
+        from nte_music_desk.cli import key_schedule
+        result = recommend_transpositions(song, tracks=[0], planner=key_schedule)
+        self.assertEqual(len(result), 3)
+        self.assertEqual(result[0]['transpose'], 12)
+        self.assertEqual(result[0]['folded'], 0)
+        self.assertEqual([n.pitch for n in song.notes], [40, 44, 47])
+        self.assertEqual(result, recommend_transpositions(song, tracks=[0], planner=key_schedule))
+        with self.assertRaises(ValueError):
+            recommend_transpositions(song, tracks=[0], start=9)
+
     def test_segment_clips_sustains_and_preserves_rests_at_both_edges(self):
         song = MidiSong('clip', 0, 480, [MidiNote(0, 0, 60, 80, 0, 4), MidiNote(0, 0, 64, 80, 6, 8)], ['lead'], [], 10, [])
         score = convert(song, start=2, end=9, speed=.5)

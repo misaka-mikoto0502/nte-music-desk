@@ -20,6 +20,7 @@ from .instruments import INSTRUMENTS, score_instrument
 from . import APP_NAME, __version__
 from .presets import PresetStore, fingerprint, DEFAULTS
 from .segments import parse_time
+from .analysis import recommend_transpositions
 
 
 C = {"bg": "#F1F4F8", "paper": "#FFFFFF", "ink": "#1B2A41", "muted": "#718096",
@@ -86,6 +87,7 @@ class App:
         self.track_ids, self.controls, self.library_buttons = [], [], []
         self.messages, self.refresh_job = queue.Queue(), None
         self.preview_token, self.preview_started, self.preview_length = None, None, 0
+        self.recommend_token = None
         self.stop_requested, self.syncing_speed, self.closed = False, False, False
         self.advanced_visible, self.notes_visible = False, False
         self.preferences = self.read_preferences()
@@ -360,6 +362,10 @@ class App:
         reset.configure(padx=8, pady=5)
         reset.pack(side="right")
         self.controls.append((reset, "normal"))
+        self.recommend_button = self.button(settings, "推荐移调方案…", self.recommend_transpose, "preview", 9,
+            "比较音域折回、丢音、冲突和旋律走向，给出最多 3 个可试听候选；不会自动修改或开始演奏。")
+        self.recommend_button.configure(pady=6)
+        self.recommend_button.pack(fill="x", pady=(10, 0))
 
         tracks_card = self.card(middle)
         tracks_card.grid(row=0, column=1, sticky="nsew")
@@ -617,6 +623,7 @@ class App:
     def queue_refresh(self, *_):
         if self.syncing_settings:
             return
+        self.recommend_token = None
         if self.current_instrument().id != self.applied_instrument:
             self.save_arrangement()
             self.restore_arrangement()
@@ -690,6 +697,59 @@ class App:
 
     def current_instrument(self):
         return next((p for p in INSTRUMENTS.values() if p.title == self.instrument.get()), INSTRUMENTS["guitar"])
+
+    def recommend_transpose(self):
+        if self.song is None or self.active or self.recommend_token:
+            return
+        try:
+            settings = self.arrangement_settings()
+        except ValueError as error:
+            self.show_error(error)
+            return
+        token, song, digest, instrument = uuid.uuid4().hex, self.song, self.song_fingerprint, self.current_instrument().id
+        self.recommend_token = token
+        self.set_status("正在比较移调候选…", "分析中", "blue")
+        self.refresh_controls()
+        def worker():
+            try:
+                options = {k: v for k, v in settings.items() if k != "countdown"}
+                candidates = recommend_transpositions(song, instrument=instrument, planner=self.engine.key_schedule, **options)
+                self.messages.put({"kind": "transpose_ready", "token": token, "candidates": candidates,
+                                   "settings": settings, "digest": digest, "instrument": instrument})
+            except Exception as error:
+                self.messages.put({"kind": "transpose_error", "token": token, "text": str(error)})
+        threading.Thread(target=worker, daemon=True).start()
+
+    def show_transpositions(self, message):
+        window = tk.Toplevel(self.root)
+        window.title("推荐移调方案")
+        window.geometry("700x350")
+        window.configure(bg=C["bg"])
+        self.label(window, "选择一个方案应用，再试听比较", 14, bold=True, padx=18, pady=16).pack(anchor="w")
+        self.label(window, "按折回、丢音、冲突与旋律走向排序；这是规则建议，不是听感评分。", 9, C["muted"], padx=18).pack(anchor="w")
+        tree = ttk.Treeview(window, columns=("shift", "folded", "dropped", "collisions", "mixed"), show="headings", height=3, style="Desk.Treeview")
+        for col, title in (("shift", "移调 / 半音"), ("folded", "折回音"), ("dropped", "丢弃音"), ("collisions", "重合音"), ("mixed", "黑白混合组")):
+            tree.heading(col, text=title)
+            tree.column(col, width=125, anchor="center", stretch=True)
+        for i, candidate in enumerate(message["candidates"]):
+            tree.insert("", "end", iid=str(i), values=(f'{candidate["transpose"]:+d}', candidate["folded"], candidate["dropped"], candidate["collisions"], candidate["mixed_groups"]))
+        tree.pack(fill="x", padx=18, pady=15)
+        tree.selection_set("0")
+        def apply():
+            if self.active:
+                return
+            try:
+                if self.song_fingerprint != message["digest"] or self.current_instrument().id != message["instrument"] or self.arrangement_settings() != message["settings"]:
+                    raise ValueError("曲谱或设置已改变，请关闭窗口后重新推荐。")
+                selected = tree.selection()
+                if not selected:
+                    return
+                self.transpose.set(str(message["candidates"][int(selected[0])]["transpose"]))
+                self.update_score()
+                window.destroy()
+            except ValueError as error:
+                self.show_error(error)
+        self.button(window, "应用所选方案", apply, "primary").pack(anchor="e", padx=18)
 
     def update_score(self, quiet=False):
         if self.refresh_job is not None:
@@ -796,6 +856,7 @@ class App:
         self.enabled(self.preview_button, ready and not locked and not self.preview_token)
         self.enabled(self.track_preview_button, self.song is not None and not locked and not self.preview_token)
         self.enabled(self.source_preview_button, self.song is not None and not locked and not self.preview_token)
+        self.enabled(self.recommend_button, self.song is not None and not locked and not self.recommend_token)
         self.enabled(self.midi_export_button,self.song is not None and not locked)
         self.enabled(self.stop_button, locked or bool(self.preview_token))
         if locked or self.preview_token:
@@ -940,7 +1001,17 @@ class App:
 
     def handle_message(self, message):
         kind = message["kind"]
-        if kind.startswith("preview"):
+        if kind.startswith("transpose"):
+            if message["token"] != self.recommend_token:
+                return
+            self.recommend_token = None
+            self.refresh_controls()
+            if kind == "transpose_error":
+                self.set_status(message["text"], "推荐失败", "amber")
+            else:
+                self.set_status("移调候选已就绪，应用后可试听对比。", "分析完成", "blue")
+                self.show_transpositions(message)
+        elif kind.startswith("preview"):
             if message["token"] != self.preview_token:
                 return
             if kind == "preview_error":
