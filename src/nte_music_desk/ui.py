@@ -369,6 +369,10 @@ class App:
                                  font=(FONT, 9))
         self.tracks.pack(fill="both", expand=True, ipady=5)
         self.controls.append((self.tracks, "normal"))
+        self.track_preview_button = self.button(tracks_card, "♫  单独试听当前轨", self.preview_track, "preview", 9,
+            "试听最后点选的音轨，保留原始声部，不折回音域、不删减和弦；不会改变演奏选轨。")
+        self.track_preview_button.configure(pady=5)
+        self.track_preview_button.pack(fill="x", pady=(7, 0))
         mode_box = ttk.Combobox(tracks_card, textvariable=self.mode, values=["旋律版（推荐）", "和弦版（最多 6 音）"], state="readonly")
         mode_box.pack(fill="x", pady=(10, 0))
         self.mode_box = mode_box
@@ -762,6 +766,7 @@ class App:
         for button in [self.play_button, self.trial_button, self.export_button, self.details_button, self.notes_button]:
             self.enabled(button, ready and not locked)
         self.enabled(self.preview_button, ready and not locked and not self.preview_token)
+        self.enabled(self.track_preview_button, self.song is not None and not locked and not self.preview_token)
         self.enabled(self.midi_export_button,self.song is not None and not locked)
         self.enabled(self.stop_button, locked or bool(self.preview_token))
         if locked or self.preview_token:
@@ -774,6 +779,25 @@ class App:
         score = self.update_score()
         if score is None:
             return
+        self.start_preview(score=score)
+
+    def preview_track(self):
+        if self.song is None or self.active or self.preview_token:
+            return
+        selected = list(self.tracks.curselection())
+        if not selected:
+            self.show_error(ValueError("请先点选一条音轨。"))
+            return
+        focused = self.tracks.index("active")
+        index = focused if focused in selected else selected[0]
+        try:
+            options = {"tracks": [self.track_ids[index]], "start": float(self.start.get()),
+                       "speed": float(self.speed.get()), "transpose": int(self.transpose.get())}
+            self.start_preview(source=self.song, options=options, caption=f"音轨 {self.track_ids[index]} 原声部")
+        except ValueError as error:
+            self.show_error(error)
+
+    def start_preview(self, score=None, source=None, options=None, caption="适配曲谱"):
         token = uuid.uuid4().hex
         self.preview_token, self.preview_started = token, None
         self.set_status("正在准备电脑试听…", "准备试听", "blue")
@@ -784,9 +808,9 @@ class App:
                 runs = self.directory / "runs"
                 runs.mkdir(exist_ok=True)
                 path = runs / f"preview_{token}.wav"
-                self.engine.render_preview(score, path)
-                seconds = min(20, max(e["at"] + e["duration"] for e in score["events"]))
-                self.messages.put({"kind": "preview_ready", "token": token, "path": path, "seconds": seconds})
+                seconds = (self.engine.render_song_preview(source, path, **options) if source is not None
+                           else self.engine.render_preview(score, path))
+                self.messages.put({"kind": "preview_ready", "token": token, "path": path, "seconds": seconds, "caption": caption})
             except Exception as error:
                 self.messages.put({"kind": "preview_error", "token": token, "text": str(error)})
 
@@ -885,7 +909,7 @@ class App:
                 import winsound
                 winsound.PlaySound(str(message["path"]), winsound.SND_FILENAME | winsound.SND_ASYNC)
                 self.preview_started, self.preview_length = time.perf_counter(), message["seconds"]
-                self.set_status("正在电脑试听前 20 秒 · 合成音色，仅用于确认旋律", "电脑试听", "blue")
+                self.set_status(f'正在试听{message.get("caption", "适配曲谱")} · 最长 20 秒 · 合成音色', "电脑试听", "blue")
             self.refresh_controls()
         elif kind == "game_done":
             result = message["result"]

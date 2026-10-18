@@ -249,10 +249,35 @@ def play_file(args):
 def render_preview(score, path, seconds=20):
     """Short, quiet synthesized preview. Does not interact with the game."""
     score = limit_score(score, seconds)
+    return render_audio(score["events"], path)
+
+
+def render_song_preview(song, path, tracks=None, start=0, end=None, speed=1, transpose=0, seconds=20):
+    """Audition original voices without game range folding or chord reduction."""
+    if not all(math.isfinite(v) for v in (start, speed, seconds)) or not 0 <= start < song.seconds or not .25 <= speed <= 2 or not 0 < seconds <= 60:
+        raise ValueError("试听起点、速度或时长无效。")
+    if type(transpose) is not int or not -36 <= transpose <= 36:
+        raise ValueError("试听移调需为 -36–36 半音。")
+    end = song.seconds if end is None else end
+    if not math.isfinite(end) or not start < end <= song.seconds:
+        raise ValueError("试听片段终点需大于起点，且不超过原曲时长。")
+    tracks = {t["index"] for t in song.track_info()} if tracks is None else set(tracks)
+    stop = min(end, start + seconds * speed)
+    events = [{"at": (max(start, n.start) - start) / speed,
+               "duration": (min(stop, n.end) - max(start, n.start)) / speed,
+               "midi": n.pitch + transpose}
+              for n in song.notes if n.track in tracks and n.channel != 9 and n.start < stop and n.end > start]
+    if not events:
+        raise ValueError("这条音轨在所选片段内没有可试听音符。")
+    return render_audio(events, path, (stop - start) / speed)
+
+
+def render_audio(events, path, length=None):
+    """Quiet sine preview shared by source and adapted score audition."""
     rate = 22050
-    length = max(e["at"] + e["duration"] for e in score["events"]) + 0.25
-    samples = array("i", [0]) * int(length * rate + 1)
-    for event in score["events"]:
+    length = max(e["at"] + e["duration"] for e in events) if length is None else length
+    samples = array("i", [0]) * int((length + .25) * rate + 1)
+    for event in events:
         begin = int(event["at"] * rate)
         duration = min(3.0, event["duration"])
         size = min(int(duration * rate), len(samples) - begin)
@@ -261,12 +286,14 @@ def render_preview(score, path, seconds=20):
             t = index / rate
             envelope = min(1, t / 0.008) * min(1, (size - index) / (rate * 0.03)) * math.exp(-1.8 * t)
             samples[begin + index] += int(3500 * envelope * math.sin(2 * math.pi * frequency * t))
-    pcm = array("h", (max(-28000, min(28000, value)) for value in samples))
+    gain = min(1, 24000 / max(1, max(abs(v) for v in samples)))
+    pcm = array("h", (int(value * gain) for value in samples))
     if sys.byteorder != "little":
         pcm.byteswap()
     with wave.open(str(path), "wb") as audio:
         audio.setparams((1, 2, rate, 0, "NONE", "not compressed"))
         audio.writeframes(pcm.tobytes())
+    return length
 
 
 def main(argv=None):

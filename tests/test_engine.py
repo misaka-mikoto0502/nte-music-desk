@@ -3,6 +3,8 @@ from pathlib import Path
 import struct
 import sys
 import unittest
+import tempfile
+import wave
 from unittest.mock import patch
 from types import SimpleNamespace
 
@@ -37,6 +39,23 @@ class Keyboard:
 
 
 class MidiChecks(unittest.TestCase):
+    def test_track_audition_preserves_source_polyphony_and_range(self):
+        fixture = song((24, 36, 48, 60, 72, 84, 96, 108))
+        fixture.notes.append(midi.MidiNote(1, 0, 65, 80, 0, .5))
+        fixture.track_names.append('other')
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / 'preview.wav'
+            with patch.object(cli, 'render_audio', return_value=.5) as render:
+                self.assertEqual(cli.render_song_preview(fixture, path, tracks=[0]), .5)
+                events = render.call_args.args[0]
+                self.assertEqual([e['midi'] for e in events], [24, 36, 48, 60, 72, 84, 96, 108])
+            cli.render_song_preview(fixture, path, tracks=[1])
+            with wave.open(str(path)) as audio:
+                self.assertEqual(audio.getframerate(), 22050)
+                self.assertGreater(audio.getnframes(), 1000)
+            with self.assertRaises(ValueError):
+                cli.render_song_preview(fixture, path, tracks=[9])
+
     def test_tempo_integration_and_running_status(self):
         track=(b'\x00\xff\x51\x03\x07\xa1\x20'+b'\x00\x90\x3c\x50'+
                b'\x83\x60\xff\x51\x03\x0f\x42\x40'+b'\x83\x60\x90\x3c\x00'+b'\x00\xff\x2f\x00')
