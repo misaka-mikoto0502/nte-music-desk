@@ -144,7 +144,7 @@ def play_file(args):
     return code
 
 
-def render_preview(score, path, seconds=20, hold_ms=300):
+def render_preview(score, path, seconds=20, hold_ms=300, cancel=None):
     """Synthesize actual planned note attacks/releases, including Shift groups."""
     if not math.isfinite(seconds) or not 0 < seconds <= 60:
         raise ValueError("试听时长需为 0–60 秒。")
@@ -154,10 +154,10 @@ def render_preview(score, path, seconds=20, hold_ms=300):
               for n in plan.notes if n.at < stop]
     if not events:
         raise ValueError("试听范围内没有音符，请调整片段起点。")
-    return render_audio(events, path, stop)
+    return render_audio(events, path, stop, cancel=cancel)
 
 
-def render_song_preview(song, path, tracks=None, start=0, end=None, speed=1, transpose=0, seconds=20):
+def render_song_preview(song, path, tracks=None, start=0, end=None, speed=1, transpose=0, seconds=20, cancel=None):
     """Audition original voices without game range folding or chord reduction."""
     if not all(math.isfinite(v) for v in (start, speed, seconds)) or not 0 <= start < song.seconds or not .25 <= speed <= 2 or not 0 < seconds <= 60:
         raise ValueError("试听起点、速度或时长无效。")
@@ -174,15 +174,19 @@ def render_song_preview(song, path, tracks=None, start=0, end=None, speed=1, tra
               for n in song.notes if n.track in tracks and n.channel != 9 and n.start < stop and n.end > start]
     if not events:
         raise ValueError("这条音轨在所选片段内没有可试听音符。")
-    return render_audio(events, path, (stop - start) / speed)
+    if len(events) > 8000:
+        raise ValueError("该片段原谱音符过密，请缩短片段或单独试听一条音轨。")
+    return render_audio(events, path, (stop - start) / speed, cancel=cancel)
 
 
-def render_audio(events, path, length=None):
+def render_audio(events, path, length=None, cancel=None):
     """Quiet sine preview shared by source and adapted score audition."""
     rate = 22050
     length = max(e["at"] + e["duration"] for e in events) if length is None else length
     samples = array("i", [0]) * int((length + .25) * rate + 1)
     for event in events:
+        if cancel is not None and cancel():
+            raise ValueError("试听已取消。")
         begin = int(event["at"] * rate)
         duration = min(3.0, event["duration"])
         size = min(int(duration * rate), len(samples) - begin)

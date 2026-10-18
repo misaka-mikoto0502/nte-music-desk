@@ -481,17 +481,17 @@ class App:
         for index, weight in enumerate((3, 2, 2, 1)):
             actions.columnconfigure(index, weight=weight, uniform="actions" if index else "primary")
         self.play_button = self.button(actions, "▶  完整演奏", lambda: self.play(None), "primary", 14,
-                                        "将整首曲谱发送到游戏。\n请先进入所选乐器的 36 键界面，再确认权限。\n快捷键：Ctrl + Enter")
+                                        "按当前选定片段演奏；终点留空时到曲末。\n请先进入所选乐器的 36 键界面，再确认权限。\n快捷键：Ctrl + Enter")
         self.play_button.configure(pady=17)
         self.preview_button = self.button(actions, "♫  时序试听", self.preview, "preview", 11,
-                                           "试听前 20 秒的合成旋律，只在电脑播放声音，不操作游戏。")
+                                           "试听所选片段的前 20 秒，体现实际按键时序和 Shift 分组。\n合成音色，不等于游戏原音色；不会操作游戏。")
         self.trial_button = self.button(actions, "▷  游戏试奏", lambda: self.play(20), "trial", 11,
                                          "向游戏发送前 20 秒的按键，适合先确认音色和旋律。")
         self.stop_button = self.button(actions, "■  停止", self.stop, "stop", 11,
                                         "立即请求停止并释放脚本按住的琴键。\n游戏内也可按 F8；切出游戏会自动停止。")
         for index, button in enumerate((self.play_button, self.preview_button, self.trial_button, self.stop_button)):
             button.grid(row=0, column=index, sticky="ew", padx=(0, 9 if index < 3 else 0))
-        for index, text in enumerate(("演奏整首曲目", "合成音色 · 前 20 秒", "游戏内验证 · 前 20 秒", "快捷键 F8")):
+        for index, text in enumerate(("按当前片段演奏", "按键时序 · 前 20 秒", "游戏内验证 · 前 20 秒", "快捷键 F8")):
             self.label(actions, text, 8, C["muted"]).grid(row=1, column=index, sticky="w", pady=(6, 0), padx=(3, 0))
         footer_row = tk.Frame(footer, bg="white")
         footer_row.pack(fill="x", pady=(12, 0))
@@ -587,6 +587,7 @@ class App:
             recommended = song.suggested_track()
             digest = fingerprint(path)
             self.save_arrangement()
+            self.recommend_token = None
             self.stop_preview()
             examples = {self.assets / "scores/twinkle.mid": "小星星"}
             song.title = examples.get(path, self.online_client.title_for(path) or song.title)
@@ -651,8 +652,9 @@ class App:
             return
         try:
             settings = self.arrangement_settings()
-            convert(self.song, settings["tracks"], settings["mode"], settings["speed"], settings["transpose"],
-                    settings["range_policy"], settings["start"], self.applied_instrument, settings["end"])
+            score = convert(self.song, settings["tracks"], settings["mode"], settings["speed"], settings["transpose"],
+                            settings["range_policy"], settings["start"], self.applied_instrument, settings["end"])
+            performance_plan(score, settings["hold_ms"])
             self.preset_store.save(self.song_fingerprint, self.applied_instrument, settings)
         except (OSError, ValueError, KeyError, tk.TclError):
             pass  # Incomplete edits must not replace a usable arrangement.
@@ -718,7 +720,8 @@ class App:
         def worker():
             try:
                 options = {k: v for k, v in settings.items() if k != "countdown"}
-                candidates = recommend_transpositions(song, instrument=instrument, planner=self.engine.key_schedule, **options)
+                candidates = recommend_transpositions(song, instrument=instrument, planner=self.engine.key_schedule,
+                    cancel=lambda: self.closed or token != self.recommend_token, **options)
                 self.messages.put({"kind": "transpose_ready", "token": token, "candidates": candidates,
                                    "settings": settings, "digest": digest, "instrument": instrument})
             except Exception as error:
@@ -792,7 +795,7 @@ class App:
                 warnings.insert(0, "钢琴暂按 C3–B5 编排；绝对音高待实听校准，可用移调 ±12 调整八度。")
             if score["mode"] == "chords" and profile.id == "guitar":
                 warnings.insert(0, "和弦版同时发送多个音，建议先在游戏中试奏。")
-            self.notice.set("  ".join(warnings) if warnings else "已选推荐旋律轨；中间停顿与 MIDI 节奏保留。")
+            self.notice.set("  ".join(warnings) if warnings else "按当前选轨和模式适配；片段内停顿与 MIDI 节奏保留。")
             self.notice_label.configure(fg=C["amber"] if warnings else C["muted"])
             speed = float(self.speed.get())
             self.syncing_speed = True
@@ -866,7 +869,7 @@ class App:
         self.enabled(self.stop_button, locked or bool(self.preview_token))
         if locked or self.preview_token:
             self.stop_button.configure(bg=C["red"], fg="white", activebackground="#A52B40", activeforeground="white")
-        self.play_button.configure(text="演奏进行中…" if locked else "▶  完整演奏")
+        self.play_button.configure(text="演奏进行中…" if locked else "▶  开始演奏")
 
     def preview(self):
         if self.active or self.preview_token:
@@ -904,7 +907,7 @@ class App:
         except ValueError as error:
             self.show_error(error)
 
-    def start_preview(self, score=None, source=None, options=None, caption="适配曲谱"):
+    def start_preview(self, score=None, source=None, options=None, caption="按键时序"):
         hold_ms = int(self.hold_ms.get()) if source is None else 300
         token = uuid.uuid4().hex
         self.preview_token, self.preview_started = token, None
@@ -916,8 +919,9 @@ class App:
                 runs = self.directory / "runs"
                 runs.mkdir(exist_ok=True)
                 path = runs / f"preview_{token}.wav"
-                seconds = (self.engine.render_song_preview(source, path, **options) if source is not None
-                           else self.engine.render_preview(score, path, hold_ms=hold_ms))
+                cancel = lambda: self.closed or token != self.preview_token
+                seconds = (self.engine.render_song_preview(source, path, cancel=cancel, **options) if source is not None
+                           else self.engine.render_preview(score, path, hold_ms=hold_ms, cancel=cancel))
                 self.messages.put({"kind": "preview_ready", "token": token, "path": path, "seconds": seconds, "caption": caption})
             except Exception as error:
                 self.messages.put({"kind": "preview_error", "token": token, "text": str(error)})
@@ -932,6 +936,7 @@ class App:
     def play(self, seconds):
         if self.active:
             return
+        self.recommend_token = None
         self.stop_preview()
         score = self.update_score()
         if score is None:

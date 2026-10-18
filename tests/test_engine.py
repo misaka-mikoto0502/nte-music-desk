@@ -82,6 +82,10 @@ class MidiChecks(unittest.TestCase):
                 self.assertGreater(audio.getnframes(), 1000)
             with self.assertRaises(ValueError):
                 cli.render_song_preview(fixture, path, tracks=[9])
+            cancelled = Path(d) / 'cancelled.wav'
+            with self.assertRaises(ValueError):
+                cli.render_song_preview(fixture, cancelled, cancel=lambda: True)
+            self.assertFalse(cancelled.exists())
 
     def test_tempo_integration_and_running_status(self):
         track=(b'\x00\xff\x51\x03\x07\xa1\x20'+b'\x00\x90\x3c\x50'+

@@ -16,6 +16,7 @@ releases/*
 midi_ui_settings.json
 downloaded_midis/
 catalog_cache/
+arrangements/
 runs/
 self-test*.json
 test-data/

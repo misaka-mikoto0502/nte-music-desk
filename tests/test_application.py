@@ -23,6 +23,58 @@ class ApplicationChecks(unittest.TestCase):
         self.dialog_errors.start()
         self.addCleanup(self.dialog_errors.stop)
 
+    def test_audition_recommendation_and_report_ui_without_game_input(self):
+        import tkinter as tk
+        from nte_music_desk import cli
+        from nte_music_desk.ui import App
+        from nte_music_desk.paths import asset_dir
+        def child(window, text):
+            for widget in window.winfo_children():
+                if isinstance(widget, tk.Button) and widget.cget('text') == text:
+                    return widget
+            raise AssertionError(f'Button missing: {text}')
+        with tempfile.TemporaryDirectory() as directory:
+            root = tk.Tk(); root.withdraw()
+            engine = SimpleNamespace(ROOT=Path(directory), ASSETS=asset_dir(), key_schedule=cli.key_schedule,
+                                     render_preview=cli.render_preview, render_song_preview=cli.render_song_preview)
+            app = App(root, engine)
+            try:
+                app.end.set('4'); app.update_score()
+                selection = app.tracks.curselection()
+                app.preview_track()
+                message = app.messages.get(timeout=15)
+                self.assertEqual(message['kind'], 'preview_ready')
+                self.assertIn('原声部', message['caption'])
+                self.assertEqual(app.tracks.curselection(), selection)
+                app.stop_preview()
+                with patch('winsound.PlaySound') as sound:
+                    app.handle_message(message)
+                    sound.assert_not_called()  # A cancelled async result must stay silent.
+                app.preview()
+                message = app.messages.get(timeout=15)
+                self.assertEqual(message['kind'], 'preview_ready')
+                self.assertIn('时序', message['caption'])
+                app.stop_preview()
+                app.recommend_transpose()
+                message = app.messages.get(timeout=15)
+                self.assertEqual(message['kind'], 'transpose_ready')
+                app.handle_message(message)
+                window = next(w for w in root.winfo_children() if isinstance(w, tk.Toplevel) and w.title() == '推荐移调方案')
+                child(window, '应用所选方案').invoke()
+                self.assertEqual(int(app.transpose.get()), message['candidates'][0]['transpose'])
+                app.show_adaptation()
+                window = next(w for w in root.winfo_children() if isinstance(w, tk.Toplevel) and '适配报告' in w.title())
+                footer = next(w for w in window.winfo_children() if isinstance(w, tk.Frame) and any(isinstance(b, tk.Button) for b in w.winfo_children()))
+                report_path = Path(directory) / 'report.json'
+                with patch('nte_music_desk.ui.filedialog.asksaveasfilename', return_value=str(report_path)):
+                    child(footer, '导出报告').invoke()
+                report = json.loads(report_path.read_text(encoding='utf-8'))
+                self.assertEqual(report['schema'], 'nte-adaptation-report-v1')
+                self.assertGreater(report['performance']['planned_notes'], 0)
+                self.assertIsNone(app.active)
+            finally:
+                app.close()
+
     def test_arrangement_restores_after_rename_and_instrument_switch(self):
         sys.path.insert(0, str(ROOT / 'src'))
         import tkinter as tk
