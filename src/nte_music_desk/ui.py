@@ -18,6 +18,7 @@ from .notation import read_score
 from .catalog import CatalogClient
 from .instruments import INSTRUMENTS, score_instrument
 from . import APP_NAME, __version__
+from .presets import PresetStore, fingerprint, DEFAULTS
 
 
 C = {"bg": "#F1F4F8", "paper": "#FFFFFF", "ink": "#1B2A41", "muted": "#718096",
@@ -87,12 +88,15 @@ class App:
         self.stop_requested, self.syncing_speed, self.closed = False, False, False
         self.advanced_visible, self.notes_visible = False, False
         self.preferences = self.read_preferences()
+        self.preset_store = PresetStore(self.directory)
+        self.song_fingerprint, self.syncing_settings = None, False
         self.speed = tk.StringVar(value=str(self.preferences.get("speed", "1.0")))
         self.transpose = tk.StringVar(value=str(self.preferences.get("transpose", "0")))
         self.start, self.countdown, self.hold_ms = tk.StringVar(value="0"), tk.StringVar(value="7"), tk.StringVar(value="300")
         self.mode = tk.StringVar(value="旋律版（推荐）")
         selected = INSTRUMENTS.get(self.preferences.get("instrument"), INSTRUMENTS["guitar"])
         self.instrument = tk.StringVar(value=selected.title)
+        self.applied_instrument = selected.id
         self.range_policy = tk.StringVar(value="超出音域折回八度")
         self.speed_slider = tk.DoubleVar(value=1.0)
         self.title, self.subtitle = tk.StringVar(value="选择一首曲子"), tk.StringVar(value="从左侧曲库开始，或导入自己的 MIDI")
@@ -284,6 +288,8 @@ class App:
         self.controls.append((self.instrument_box, "readonly"))
         self.instrument_hint = self.label(instrument_row, "", 8, C["muted"])
         self.instrument_hint.pack(side="left", padx=12)
+        self.arrangement_label = self.label(header, "本曲设置自动保存 · 钢琴与吉他独立恢复", 8, C["muted"])
+        self.arrangement_label.pack(anchor="w", pady=(6, 0))
 
         self.build_footer(main)
         body = tk.Frame(main, bg=C["bg"])
@@ -545,11 +551,13 @@ class App:
             path = Path(path).resolve()
             song = read_score(path)
             recommended = song.suggested_track()
+            digest = fingerprint(path)
+            self.save_arrangement()
             self.stop_preview()
             examples = {self.assets / "scores/twinkle.mid": "小星星"}
             song.title = examples.get(path, self.online_client.title_for(path) or song.title)
             self.song, self.current_path = song, path
-            self.start.set("0")
+            self.song_fingerprint = digest
             self.title.set(song.title)
             kind = "MusicXML" if path.suffix.lower() in (".xml",".musicxml",".mxl") else "MIDI"
             self.subtitle.set(f"{kind} 曲谱  ·  {path.name}")
@@ -562,6 +570,7 @@ class App:
                 self.tracks.insert("end", f'{marker}{item["index"]}  {name}   {note_name(item["low"])}–{note_name(item["high"])}')
                 if item["index"] == recommended:
                     self.tracks.selection_set(len(self.track_ids) - 1)
+            self.restore_arrangement()
             for button, preset in self.library_buttons:
                 selected = path == preset
                 button.palette = (C["nav_active"] if selected else C["nav_hover"], "white", "#2A425D")
@@ -583,11 +592,61 @@ class App:
             self.speed.set(f"{float(value):.2f}")
 
     def queue_refresh(self, *_):
+        if self.syncing_settings:
+            return
+        if self.current_instrument().id != self.applied_instrument:
+            self.save_arrangement()
+            self.restore_arrangement()
         if self.refresh_job is not None:
             self.root.after_cancel(self.refresh_job)
         if self.preview_token:
             self.stop_preview()
         self.refresh_job = self.root.after(220, lambda: self.update_score(quiet=True))
+
+    def arrangement_settings(self):
+        return {"tracks": [self.track_ids[int(i)] for i in self.tracks.curselection()],
+                "mode": "melody" if self.mode.get().startswith("旋律") else "chords",
+                "speed": float(self.speed.get()), "transpose": int(self.transpose.get()),
+                "range_policy": {"超出音域折回八度": "fold", "丢弃超出音域的音": "drop", "超出音域时报错": "strict"}[self.range_policy.get()],
+                "start": float(self.start.get()), "countdown": int(self.countdown.get()), "hold_ms": int(self.hold_ms.get())}
+
+    def save_arrangement(self):
+        if not self.song_fingerprint or self.syncing_settings or self.song is None:
+            return
+        try:
+            settings = self.arrangement_settings()
+            convert(self.song, settings["tracks"], settings["mode"], settings["speed"], settings["transpose"],
+                    settings["range_policy"], settings["start"], self.applied_instrument)
+            self.preset_store.save(self.song_fingerprint, self.applied_instrument, settings)
+        except (OSError, ValueError, KeyError, tk.TclError):
+            pass  # Incomplete edits must not replace a usable arrangement.
+
+    def restore_arrangement(self):
+        self.applied_instrument = self.current_instrument().id
+        if self.song is None:
+            return
+        settings = {**DEFAULTS, "tracks": [self.song.suggested_track()]}
+        message = "本曲使用默认方案 · 修改后自动保存"
+        try:
+            saved = self.preset_store.load(self.song_fingerprint, self.applied_instrument, self.track_ids)
+            if saved:
+                settings = saved
+                message = "已恢复本曲方案 · 钢琴与吉他独立保存"
+        except (OSError, ValueError):
+            message = "保存的方案无法读取，已使用默认设置"
+        self.syncing_settings = True
+        try:
+            for name in ("speed", "transpose", "start", "countdown", "hold_ms"):
+                getattr(self, name).set(str(settings[name]))
+            self.mode.set("旋律版（推荐）" if settings["mode"] == "melody" else "和弦版（最多 6 音）")
+            self.range_policy.set({"fold": "超出音域折回八度", "drop": "丢弃超出音域的音", "strict": "超出音域时报错"}[settings["range_policy"]])
+            self.tracks.selection_clear(0, "end")
+            for index, track in enumerate(self.track_ids):
+                if track in settings["tracks"]:
+                    self.tracks.selection_set(index)
+            self.arrangement_label.configure(text=message)
+        finally:
+            self.syncing_settings = False
 
     def build_score(self):
         if self.song is None:
@@ -653,6 +712,7 @@ class App:
             self.set_status("曲谱已就绪，可以先试听，也可以开始游戏演奏。", "就绪", "teal")
             self.refresh_controls()
             self.save_preferences()
+            self.save_arrangement()
             return score
         except Exception as error:
             self.score = None
@@ -910,6 +970,7 @@ class App:
         if self.online_dialog is not None:
             self.online_dialog.close()
         self.save_preferences()
+        self.save_arrangement()
         self.stop()
         self.closed = True
         self.root.after_cancel(self.poll_job)
