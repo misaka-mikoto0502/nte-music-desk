@@ -1,6 +1,6 @@
 # 第三方资源与运行时
 
-本项目的 MIT 许可适用于项目自有代码、原创图标与自行编码的示例 MIDI，不授予第三方音乐、游戏素材或外部站点内容的权利。程序图标沿用原创的琴键与音符设计，没有使用游戏截图或官方角色素材。
+本项目的 MIT 许可适用于项目自有代码、原创图标与自行编码的示例 MIDI，不授予第三方音乐、游戏素材或外部站点内容的权利。程序图标沿用原创的琴键与音符设计，没有使用游戏截图或官方角色素材。1.3.1 的可关闭背景取自用户提供的《异环》截图，经清除 UID、相框和标注后作为 city-session.png 使用；其游戏角色和场景权利归相应权利人，不属于自有 MIT 图标素材。处理记录见 docs/APPEARANCE.md。
 
 ## 曲谱与曲库
 
@@ -19,7 +19,7 @@
 - [Tcl/Tk 许可](https://www.tcl-lang.org/software/tcltk/license.html)
 - [PyInstaller 许可与引导器例外](https://pyinstaller.org/en/stable/license.html)
 
-核心曲谱功能的源码运行只使用标准库。`requirements-build.txt` 中列出的工具只用于构建。软件与《异环》官方无关联。
+曲谱解析和按键调度使用标准库；1.3.1 的界面使用 [Pillow](https://python-pillow.github.io/) 绘制圆角和淡背景，构建所用 Pillow 13.0.0 的 MIT-CMU 许可及随包第三方许可保留在便携版 licenses 目录。`requirements-build.txt` 固定构建环境和界面依赖版本。软件与《异环》官方无关联。
 
 ## 可选音频转谱
 

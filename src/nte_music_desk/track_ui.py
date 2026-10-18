@@ -2,20 +2,26 @@
 import tkinter as tk
 from tkinter import ttk
 from .parts import ROLE_NAMES
+from .appearance import RoundedPanel, RoundedButton, COLORS as C
 
-COLORS = ('#087F8C', '#285DBF', '#B67B13', '#8B5BB5', '#C65B73', '#268666')
+
+def action(parent, text, command):
+    return RoundedButton(parent, text=text, command=command, bg=C['blue_light'], fg=C['ink'],
+                         activebackground='#DAE4D6', font=('Microsoft YaHei UI', 9), padx=12, pady=7)
+
+COLORS = ('#32634F', '#537766', '#A5814C', '#897A8E', '#AD7666', '#71855F')
 
 
 class TrackPanel(tk.Frame):
     def __init__(self, parent):
-        super().__init__(parent, bg='white')
+        super().__init__(parent, bg='#FCFBF7')
         self.rows, self.enabled_rows, self.roles = [], set(), {}
         self.focused, self.disabled, self.song = 0, False, None
         self.views, self.window, self.timeline, self.playhead = [], None, None, 0
         self.tree = self.make_tree(self, compact=True)
 
     def make_tree(self, parent, compact=False):
-        frame = tk.Frame(parent, bg='white')
+        frame = tk.Frame(parent, bg='#FCFBF7')
         frame.pack(fill='both', expand=True)
         columns = ('enabled', 'name', 'instrument') if compact else ('enabled', 'name', 'instrument', 'channel', 'role', 'notes', 'range')
         tree = ttk.Treeview(frame, columns=columns, show='headings', height=4 if compact else 7,
@@ -130,10 +136,10 @@ class TrackPanel(tk.Frame):
         window.title('多轨工作区 · ' + self.song.title)
         window.geometry('1080x700')
         window.minsize(850, 600)
-        window.configure(bg='#F1F4F8')
-        tk.Label(window, text='声部与原曲总览', font=('Microsoft YaHei UI', 18, 'bold'), bg='#F1F4F8', fg='#1B2A41').pack(anchor='w', padx=20, pady=(18, 5))
-        tk.Label(window, text='点击启用列开关声部 · 选择一行后可独奏或指定角色 · 原轨与通道使用 1 起始编号', bg='#F1F4F8', fg='#718096').pack(anchor='w', padx=20, pady=(0, 12))
-        controls = tk.Frame(window, bg='#F1F4F8')
+        window.configure(bg='#EDECE6')
+        tk.Label(window, text='声部与原曲总览', font=('Microsoft YaHei UI', 18, 'bold'), bg='#EDECE6', fg='#273B36').pack(anchor='w', padx=20, pady=(18, 5))
+        tk.Label(window, text='点击启用列开关声部 · 选择一行后可独奏或指定角色 · 原轨与通道使用 1 起始编号', bg='#EDECE6', fg='#738078').pack(anchor='w', padx=20, pady=(0, 12))
+        controls = tk.Frame(window, bg='#EDECE6')
         controls.pack(fill='x', padx=20, pady=(0, 10))
         def all_parts():
             self.enabled_rows = {i for i, p in enumerate(self.rows) if not p['drums']}
@@ -142,8 +148,8 @@ class TrackPanel(tk.Frame):
             if self.rows and not self.rows[self.focused]['drums']:
                 self.enabled_rows = {self.focused}
                 self.notify()
-        ttk.Button(controls, text='启用全部乐音声部', command=all_parts).pack(side='left', padx=(0, 8))
-        ttk.Button(controls, text='独奏当前声部', command=solo).pack(side='left', padx=(0, 15))
+        action(controls, '启用全部乐音声部', all_parts).pack(side='left', padx=(0, 8))
+        action(controls, '独奏当前声部', solo).pack(side='left', padx=(0, 15))
         role = ttk.Combobox(controls, values=list(ROLE_NAMES.values()), width=9, state='readonly')
         role.set('主旋律')
         role.pack(side='left')
@@ -151,19 +157,19 @@ class TrackPanel(tk.Frame):
             if self.rows and not self.rows[self.focused]['drums']:
                 self.roles[str(self.rows[self.focused]['index'])] = next(k for k, v in ROLE_NAMES.items() if v == role.get())
                 self.notify()
-        ttk.Button(controls, text='将当前声部设为此角色', command=set_role).pack(side='left', padx=8)
-        area = tk.Frame(window, bg='white')
+        action(controls, '应用角色', set_role).pack(side='left', padx=8)
+        area = RoundedPanel(window, padx=12, pady=12)
         area.pack(fill='both', expand=True, padx=20)
         self.make_tree(area)
-        overview = tk.Frame(window, bg='white')
+        overview = RoundedPanel(window, padx=12, pady=12)
         overview.pack(fill='both', expand=True, padx=20, pady=(12, 8))
-        self.timeline = tk.Canvas(overview, height=190, bg='#F7F9FC', highlightthickness=0)
+        self.timeline = tk.Canvas(overview, height=190, bg='#F5F4ED', highlightthickness=0)
         bar = ttk.Scrollbar(overview, command=self.timeline.yview)
         bar.pack(side='right', fill='y')
         self.timeline.configure(yscrollcommand=bar.set)
         self.timeline.pack(fill='both', expand=True)
         self.timeline.bind('<Configure>', lambda _: self.draw_timeline())
-        tk.Label(window, text='彩色为启用声部，灰色为静音；总览对密集音符做显示聚合，演奏数据保持完整。', bg='#F1F4F8', fg='#718096').pack(anchor='w', padx=20, pady=(0, 12))
+        tk.Label(window, text='彩色为启用声部，灰色为静音；总览对密集音符做显示聚合，演奏数据保持完整。', bg='#EDECE6', fg='#738078').pack(anchor='w', padx=20, pady=(0, 12))
         self.render()
 
     def draw_timeline(self):
@@ -173,11 +179,11 @@ class TrackPanel(tk.Frame):
         canvas.delete('all')
         width, left = max(600, canvas.winfo_width()), 175
         scale = (width - left - 20) / max(1, self.song.seconds)
-        canvas.create_text(10, 12, text='原曲时间 / 秒', anchor='w', fill='#718096')
+        canvas.create_text(10, 12, text='原曲时间 / 秒', anchor='w', fill='#738078')
         for step in range(6):
             x = left + (width - left - 20) * step / 5
-            canvas.create_text(x, 12, text=f'{self.song.seconds * step / 5:.1f}', fill='#718096')
-            canvas.create_line(x, 25, x, len(self.rows) * 36 + 30, fill='#E2E8F0')
+            canvas.create_text(x, 12, text=f'{self.song.seconds * step / 5:.1f}', fill='#738078')
+            canvas.create_line(x, 25, x, len(self.rows) * 36 + 30, fill='#DDDCD2')
         by_track = {}
         for note in self.song.notes:
             by_track.setdefault(note.track, []).append(note)

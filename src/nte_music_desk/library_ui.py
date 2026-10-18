@@ -64,7 +64,7 @@ class OnlineLibrary:
         row = tk.Frame(outer, bg=C["bg"])
         row.pack(fill="x")
         self.entry = tk.Entry(row, textvariable=self.query, font=(FONT, 12), relief="solid", borderwidth=1,
-                              bg="white", fg=C["ink"], insertbackground=C["teal"])
+                              bg=C["paper"], fg=C["ink"], insertbackground=C["teal"])
         self.entry.pack(side="left", fill="x", expand=True, ipady=9, padx=(0, 9))
         self.entry.bind("<Return>", lambda _: self.search())
         self.source_box = ttk.Combobox(row, textvariable=self.source, values=["全部曲库", *SOURCES.values()], state="readonly", width=15)
@@ -89,8 +89,8 @@ class OnlineLibrary:
         style.configure("Desk.Treeview.Heading", background="#F5F8FC", foreground=C["muted"], borderwidth=0, relief="flat")
         self.notebook = ttk.Notebook(outer, style="Library.TNotebook")
         self.notebook.pack(fill="both", expand=True)
-        self.online_tab = tk.Frame(self.notebook, bg="white")
-        self.downloaded_tab = tk.Frame(self.notebook, bg="white")
+        self.online_tab = tk.Frame(self.notebook, bg=C["paper"])
+        self.downloaded_tab = tk.Frame(self.notebook, bg=C["paper"])
         self.notebook.add(self.online_tab, text="在线搜索")
         self.notebook.add(self.downloaded_tab, text="已下载 · 0")
         self.notebook.bind("<<NotebookTabChanged>>", self.tab_changed)
@@ -121,7 +121,7 @@ class OnlineLibrary:
         self.cancel_button.pack(side="right", padx=9)
 
     def make_tree(self, parent, columns):
-        frame = tk.Frame(parent, bg="white")
+        frame = tk.Frame(parent, bg=C["paper"])
         frame.pack(fill="both", expand=True, padx=1, pady=1)
         tree = ttk.Treeview(frame, columns=[c[0] for c in columns], show="headings", style="Desk.Treeview", selectmode="browse")
         for column, text, width in columns:

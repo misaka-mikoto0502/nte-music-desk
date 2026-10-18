@@ -1,4 +1,5 @@
-# Build-only environment; the desktop program itself uses Python's stdlib.
+# Build environment, including the desktop artwork renderer.
+Pillow==13.0.0
 pyinstaller==6.22.3
 pyinstaller-hooks-contrib==2026.8
 altgraph==0.17.5

@@ -8,6 +8,7 @@ from tkinter import ttk, filedialog
 import webbrowser
 
 from .transcription import ProcessJob, managed_python, engine_command, clean_log
+from .appearance import RoundedPanel
 
 
 class AudioDialog:
@@ -24,7 +25,7 @@ class AudioDialog:
         self.window.title('音频转谱 · MuScriptor')
         self.window.geometry('840x690')
         self.window.minsize(740, 630)
-        self.window.configure(bg='#F1F4F8')
+        self.window.configure(bg='#EDECE6')
         self.window.protocol('WM_DELETE_WINDOW', self.close)
         self.executable = tk.StringVar(value=settings.get('executable', str(managed_python(app.directory))))
         self.source = tk.StringVar()
@@ -32,52 +33,52 @@ class AudioDialog:
         self.device = tk.StringVar(value=settings.get('device', 'cpu'))
         self.state = tk.StringVar(value='选择音频 → 配置一次引擎 → 转为 MIDI → 多轨试听与适配')
         self.result = None
-        body = tk.Frame(self.window, bg='white', padx=22, pady=18)
+        body = RoundedPanel(self.window, padx=22, pady=18)
         body.pack(fill='both', expand=True, padx=18, pady=18)
         app.label(body, '把音乐带入工作台', 18, bold=True).pack(anchor='w')
-        app.label(body, '多乐器自动识别 · 保留原始 MIDI · 转谱后手动试听，再开始游戏演奏', 10, '#718096').pack(anchor='w', pady=(6, 16))
+        app.label(body, '多乐器自动识别 · 保留原始 MIDI · 转谱后手动试听，再开始游戏演奏', 10, '#738078').pack(anchor='w', pady=(6, 16))
         self.controls = []
         self.path_row(body, '音频文件', self.source, self.choose_audio)
         self.path_row(body, '引擎 Python / EXE', self.executable, self.choose_engine)
-        options = tk.Frame(body, bg='white')
+        options = tk.Frame(body, bg='#FCFBF7')
         options.pack(fill='x', pady=(8, 10))
         for text, var, values in [('模型', self.model, ('small', 'medium', 'large')), ('设备', self.device, ('cpu', 'auto', 'cuda'))]:
             app.label(options, text, 10).pack(side='left', padx=(0, 8))
             widget = ttk.Combobox(options, textvariable=var, values=values, state='readonly', width=12)
             widget.pack(side='left', padx=(0, 20))
             self.controls.append((widget, 'readonly'))
-        app.label(body, 'small 适合 CPU；medium / large 更占资源。建议先用 15–30 秒片段核对。\n人声、鼓点、混音可能产生错音和漏音；识别不恢复原曲力度、踏板或原音色。', 9, '#718096', justify='left').pack(anchor='w')
-        setup = tk.Frame(body, bg='white')
+        app.label(body, 'small 适合 CPU；medium / large 更占资源。建议先用 15–30 秒片段核对。\n人声、鼓点、混音可能产生错音和漏音；识别不恢复原曲力度、踏板或原音色。', 9, '#738078', justify='left').pack(anchor='w')
+        setup = tk.Frame(body, bg='#FCFBF7')
         setup.pack(fill='x', pady=(14, 8))
-        install = ttk.Button(setup, text='安装 / 更新独立引擎…', command=self.install)
+        install = app.button(setup, '安装 / 更新独立引擎…', self.install, size=9)
         install.pack(side='left')
         self.controls.append((install, 'normal'))
-        ttk.Button(setup, text='模型授权页面', command=self.open_license).pack(side='left', padx=8)
-        ttk.Button(setup, text='配置说明', command=self.help).pack(side='left')
+        app.button(setup, '模型授权页面', self.open_license, size=9).pack(side='left', padx=8)
+        app.button(setup, '配置说明', self.help, size=9).pack(side='left')
         app.label(body, '首次安装需要完整 Python 3.10+，会下载 PyTorch 等较大依赖。\n模型须自行接受 CC BY-NC 4.0 许可并登录 Hugging Face；软件不包含模型。', 9, '#95620D', justify='left').pack(anchor='w', pady=(0, 12))
         app.label(body, textvariable=self.state, size=10, wraplength=720, justify='left').pack(anchor='w', pady=(0, 8))
-        self.progress = ttk.Progressbar(body, mode='indeterminate')
+        self.progress = ttk.Progressbar(body, mode='indeterminate', style='Desk.Horizontal.TProgressbar')
         self.progress.pack(fill='x')
-        self.log = tk.Text(body, height=7, wrap='word', relief='flat', bg='#F4F7FB', padx=10, pady=8, state='disabled', font=('Consolas', 9))
+        self.log = tk.Text(body, height=7, wrap='word', relief='flat', bg='#F3F2EB', padx=10, pady=8, state='disabled', font=('Consolas', 9))
         self.log.pack(fill='both', expand=True, pady=10)
-        actions = tk.Frame(body, bg='white')
+        actions = tk.Frame(body, bg='#FCFBF7')
         actions.pack(fill='x')
         self.start_button = app.button(actions, '开始音频转谱', self.transcribe, 'primary', 11)
         self.start_button.pack(side='right')
         self.controls.append((self.start_button, 'normal'))
-        self.cancel_button = ttk.Button(actions, text='取消任务', command=self.cancel, state='disabled')
+        self.cancel_button = app.button(actions, '取消任务', self.cancel, 'stop', 9, state='disabled')
         self.cancel_button.pack(side='right', padx=10)
-        self.import_button = ttk.Button(actions, text='导入结果', command=self.import_result, state='disabled')
+        self.import_button = app.button(actions, '导入结果', self.import_result, size=9, state='disabled')
         self.import_button.pack(side='left')
         self.poll_id = self.window.after(120, self.poll)
 
     def path_row(self, body, label, variable, command):
-        row = tk.Frame(body, bg='white')
+        row = tk.Frame(body, bg='#FCFBF7')
         row.pack(fill='x', pady=5)
         self.app.label(row, label, 10, width=19, anchor='w').pack(side='left')
         entry = ttk.Entry(row, textvariable=variable)
         entry.pack(side='left', fill='x', expand=True)
-        button = ttk.Button(row, text='浏览…', command=command)
+        button = self.app.button(row, '浏览…', command, size=9)
         button.pack(side='left', padx=(8, 0))
         self.controls += [(entry, 'normal'), (button, 'normal')]
 

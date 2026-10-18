@@ -237,7 +237,7 @@ class ApplicationChecks(unittest.TestCase):
         before={str(p.relative_to(assets)):p.read_bytes() for p in assets.rglob("*") if p.is_file()}
         with tempfile.TemporaryDirectory() as directory:
             report=Path(directory)/"result.json"
-            completed=subprocess.run([sys.executable,"-X","utf8","-I","-S",str(ROOT/"src/nte_music_desk/_bootstrap.py"),
+            completed=subprocess.run([sys.executable,"-X","utf8","-I",str(ROOT/"src/nte_music_desk/_bootstrap.py"),
                                       "--data-dir",str(Path(directory)/"data"),"--self-test",str(report)],
                                      capture_output=True,text=True,encoding="utf-8",timeout=30)
             self.assertEqual(completed.returncode,0,completed.stderr)

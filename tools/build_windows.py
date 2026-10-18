@@ -58,6 +58,12 @@ def main():
     for file in distribution.files or []:
         if str(file).replace("\\", "/").endswith("licenses/COPYING.txt"):
             shutil.copyfile(distribution.locate_file(file), licenses / "PyInstaller.txt")
+    pillow = importlib.metadata.distribution('Pillow')
+    for file in pillow.files or []:
+        if '/licenses/' in str(file).replace('\\', '/'):
+            source = pillow.locate_file(file)
+            if source.is_file():
+                shutil.copyfile(source, licenses / ('Pillow_' + str(file).replace('\\', '_').replace('/', '_')))
     for filename in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
         shutil.copyfile(ROOT / filename, app / filename)
     shutil.copyfile(ROOT / "docs/USAGE.md", app / "使用说明.md")

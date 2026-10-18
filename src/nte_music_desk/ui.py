@@ -23,13 +23,9 @@ from .segments import parse_time
 from .analysis import recommend_transpositions, adaptation_report
 from .performance import performance_plan
 from .track_ui import TrackPanel
+from .appearance import COLORS as C, RoundedButton, RoundedPanel, SessionArtwork, CanvasLabel
 
 
-C = {"bg": "#F1F4F8", "paper": "#FFFFFF", "ink": "#1B2A41", "muted": "#718096",
-     "line": "#E2E8F0", "nav": "#14243A", "nav_hover": "#20364E", "nav_active": "#24445B",
-     "teal": "#087F8C", "teal_hover": "#066B76", "teal_light": "#E4F4F2", "mint": "#65D6C4",
-     "blue": "#285DBF", "blue_light": "#EAF1FF", "amber": "#95620D", "amber_light": "#FFF2D8",
-     "red": "#BE354B", "red_light": "#FCECEF", "disabled": "#EBEFF4", "disabled_ink": "#9AA6B5"}
 FONT = "Microsoft YaHei UI"
 MODES = {"faithful": "原曲声部（推荐）", "balanced": "旋律＋低音", "melody": "单旋律（简化）", "chords": "和弦版（最多 6 音）"}
 
@@ -99,6 +95,7 @@ class App:
         self.stop_requested, self.syncing_speed, self.closed = False, False, False
         self.advanced_visible, self.notes_visible = False, False
         self.preferences = self.read_preferences()
+        self.background_opacity = tk.DoubleVar(value=self.background_strength())
         self.preset_store = PresetStore(self.directory)
         self.song_fingerprint, self.syncing_settings = None, False
         self.invalid_presets = set()
@@ -160,12 +157,24 @@ class App:
         files.add_command(label="打开数据目录", command=lambda: os.startfile(self.directory))
         files.add_command(label="退出", command=self.close)
         menu.add_cascade(label="文件", menu=files)
+        appearance = tk.Menu(menu, tearoff=False)
+        for name, value in [('关闭背景图片', 0), ('淡雅', .18), ('柔和（默认）', .32), ('清晰', .52)]:
+            appearance.add_radiobutton(label=name, variable=self.background_opacity, value=value, command=self.set_background_strength)
+        menu.add_cascade(label='外观', menu=appearance)
         help_menu = tk.Menu(menu, tearoff=False)
         help_menu.add_command(label="使用说明", command=self.show_help)
         help_menu.add_command(label="关于", command=lambda: messagebox.showinfo(
             "关于", f"{APP_NAME}\nv{__version__}\n\n支持吉他钢琴模式、钢琴 Shift 黑键、MIDI 旋律与和弦。\n\n数据目录：\n{self.directory}\n\n与游戏官方无关联。", parent=self.root))
         menu.add_cascade(label="帮助", menu=help_menu)
         self.root.configure(menu=menu)
+
+    def background_strength(self):
+        value = self.preferences.get('background_strength', .32)
+        return float(value) if type(value) in (int, float) and 0 <= value <= .6 else .32
+
+    def set_background_strength(self):
+        self.artwork.set_opacity(self.background_opacity.get())
+        self.save_preferences()
 
     def open_audio(self):
         if self.active: return
@@ -204,11 +213,13 @@ class App:
                         lightcolor=C["teal"], darkcolor=C["teal"])
         style.configure("Desk.Horizontal.TProgressbar", background=C["teal"], troughcolor=C["line"], borderwidth=0,
                         lightcolor=C["teal"], darkcolor=C["teal"], thickness=5)
-        style.configure("Desk.Treeview", font=(FONT, 10), rowheight=30, background="white", fieldbackground="white")
+        style.configure("Desk.Treeview", font=(FONT, 10), rowheight=30, background=C['paper'], fieldbackground=C['paper'], borderwidth=0)
         style.configure("Desk.Treeview.Heading", font=(FONT, 10, "bold"), padding=8, background=C['blue_light'], foreground=C['ink'], relief='flat')
         style.map("Desk.Treeview", background=[("selected", C["teal"])], foreground=[("selected", "white")])
         style.configure("Desk.Vertical.TScrollbar", background=C["line"], troughcolor=C["bg"],
                         bordercolor=C["bg"], lightcolor=C["line"], darkcolor=C["line"], arrowcolor=C["muted"], arrowsize=10)
+        style.configure('Nav.Vertical.TScrollbar', background=C['nav_hover'], troughcolor=C['nav'],
+                        bordercolor=C['nav'], lightcolor=C['nav_hover'], darkcolor=C['nav_hover'], arrowcolor='#A9B9A6', arrowsize=8)
 
     def label(self, parent, text=None, size=10, color=None, bold=False, **kwargs):
         return tk.Label(parent, text=text, font=(FONT, size, "bold" if bold else "normal"),
@@ -216,19 +227,17 @@ class App:
 
     def button(self, parent, text, command, kind="neutral", size=10, tip=None, **kwargs):
         palettes = {"primary": (C["teal"], "white", C["teal_hover"]),
-                    "preview": (C["blue_light"], C["blue"], "#DCE8FF"),
-                    "trial": (C["amber_light"], C["amber"], "#FFE7B5"),
-                    "stop": (C["red_light"], C["red"], "#F8D6DD"),
-                    "neutral": ("#F1F4F8", C["muted"], "#E4EAF2"),
+                    "preview": (C["blue_light"], C["blue"], "#DAE4D6"),
+                    "trial": (C["amber_light"], C["amber"], "#E9DAC1"),
+                    "stop": (C["red_light"], C["red"], "#E9CECA"),
+                    "neutral": ("#EEEFE7", C["ink"], "#E2E6DA"),
                     "nav": (C["nav_hover"], "#E5EDF5", "#2A425D")}
         bg, fg, hover = palettes[kind]
-        button = tk.Button(parent, text=text, command=command, bg=bg, fg=fg, activebackground=hover,
+        button = RoundedButton(parent, text=text, command=command, bg=bg, fg=fg, activebackground=hover,
                            activeforeground=fg, relief="flat", borderwidth=0, font=(FONT, size, "bold"),
                            padx=14, pady=10, cursor="hand2", highlightthickness=2,
                            highlightbackground=parent.cget("bg"), highlightcolor=C["mint"], **kwargs)
         button.palette = (bg, fg, hover)
-        button.bind("<Enter>", lambda _: button.configure(bg=hover) if str(button.cget("state")) != "disabled" else None)
-        button.bind("<Leave>", lambda _: button.configure(bg=button.palette[0]) if str(button.cget("state")) != "disabled" else None)
         if tip:
             Tooltip(button, tip)
         return button
@@ -241,115 +250,110 @@ class App:
                              disabledforeground=C["disabled_ink"], cursor="hand2" if enabled else "arrow")
 
     def card(self, parent):
-        return tk.Frame(parent, bg="white", highlightbackground=C["line"], highlightthickness=1, padx=18, pady=15)
+        return RoundedPanel(parent)
 
     def build_layout(self):
-        sidebar = tk.Frame(self.root, bg=C["nav"], width=224, padx=18, pady=25)
+        sidebar = tk.Frame(self.root, bg=C["nav"], width=218, padx=18, pady=23)
         sidebar.pack(side="left", fill="y")
         sidebar.pack_propagate(False)
-        self.label(sidebar, "♪  异环", 24, "#FFFFFF", True).pack(anchor="w")
-        self.label(sidebar, "演 奏 工 作 台", 11, C["mint"]).pack(anchor="w", pady=(3, 27))
-        self.online_button = self.button(sidebar, "⌕  在线搜曲", self.open_online, "primary", 11,
-                                         "在公开曲库中搜索，下载并自动导入。\n快捷键：Ctrl + F")
-        self.online_button.pack(fill="x", pady=(0, 8))
-        self.import_button = self.button(sidebar, "+  导入曲谱", self.open_file, "nav", 11,
-                                         "支持 MIDI、KAR、RMI、MusicXML、XML、MXL。\n快捷键：Ctrl + O")
-        self.import_button.pack(fill="x")
-        self.audio_button = self.button(sidebar, "♫  音频转谱", self.open_audio, "nav", 11, "使用可选的 MuScriptor 本地引擎，将音频转为多轨 MIDI。首次需配置引擎及模型授权。")
-        self.audio_button.pack(fill='x', pady=(8, 0))
-        nav_area = tk.Frame(sidebar, bg=C["nav"])
-        nav_area.pack(fill="both", expand=True, pady=(8, 8))
-        self.nav_canvas = tk.Canvas(nav_area, bg=C["nav"], highlightthickness=0, width=170)
-        nav_scroll = ttk.Scrollbar(nav_area, orient="vertical", command=self.nav_canvas.yview)
-        nav_scroll.pack(side="right", fill="y")
-        self.nav_canvas.pack(side="left", fill="both", expand=True)
+        self.label(sidebar, "NTE  /  MUSIC DESK", 9, C['mint']).pack(anchor='w')
+        self.label(sidebar, "异环演奏工作台", 18, "#F2F0E6", True).pack(anchor='w', pady=(11, 3))
+        self.label(sidebar, "导入曲谱，自动在游戏中演奏", 9, '#B0C0B0').pack(anchor='w', pady=(0, 22))
+        self.import_button = self.button(sidebar, "+  导入曲谱", self.open_file, "primary", 11,
+            "支持 MIDI、KAR、RMI、MusicXML、XML、MXL。快捷键 Ctrl+O")
+        self.import_button.pack(fill='x', pady=(0, 7))
+        self.online_button = self.button(sidebar, "在线搜曲", self.open_online, "nav", 10,
+            "在公开曲库中搜索，下载并自动导入。快捷键 Ctrl+F")
+        self.online_button.pack(fill='x', pady=(0, 7))
+        self.audio_button = self.button(sidebar, "音频转谱", self.open_audio, "nav", 10,
+            "可选 MuScriptor 本地引擎，将音频识别为多轨 MIDI。首次需配置引擎及模型授权。")
+        self.audio_button.pack(fill='x')
+        nav_area = tk.Frame(sidebar, bg=C['nav'])
+        nav_area.pack(fill='both', expand=True, pady=(15, 8))
+        self.nav_canvas = tk.Canvas(nav_area, bg=C['nav'], highlightthickness=0, width=170)
+        nav_scroll = ttk.Scrollbar(nav_area, orient='vertical', command=self.nav_canvas.yview, style='Nav.Vertical.TScrollbar')
+        nav_scroll.pack(side='right', fill='y')
+        self.nav_canvas.pack(side='left', fill='both', expand=True)
         self.nav_canvas.configure(yscrollcommand=nav_scroll.set)
-        self.nav_content = tk.Frame(self.nav_canvas, bg=C["nav"])
-        nav_window = self.nav_canvas.create_window((0,0), window=self.nav_content, anchor="nw")
-        self.nav_content.bind("<Configure>", lambda _: self.nav_canvas.configure(scrollregion=self.nav_canvas.bbox("all")))
-        self.nav_canvas.bind("<Configure>", lambda e: self.nav_canvas.itemconfigure(nav_window, width=e.width))
-        self.label(self.nav_content, "我的曲库", 9, "#90A6BF", True).pack(anchor="w", pady=(15, 10))
-        for name, filename, caption in [("小星星", "twinkle.mid", "内置示例 · 离线可用"), ("致爱丽丝",None,"Mutopia · 古典钢琴"),
-                ("月光奏鸣曲",None,"Mutopia · 多乐章"), ("三叶的主题曲", None, "在线获取 MIDI"), ("黄昏之时", None, "在线获取 MIDI")]:
-            path = self.assets / "scores" / filename if filename else None
-            button = self.button(self.nav_content, f"{name}\n{caption}", lambda n=name, p=path: self.choose_library(n,p), "nav", 10, "载入内置示例，或搜索并下载所选曲目。", anchor="w", justify="left")
-            button.pack(fill="x", pady=(0, 8))
+        self.nav_content = tk.Frame(self.nav_canvas, bg=C['nav'])
+        nav_window = self.nav_canvas.create_window((0, 0), window=self.nav_content, anchor='nw')
+        self.nav_content.bind('<Configure>', lambda _: self.nav_canvas.configure(scrollregion=self.nav_canvas.bbox('all')))
+        self.nav_canvas.bind('<Configure>', lambda e: self.nav_canvas.itemconfigure(nav_window, width=e.width))
+        self.label(self.nav_content, '曲目架', 9, '#A9B9A6').pack(anchor='w', pady=(0, 10))
+        for name, filename, caption in [('小星星', 'twinkle.mid', '离线示例'), ('致爱丽丝', None, '古典钢琴'),
+                ('月光奏鸣曲', None, '古典 · 多乐章'), ('三叶的主题曲', None, '搜索曲谱'), ('黄昏之时', None, '搜索曲谱')]:
+            path = self.assets / 'scores' / filename if filename else None
+            button = self.button(self.nav_content, f'{name}\n{caption}', lambda n=name, p=path: self.choose_library(n,p),
+                'nav', 9, '载入示例或搜索所选曲目。', anchor='w', justify='left')
+            button.configure(pady=7, padx=10)
+            button.pack(fill='x', pady=(0, 5))
             self.library_buttons.append((button, path))
-        self.label(self.nav_content, "最近导入", 9, "#90A6BF", True).pack(anchor="w", pady=(17, 8))
-        self.recent_frame = tk.Frame(self.nav_content, bg=C["nav"])
-        self.recent_frame.pack(fill="x")
+        self.label(self.nav_content, '最近打开', 9, '#A9B9A6').pack(anchor='w', pady=(17, 8))
+        self.recent_frame = tk.Frame(self.nav_content, bg=C['nav'])
+        self.recent_frame.pack(fill='x')
         self.render_recents()
-        bottom = tk.Frame(sidebar, bg=C["nav"])
-        bottom.pack(side="bottom", fill="x", before=nav_area)
-        self.instrument_label = self.label(bottom, self.instrument.get(), 11, "#DCE8F5", True)
-        self.instrument_label.pack(anchor="w")
-        self.range_label = self.label(bottom, "36 键 · E3–D#6", 9, "#90A6BF")
-        self.range_label.pack(anchor="w", pady=(3, 19))
-        tk.Frame(bottom, bg="#2B3D53", height=1).pack(fill="x", pady=(0, 15))
-        for key, action in [("Ctrl + F", "在线搜曲"), ("Ctrl + O", "导入曲谱"), ("Ctrl + Enter", "开始演奏"), ("F8", "停止演奏")]:
-            row = tk.Frame(bottom, bg=C["nav"])
-            row.pack(fill="x", pady=4)
-            self.label(row, key, 9, "#DAE6F2", True).pack(side="left")
-            self.label(row, action, 9, "#90A6BF").pack(side="right")
+        bottom = tk.Frame(sidebar, bg=C['nav'])
+        bottom.pack(side='bottom', fill='x', before=nav_area, pady=(10, 0))
+        tk.Frame(bottom, bg='#4B5C4E', height=1).pack(fill='x', pady=(0, 14))
+        self.instrument_label = self.label(bottom, self.instrument.get(), 10, '#E5E9DA', True)
+        self.instrument_label.pack(anchor='w')
+        self.range_label = self.label(bottom, '', 9, '#A9B9A6')
+        self.range_label.pack(anchor='w', pady=(4, 14))
+        self.label(bottom, 'F8  停止演奏', 10, C['mint'], True).pack(anchor='w')
+        self.label(bottom, 'Ctrl+O 导入   /   Ctrl+F 搜曲', 8, '#A9B9A6').pack(anchor='w', pady=(8, 0))
 
-        main = tk.Frame(self.root, bg=C["bg"])
-        main.pack(side="left", fill="both", expand=True)
-        header = tk.Frame(main, bg=C["bg"], padx=25, pady=19)
-        header.pack(fill="x")
-        self.label(header, "01  选曲     /     02  试听     /     03  游戏演奏", 9, C["muted"]).pack(anchor="w")
-        heading = tk.Frame(header, bg=C["bg"])
-        heading.pack(fill="x", pady=(9, 3))
-        self.label(heading, size=23, bold=True, textvariable=self.title).pack(side="left")
-        self.badge = self.label(heading, "等待选曲", 9, C["muted"], True, padx=12, pady=5)
-        self.badge.pack(side="right")
-        self.source_label = self.label(header, size=9, color=C["muted"], textvariable=self.subtitle)
-        self.source_label.pack(anchor="w")
-        instrument_row = tk.Frame(header, bg=C["bg"])
-        instrument_row.pack(fill="x", pady=(12, 0))
-        self.label(instrument_row, "演奏乐器", 10, bold=True).pack(side="left", padx=(0, 12))
-        self.instrument_box = ttk.Combobox(instrument_row, textvariable=self.instrument,
-                                         values=[p.title for p in INSTRUMENTS.values()], state="readonly", width=24)
-        self.instrument_box.pack(side="left")
-        self.controls.append((self.instrument_box, "readonly"))
-        self.instrument_hint = self.label(instrument_row, "", 8, C["muted"])
-        self.instrument_hint.pack(side="left", padx=12)
-        scheme_row = tk.Frame(header, bg=C['bg'])
-        scheme_row.pack(fill='x', pady=(6, 0))
-        self.arrangement_label = self.label(scheme_row, "本曲设置自动保存 · 钢琴与吉他独立恢复", 8, C["muted"])
-        self.arrangement_label.pack(side='left')
-        workspace = self.button(scheme_row, '多轨工作区 ↗', lambda: self.tracks.show_workspace(), 'preview', 9,
-            '展开乐器、角色、音域与多轨音符总览；可独奏或静音声部。')
-        workspace.configure(pady=4, padx=9)
+        main = tk.Frame(self.root, bg=C['bg'])
+        main.pack(side='left', fill='both', expand=True)
+        self.artwork = SessionArtwork(main, self.assets / 'city-session.png', opacity=self.background_strength())
+        self.artwork.pack(fill='x')
+        CanvasLabel(self.artwork, 25, 18, text='当前曲目  /  SESSION', fill=C['muted'], font=(FONT, 9))
+        self.heading_label = CanvasLabel(self.artwork, 25, 43, variable=self.title, fill=C['ink'], font=(FONT, 24, 'bold'), ellipsize=630)
+        self.source_label = CanvasLabel(self.artwork, 25, 89, variable=self.subtitle, fill=C['muted'], font=(FONT, 9), ellipsize=560)
+        self.badge = CanvasLabel(self.artwork, 25, 116, text='等待选曲', fill=C['teal'], font=(FONT, 9, 'bold'))
+        CanvasLabel(self.artwork, 25, 143, text='曲谱  ·  声部  ·  游戏演奏', fill=C['muted'], font=(FONT, 8))
+        header = tk.Frame(main, bg=C['bg'], padx=25)
+        header.pack(fill='x', pady=(0, 11))
+        self.label(header, '演奏乐器', 9, C['muted']).pack(side='left', padx=(0, 10))
+        self.instrument_box = ttk.Combobox(header, textvariable=self.instrument,
+            values=[p.title for p in INSTRUMENTS.values()], state='readonly', width=23)
+        self.instrument_box.pack(side='left')
+        self.controls.append((self.instrument_box, 'readonly'))
+        self.instrument_hint = self.label(header, '', 8, C['muted'])
+        Tooltip(self.instrument_box, '选择游戏中已打开的乐器。钢琴用 Shift 黑键；吉他钢琴模式使用独立半音键。')
+        workspace = self.button(header, '多轨工作区 ↗', lambda: self.tracks.show_workspace(), 'preview', 9,
+            '查看原乐器、角色、音域与音符总览，独奏或静音声部。')
+        workspace.configure(pady=5, padx=12)
         workspace.pack(side='right')
         self.controls.append((workspace, 'normal'))
+        self.arrangement_label = self.label(main, '本曲设置自动保存', 8, C['muted'])
+        self.arrangement_label.pack(anchor='w', padx=25, pady=(0, 8))
 
         self.build_footer(main)
-        body = tk.Frame(main, bg=C["bg"])
-        body.pack(fill="both", expand=True, padx=(25, 13))
-        canvas = tk.Canvas(body, bg=C["bg"], highlightthickness=0, borderwidth=0)
-        scrollbar = ttk.Scrollbar(body, orient="vertical", command=canvas.yview, style="Desk.Vertical.TScrollbar")
-        scrollbar.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
+        body = tk.Frame(main, bg=C['bg'])
+        body.pack(fill='both', expand=True, padx=(25, 13))
+        canvas = tk.Canvas(body, bg=C['bg'], highlightthickness=0, borderwidth=0)
+        scrollbar = ttk.Scrollbar(body, orient='vertical', command=canvas.yview, style='Desk.Vertical.TScrollbar')
+        scrollbar.pack(side='right', fill='y')
+        canvas.pack(side='left', fill='both', expand=True)
         canvas.configure(yscrollcommand=scrollbar.set)
-        content = tk.Frame(canvas, bg=C["bg"])
-        window = canvas.create_window((0, 0), window=content, anchor="nw")
-        content.bind("<Configure>", lambda _: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(window, width=e.width))
+        content = tk.Frame(canvas, bg=C['bg'])
+        window = canvas.create_window((0, 0), window=content, anchor='nw')
+        content.bind('<Configure>', lambda _: canvas.configure(scrollregion=canvas.bbox('all')))
+        canvas.bind('<Configure>', lambda e: canvas.itemconfigure(window, width=e.width))
         self.body_canvas = canvas
-        self.root.bind_all("<MouseWheel>", self.scroll_body, add="+")
-
-        metrics = tk.Frame(content, bg=C["bg"])
-        metrics.pack(fill="x", pady=(0, 14))
+        self.root.bind_all('<MouseWheel>', self.scroll_body, add='+')
+        metrics = self.card(content)
+        metrics.pack(fill='x', pady=(0, 10))
         self.metric_values, self.metric_details = [], []
-        for index, (label, color, detail) in enumerate([("演奏时长", C["ink"], "保留 MIDI 的节奏"), ("有效音符", C["blue"], "自动转换为游戏键位"), ("音域适配", C["teal"], "当前范围 E3–D♯6")]):
-            metrics.columnconfigure(index, weight=1, uniform="stats")
-            card = self.card(metrics)
-            card.grid(row=0, column=index, sticky="nsew", padx=(0, 12 if index < 2 else 0))
-            self.label(card, label, 9, C["muted"]).pack(anchor="w")
-            value = self.label(card, "—", 24, color, True)
-            value.pack(anchor="w", pady=(3, 2))
-            detail_label = self.label(card, detail, 8, C["muted"])
-            detail_label.pack(anchor="w")
+        for index, (name, color, detail) in enumerate([('时长', C['ink'], '原曲时间'), ('音符', C['ink'], '适配后的音符'), ('音域', C['teal'], '当前乐器音域')]):
+            metrics.columnconfigure(index, weight=1, uniform='stats')
+            item = tk.Frame(metrics, bg=C['paper'])
+            item.grid(row=0, column=index, sticky='ew', padx=(0, 14))
+            self.label(item, name, 9, C['muted']).pack(side='left', padx=(0, 10))
+            value = self.label(item, '—', 15, color, True)
+            value.pack(side='left')
+            detail_label = self.label(metrics, detail, 8, C['muted'])
+            detail_label.grid(row=1, column=index, sticky='w', pady=(4, 0))
             self.metric_values.append(value)
             self.metric_details.append(detail_label)
 
@@ -361,7 +365,7 @@ class App:
         settings.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
         self.label(settings, "演奏设置", 12, bold=True).pack(anchor="w")
         self.label(settings, "参数修改后，曲谱自动更新", 8, C["muted"]).pack(anchor="w", pady=(3, 13))
-        speed_row = tk.Frame(settings, bg="white")
+        speed_row = tk.Frame(settings, bg=C["paper"])
         speed_row.pack(fill="x")
         self.label(speed_row, "播放速度", 10).pack(side="left")
         speed_entry = tk.Entry(speed_row, textvariable=self.speed, width=6, justify="right", relief="flat", fg=C["teal"], bg="#F4FAFA", font=(FONT, 14, "bold"))
@@ -371,14 +375,14 @@ class App:
         self.scale = ttk.Scale(settings, variable=self.speed_slider, from_=0.25, to=2.0, command=self.slide_speed, style="Desk.Horizontal.TScale")
         self.scale.pack(fill="x", pady=(5, 4))
         self.controls.append((self.scale, "normal"))
-        presets = tk.Frame(settings, bg="white")
+        presets = tk.Frame(settings, bg=C["paper"])
         presets.pack(fill="x", pady=(0, 13))
         for value, label in [(0.75, "慢速 0.75×"), (1.0, "原速"), (1.25, "快速 1.25×")]:
             button = self.button(presets, label, lambda v=value: self.speed.set(str(v)), size=8)
             button.configure(pady=4, padx=8)
             button.pack(side="left", padx=(0, 5))
             self.controls.append((button, "normal"))
-        row = tk.Frame(settings, bg="white")
+        row = tk.Frame(settings, bg=C["paper"])
         row.pack(fill="x")
         self.label(row, "移调", 10).pack(side="left")
         spin = tk.Spinbox(row, from_=-36, to=36, textvariable=self.transpose, width=5, justify="center", relief="solid", borderwidth=1, font=(FONT, 11))
@@ -445,14 +449,14 @@ class App:
         self.report_button.configure(pady=6)
         self.report_button.pack(side="right", padx=8)
         self.advanced = self.card(content)
-        grid = tk.Frame(self.advanced, bg="white")
+        grid = tk.Frame(self.advanced, bg=C["paper"])
         grid.pack(fill="x")
         for col, (label, variable, lower, upper, tip) in enumerate([
                 ("开始前倒计时", self.countdown, 0, 60, "确认权限后，给你切回乐器界面和松开键鼠的时间。"),
                 ("按键上限 / 毫秒", self.hold_ms, 20, 400, "每个音按住的时长上限。默认 300 毫秒；长音只触发一次。"),
                 ("和弦音数上限", self.max_polyphony, 2, 36, "原曲声部模式每组保留 2–36 音，默认 12。长音重叠时，实际并行键数可能更高；游戏多音能力需要试奏确认。")]):
             grid.columnconfigure(col, weight=1)
-            cell = tk.Frame(grid, bg="white")
+            cell = tk.Frame(grid, bg=C["paper"])
             cell.grid(row=0, column=col, sticky="ew", padx=(0, 14 if col < 2 else 0))
             self.label(cell, label, 9, C["muted"]).pack(anchor="w", pady=(0, 5))
             spin = tk.Spinbox(cell, from_=lower, to=upper, textvariable=variable, width=10, relief="solid", borderwidth=1)
@@ -465,7 +469,7 @@ class App:
         Tooltip(range_box, "折回八度会保留音名，但可能改变旋律的上下走势。\n原音域已适配的曲目不会被改动。")
 
         self.notes_card = self.card(content)
-        row = tk.Frame(self.notes_card, bg="white")
+        row = tk.Frame(self.notes_card, bg=C["paper"])
         row.pack(fill="x", pady=(0, 11))
         self.label(row, "键位预览", 11, bold=True).pack(side="left")
         self.details_button = self.button(row, "查看全部音符 ↗", self.show_details, size=8,
@@ -473,11 +477,11 @@ class App:
         self.details_button.configure(padx=8, pady=3)
         self.details_button.pack(side="right")
         self.key_cells = []
-        caps = tk.Frame(self.notes_card, bg="white")
+        caps = tk.Frame(self.notes_card, bg=C["paper"])
         caps.pack(fill="x")
         for index in range(8):
             caps.columnconfigure(index, weight=1, uniform="caps")
-            cap = tk.Frame(caps, bg="#F4F7FB", padx=4, pady=8)
+            cap = tk.Frame(caps, bg="#F0F0E8", padx=4, pady=8)
             cap.grid(row=0, column=index, sticky="ew", padx=(0, 7 if index < 7 else 0))
             key = self.label(cap, "—", 17, C["blue"], True)
             key.pack()
@@ -489,45 +493,43 @@ class App:
         self.notice_label.pack(fill="x", pady=(0, 12))
 
     def build_footer(self, main):
-        footer = tk.Frame(main, bg="white", padx=25, pady=16, highlightbackground=C["line"], highlightthickness=1)
-        footer.pack(side="bottom", fill="x", pady=(10, 0))
-        status_row = tk.Frame(footer, bg="white")
-        status_row.pack(fill="x")
-        self.status_dot = self.label(status_row, "●", 9, C["teal"])
-        self.status_dot.pack(side="left", padx=(0, 7))
-        self.label(status_row, size=9, textvariable=self.status, anchor="w").pack(side="left", fill="x", expand=True)
-        self.label(status_row, size=9, color=C["muted"], textvariable=self.time_text).pack(side="right", padx=(8, 0))
-        self.progress_bar = tk.Canvas(footer, height=4, bg=C["line"], borderwidth=0, highlightthickness=0)
-        self.progress_bar.pack(fill="x", pady=(10, 13))
-        self.progress_bar.bind("<Configure>", self.draw_progress)
-        self.progress.trace_add("write", self.draw_progress)
-        actions = tk.Frame(footer, bg="white")
-        actions.pack(fill="x")
+        footer = RoundedPanel(main, padx=18, pady=13)
+        footer.pack(side='bottom', fill='x', padx=25, pady=(10, 16))
+        status_row = tk.Frame(footer, bg=C['paper'])
+        status_row.pack(fill='x')
+        self.status_dot = self.label(status_row, '●', 8, C['teal'])
+        self.status_dot.pack(side='left', padx=(0, 7))
+        self.label(status_row, size=9, textvariable=self.status, anchor='w', wraplength=490).pack(side='left', fill='x', expand=True)
+        self.label(status_row, size=9, color=C['muted'], textvariable=self.time_text).pack(side='right', padx=(8, 0))
+        self.progress_bar = tk.Canvas(footer, height=4, bg=C['line'], borderwidth=0, highlightthickness=0)
+        self.progress_bar.pack(fill='x', pady=(10, 11))
+        self.progress_bar.bind('<Configure>', self.draw_progress)
+        self.progress.trace_add('write', self.draw_progress)
+        actions = tk.Frame(footer, bg=C['paper'])
+        actions.pack(fill='x')
         for index, weight in enumerate((3, 2, 2, 1)):
-            actions.columnconfigure(index, weight=weight, uniform="actions" if index else "primary")
-        self.play_button = self.button(actions, "▶  完整演奏", lambda: self.play(None), "primary", 14,
-                                        "按当前选定片段演奏；终点留空时到曲末。\n请先进入所选乐器的 36 键界面，再确认权限。\n快捷键：Ctrl + Enter")
-        self.play_button.configure(pady=17)
-        self.preview_button = self.button(actions, "♫  时序试听", self.preview, "preview", 11,
-                                           "试听所选片段的前 20 秒，体现实际按键时序和 Shift 分组。\n合成音色，不等于游戏原音色；不会操作游戏。")
-        self.trial_button = self.button(actions, "▷  游戏试奏", lambda: self.play(20), "trial", 11,
-                                         "向游戏发送前 20 秒的按键，适合先确认音色和旋律。")
-        self.stop_button = self.button(actions, "■  停止", self.stop, "stop", 11,
-                                        "立即请求停止并释放脚本按住的琴键。\n游戏内也可按 F8；切出游戏会自动停止。")
+            actions.columnconfigure(index, weight=weight, uniform='actions' if index else 'primary')
+        self.play_button = self.button(actions, '▶  开始演奏', lambda: self.play(None), 'primary', 12,
+            '按当前片段演奏。先进入对应游戏乐器界面，再确认权限。Ctrl+Enter 开始。')
+        self.preview_button = self.button(actions, '时序试听', self.preview, 'preview', 10,
+            '电脑试听前 20 秒，体现按键时序和 Shift 分组。合成音色，不操作游戏。')
+        self.trial_button = self.button(actions, '游戏试奏', lambda: self.play(20), 'trial', 10,
+            '向游戏发送前 20 秒的按键，先确认音色和旋律。')
+        self.stop_button = self.button(actions, '■  停止', self.stop, 'stop', 10,
+            '停止并释放程序按住的琴键。游戏中按 F8，切出游戏也会停止。')
         for index, button in enumerate((self.play_button, self.preview_button, self.trial_button, self.stop_button)):
-            button.grid(row=0, column=index, sticky="ew", padx=(0, 9 if index < 3 else 0))
-        for index, text in enumerate(("按当前片段演奏", "按键时序 · 前 20 秒", "游戏内验证 · 前 20 秒", "快捷键 F8")):
-            self.label(actions, text, 8, C["muted"]).grid(row=1, column=index, sticky="w", pady=(6, 0), padx=(3, 0))
-        footer_row = tk.Frame(footer, bg="white")
-        footer_row.pack(fill="x", pady=(12, 0))
-        self.label(footer_row, "游戏演奏：先进入乐器界面，确认权限后保持游戏在前台。", 8, C["muted"]).pack(side="left")
-        self.export_button = self.button(footer_row, "导出曲谱", self.export, size=8, tip="把当前设置下的转换结果保存为 JSON 曲谱。")
+            button.configure(pady=10)
+            button.grid(row=0, column=index, sticky='nsew', padx=(0, 8 if index < 3 else 0))
+        row = tk.Frame(footer, bg=C['paper'])
+        row.pack(fill='x', pady=(9, 0))
+        self.label(row, 'F8 停止  ·  切出游戏自动停止', 8, C['muted']).pack(side='left')
+        self.export_button = self.button(row, '导出曲谱', self.export, size=8, tip='保存当前设置的 JSON 游戏曲谱。')
         self.export_button.configure(padx=8, pady=3)
-        self.export_button.pack(side="right")
-        self.midi_export_button = self.button(footer_row,"另存 MIDI",self.export_midi,size=8,
-                                             tip="将导入的原曲全部声部另存为标准 MIDI。\n不应用游戏演奏的移调、变速和简化设置。")
-        self.midi_export_button.configure(padx=8,pady=3)
-        self.midi_export_button.pack(side="right",padx=(0,8))
+        self.export_button.pack(side='right')
+        self.midi_export_button = self.button(row, '另存 MIDI', self.export_midi, size=8,
+            tip='另存原曲全部声部，不应用游戏适配设置。')
+        self.midi_export_button.configure(padx=8, pady=3)
+        self.midi_export_button.pack(side='right', padx=(0, 8))
 
     def scroll_body(self, event):
         widget = event.widget
@@ -556,7 +558,8 @@ class App:
     def save_preferences(self):
         try:
             values = {"last_file": str(self.current_path), "recent": self.preferences.get("recent", []),
-                      "speed": self.speed.get(), "transpose": self.transpose.get(), "instrument": self.current_instrument().id}
+                      "speed": self.speed.get(), "transpose": self.transpose.get(), "instrument": self.current_instrument().id,
+                      "background_strength": self.background_opacity.get()}
             path = self.directory / "midi_ui_settings.json"
             temporary = path.with_suffix(".tmp")
             temporary.write_text(json.dumps(values, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1119,7 +1122,7 @@ class App:
         self.label(window, str(self.current_path), 9, C["muted"], wraplength=710, justify="left", padx=20).pack(anchor="w")
         summary = score["summary"]
         self.label(window, f'{summary["notes"]} 音 · {summary["seconds"]:.2f} 秒 · 折回 {summary["folded"]} 音 · 简化和弦音 {summary["chord_notes_removed"]} 个', 9, C["muted"], padx=20, pady=12).pack(anchor="w")
-        frame = tk.Frame(window, bg="white")
+        frame = tk.Frame(window, bg=C["paper"])
         frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
         tree = ttk.Treeview(frame, columns=("index", "time", "note", "key", "duration"), show="headings", style="Desk.Treeview")
         for column, text, width in [("index", "序号", 60), ("time", "开始 / 秒", 120), ("note", "音名", 100), ("key", "游戏按键", 100), ("duration", "时值 / 秒", 120)]:
