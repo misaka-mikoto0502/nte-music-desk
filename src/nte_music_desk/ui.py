@@ -31,7 +31,7 @@ C = {"bg": "#F1F4F8", "paper": "#FFFFFF", "ink": "#1B2A41", "muted": "#718096",
      "blue": "#285DBF", "blue_light": "#EAF1FF", "amber": "#95620D", "amber_light": "#FFF2D8",
      "red": "#BE354B", "red_light": "#FCECEF", "disabled": "#EBEFF4", "disabled_ink": "#9AA6B5"}
 FONT = "Microsoft YaHei UI"
-MODES = {"faithful": "原曲声部（推荐）", "balanced": "旋律＋低音", "melody": "旋律版（推荐）", "chords": "和弦版（最多 6 音）"}
+MODES = {"faithful": "原曲声部（推荐）", "balanced": "旋律＋低音", "melody": "单旋律（简化）", "chords": "和弦版（最多 6 音）"}
 
 
 def mode_key(label):
@@ -205,7 +205,7 @@ class App:
         style.configure("Desk.Horizontal.TProgressbar", background=C["teal"], troughcolor=C["line"], borderwidth=0,
                         lightcolor=C["teal"], darkcolor=C["teal"], thickness=5)
         style.configure("Desk.Treeview", font=(FONT, 10), rowheight=30, background="white", fieldbackground="white")
-        style.configure("Desk.Treeview.Heading", font=(FONT, 10, "bold"), padding=8)
+        style.configure("Desk.Treeview.Heading", font=(FONT, 10, "bold"), padding=8, background=C['blue_light'], foreground=C['ink'], relief='flat')
         style.map("Desk.Treeview", background=[("selected", C["teal"])], foreground=[("selected", "white")])
         style.configure("Desk.Vertical.TScrollbar", background=C["line"], troughcolor=C["bg"],
                         bordercolor=C["bg"], lightcolor=C["line"], darkcolor=C["line"], arrowcolor=C["muted"], arrowsize=10)
@@ -313,8 +313,15 @@ class App:
         self.controls.append((self.instrument_box, "readonly"))
         self.instrument_hint = self.label(instrument_row, "", 8, C["muted"])
         self.instrument_hint.pack(side="left", padx=12)
-        self.arrangement_label = self.label(header, "本曲设置自动保存 · 钢琴与吉他独立恢复", 8, C["muted"])
-        self.arrangement_label.pack(anchor="w", pady=(6, 0))
+        scheme_row = tk.Frame(header, bg=C['bg'])
+        scheme_row.pack(fill='x', pady=(6, 0))
+        self.arrangement_label = self.label(scheme_row, "本曲设置自动保存 · 钢琴与吉他独立恢复", 8, C["muted"])
+        self.arrangement_label.pack(side='left')
+        workspace = self.button(scheme_row, '多轨工作区 ↗', lambda: self.tracks.show_workspace(), 'preview', 9,
+            '展开乐器、角色、音域与多轨音符总览；可独奏或静音声部。')
+        workspace.configure(pady=4, padx=9)
+        workspace.pack(side='right')
+        self.controls.append((workspace, 'normal'))
 
         self.build_footer(main)
         body = tk.Frame(main, bg=C["bg"])
@@ -379,7 +386,7 @@ class App:
         self.label(row, "半音", 9, C["muted"]).pack(side="left")
         Tooltip(spin, "12 个半音 = 一个八度。\n负数降低音高，正数升高音高。")
         self.controls.append((spin, "normal"))
-        reset = self.button(row, "恢复默认", self.reset_settings, size=8, tip="恢复原速、零移调和推荐的旋律设置。")
+        reset = self.button(row, "恢复默认", self.reset_settings, size=8, tip="恢复原速、零移调、全部有音高声部和原曲声部模式。")
         reset.configure(padx=8, pady=5)
         reset.pack(side="right")
         self.controls.append((reset, "normal"))
@@ -395,10 +402,6 @@ class App:
         self.tracks = TrackPanel(tracks_card)
         self.tracks.pack(fill="both", expand=True)
         self.controls.append((self.tracks, "normal"))
-        workspace = self.button(tracks_card, "打开多轨工作区 ↗", self.tracks.show_workspace, size=9)
-        workspace.configure(pady=5)
-        workspace.pack(fill='x', pady=(6, 0))
-        self.controls.append((workspace, 'normal'))
         self.track_preview_button = self.button(tracks_card, "♫  单独试听当前轨", self.preview_track, "preview", 9,
             "试听最后点选的音轨，保留原始声部，不折回音域、不删减和弦；不会改变演奏选轨。")
         self.track_preview_button.configure(pady=5)
@@ -697,6 +700,7 @@ class App:
             self.mode.set(MODES[settings["mode"]])
             self.range_policy.set({"fold": "超出音域折回八度", "drop": "丢弃超出音域的音", "strict": "超出音域时报错"}[settings["range_policy"]])
             self.tracks.set_enabled_tracks(settings['tracks'])
+            self.tracks.roles = {str(p['index']): p['role'] for p in self.tracks.rows}
             self.tracks.roles.update(settings.get('roles', {}))
             self.tracks.render()
             self.arrangement_label.configure(text=message)
@@ -859,6 +863,7 @@ class App:
             self.tracks.set_enabled_tracks([p['index'] for p in self.tracks.rows if not p['drums']])
             self.tracks.roles = {str(p['index']): p['role'] for p in self.tracks.rows}
             self.tracks.render()
+        self.arrangement_label.configure(text='已恢复默认方案 · 修改后自动保存')
         self.update_score(quiet=True)
 
     def reset_segment(self):

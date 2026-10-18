@@ -19,6 +19,12 @@
 - [Tcl/Tk 许可](https://www.tcl-lang.org/software/tcltk/license.html)
 - [PyInstaller 许可与引导器例外](https://pyinstaller.org/en/stable/license.html)
 
-源码运行不需要第三方 Python 运行时模块。`requirements-build.txt` 中列出的工具只用于构建。软件与《异环》官方无关联。
+核心曲谱功能的源码运行只使用标准库。`requirements-build.txt` 中列出的工具只用于构建。软件与《异环》官方无关联。
+
+## 可选音频转谱
+
+[MuScriptor](https://github.com/muscriptor/muscriptor) 引擎代码采用 MIT，工作台调用固定版本 0.3.0 的外部命令行，不将其代码、PyTorch 或权重打入便携包。用户选择安装时在独立虚拟环境中获取依赖；相关依赖各自保留许可。
+
+[MuScriptor 模型](https://huggingface.co/MuScriptor) 权重另受 CC BY-NC 4.0 非商用许可约束，需要用户接受上游条款并完成官方认证后下载。工作台 MIT 许可不替代权重许可，也不意味着识别结果没有原音乐的权利限制。详细配置见音频转谱说明。
 
 MusicXML 导入器依据 [W3C MusicXML 4.0 格式](https://www.w3.org/2021/06/musicxml40/) 编写。内置 twinkle.musicxml 由本项目根据同一传统旋律自行编码，不包含外部曲谱原件。

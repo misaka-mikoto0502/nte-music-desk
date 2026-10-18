@@ -65,6 +65,27 @@ class ApplicationChecks(unittest.TestCase):
             finally:
                 app.close()
 
+    def test_role_settings_are_isolated_between_instruments(self):
+        import tkinter as tk
+        from nte_music_desk import cli
+        from nte_music_desk.ui import App
+        from nte_music_desk.paths import asset_dir
+        with tempfile.TemporaryDirectory() as directory:
+            root = tk.Tk(); root.withdraw()
+            app = App(root, SimpleNamespace(ROOT=Path(directory), ASSETS=asset_dir(), key_schedule=cli.key_schedule))
+            try:
+                part = str(app.tracks.rows[0]['index'])
+                app.tracks.roles[part] = 'bass'
+                app.update_score()
+                app.instrument.set('钢琴 · Shift 黑键')
+                app.update_score()
+                self.assertEqual(app.tracks.roles[part], app.tracks.rows[0]['role'])
+                app.instrument.set('吉他 · 钢琴模式')
+                app.update_score()
+                self.assertEqual(app.tracks.roles[part], 'bass')
+            finally:
+                app.close()
+
     def setUp(self):
         sys.path.insert(0, str(ROOT / 'src'))
         def fail(app, error):
