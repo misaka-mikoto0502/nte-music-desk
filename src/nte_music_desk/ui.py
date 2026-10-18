@@ -21,6 +21,7 @@ from . import APP_NAME, __version__
 from .presets import PresetStore, fingerprint, DEFAULTS
 from .segments import parse_time
 from .analysis import recommend_transpositions, adaptation_report
+from .performance import performance_plan
 
 
 C = {"bg": "#F1F4F8", "paper": "#FFFFFF", "ink": "#1B2A41", "muted": "#718096",
@@ -482,7 +483,7 @@ class App:
         self.play_button = self.button(actions, "▶  完整演奏", lambda: self.play(None), "primary", 14,
                                         "将整首曲谱发送到游戏。\n请先进入所选乐器的 36 键界面，再确认权限。\n快捷键：Ctrl + Enter")
         self.play_button.configure(pady=17)
-        self.preview_button = self.button(actions, "♫  电脑试听", self.preview, "preview", 11,
+        self.preview_button = self.button(actions, "♫  时序试听", self.preview, "preview", 11,
                                            "试听前 20 秒的合成旋律，只在电脑播放声音，不操作游戏。")
         self.trial_button = self.button(actions, "▷  游戏试奏", lambda: self.play(20), "trial", 11,
                                          "向游戏发送前 20 秒的按键，适合先确认音色和旋律。")
@@ -904,6 +905,7 @@ class App:
             self.show_error(error)
 
     def start_preview(self, score=None, source=None, options=None, caption="适配曲谱"):
+        hold_ms = int(self.hold_ms.get()) if source is None else 300
         token = uuid.uuid4().hex
         self.preview_token, self.preview_started = token, None
         self.set_status("正在准备电脑试听…", "准备试听", "blue")
@@ -915,7 +917,7 @@ class App:
                 runs.mkdir(exist_ok=True)
                 path = runs / f"preview_{token}.wav"
                 seconds = (self.engine.render_song_preview(source, path, **options) if source is not None
-                           else self.engine.render_preview(score, path))
+                           else self.engine.render_preview(score, path, hold_ms=hold_ms))
                 self.messages.put({"kind": "preview_ready", "token": token, "path": path, "seconds": seconds, "caption": caption})
             except Exception as error:
                 self.messages.put({"kind": "preview_error", "token": token, "text": str(error)})
@@ -941,7 +943,7 @@ class App:
             run.mkdir(parents=True)
             path, cancel, report = run / "score.json", run / "stop", run / "result.json"
             save_score(score, path)
-            length = score["summary"]["seconds"]
+            length = performance_plan(score, int(self.hold_ms.get())).duration
             self.active = {"cancel": cancel, "report": report, "progress": report.with_suffix(".progress.json"), "length": length}
             self.stop_requested = False
             self.progress.set(0)
@@ -1081,7 +1083,7 @@ class App:
         score = self.update_score()
         if score is None:
             return
-        report = adaptation_report(score)
+        report = adaptation_report(score, performance_plan(score, int(self.hold_ms.get())))
         window = tk.Toplevel(self.root)
         window.title(f'{self.song.title} · 适配报告')
         window.geometry("790x590")
@@ -1091,7 +1093,7 @@ class App:
         text = (f'选中 {summary["source_notes"]} 音 → 保留 {summary["notes"]} 音  ·  简化 {summary["chord_notes_removed"]}  ·  '
                 f'折回 {summary["folded"]}  ·  丢弃 {summary["dropped"]}  ·  重合合并 {summary.get("merged", 0)}')
         self.label(window, text, 9, C["muted"], padx=20).pack(anchor="w")
-        self.label(window, "折回与合并可能发生在同一个音上；以下位置按原曲时间显示。", 9, C["muted"], padx=20, pady=8).pack(anchor="w")
+        self.label(window, f'混合黑白键 {report["performance"]["mixed_groups"]} 组 · 试听与演奏共享时序；以下变更位置按原曲时间显示。', 9, C["muted"], padx=20, pady=8).pack(anchor="w")
         footer = tk.Frame(window, bg=C["bg"])
         footer.pack(side="bottom", fill="x", padx=20, pady=15)
         self.label(footer, f'变更操作 {report["total_changes"]} 条' + (' · 明细只保留前 2000 条，计数完整' if report['truncated'] else ''), 9, C['muted']).pack(side='left')

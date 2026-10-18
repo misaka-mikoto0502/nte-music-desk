@@ -15,6 +15,14 @@ ROOT=Path(__file__).resolve().parents[1]
 
 @unittest.skipUnless(sys.platform=="win32","Desktop integration requires Windows")
 class ApplicationChecks(unittest.TestCase):
+    def setUp(self):
+        sys.path.insert(0, str(ROOT / 'src'))
+        def fail(app, error):
+            raise AssertionError(str(error))
+        self.dialog_errors = patch('nte_music_desk.ui.App.show_error', new=fail)
+        self.dialog_errors.start()
+        self.addCleanup(self.dialog_errors.stop)
+
     def test_arrangement_restores_after_rename_and_instrument_switch(self):
         sys.path.insert(0, str(ROOT / 'src'))
         import tkinter as tk

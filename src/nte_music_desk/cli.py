@@ -36,116 +36,12 @@ def limit_score(score, seconds):
     return validate_score(result)
 
 
-def key_schedule(score, hold_ms=300):
-    validate_score(score)
-    if not 20 <= hold_ms <= 400:
-        raise ValueError("按键时长应为 20–400 毫秒。")
-    profile = score_instrument(score)
-    if profile.id == "piano":
-        return piano_schedule(score, hold_ms)
-    events, next_key = [], {}
-    # Reverse scan finds the next occurrence of the same physical key, so a
-    # repeated pitch always gets a release gap, including octave-fold collisions.
-    for note in reversed(score["events"]):
-        key = KEYS[note_name(note["midi"])]
-        at = note["at"]
-        duration = min(hold_ms / 1000, note["duration"] * 0.8)
-        if key in next_key:
-            duration = min(duration, max(0, next_key[key] - at) * 0.8)
-        if duration <= 0:
-            continue  # Duplicated simultaneous pitch: strike just once.
-        next_key[key] = at
-        events.extend([(at, 1, key), (at + duration, 0, key)])
-    events.sort(key=lambda e: (e[0], e[1], e[2].virtual_key))  # release before down
-    return events
-
-
-def piano_schedule(score, hold_ms):
-    """Reserve a modifier-settle gap; no note remains down across a Shift change."""
-    if score["mode"] == "chords":
-        return piano_chord_schedule(score, hold_ms)
-    events, shifted, last_release = [], False, 0
-    notes = score["events"]
-    for index, note in enumerate(notes):
-        mapped = score_instrument(score).keys[note_name(note["midi"])]
-        key = PianoKey(mapped.label.replace("Shift + ", ""), mapped.virtual_key, mapped.scan_code)
-        at = note["at"] + 0.02
-        release = at + min(hold_ms / 1000, note["duration"] * 0.8)
-        if index + 1 < len(notes):
-            following = notes[index + 1]
-            next_shift = score_instrument(score).keys[note_name(following["midi"])].shifted
-            gap = 0.025 if mapped.shifted != next_shift else 0.008
-            release = min(release, following["at"] + 0.02 - gap)
-        if release - at < 0.005:
-            raise ValueError("钢琴音符过密，无法留出 Shift 切换时间，请降低速度倍率。")
-        if mapped.shifted != shifted:
-            events.append((at - 0.015, int(mapped.shifted), SHIFT))
-            shifted = mapped.shifted
-        events.extend([(at, 1, key), (release, 0, key)])
-        last_release = release
-    if shifted:
-        events.append((last_release + 0.001, 0, SHIFT))
-    events.sort(key=lambda e: (e[0], e[1], e[2].virtual_key))
-    return events
-
-
-def piano_chord_schedule(score, hold_ms):
-    """White/black subgroups use short successive attacks, never mixed Shift states.
-
-    Within each subgroup the physical keys are pressed together. Release all
-    keys before changing Shift, including C/C# which share one letter. This is
-    a fast rolled chord for mixed colors; it does not claim exact simultaneity.
-    """
-    profile = score_instrument(score)
-    groups = []
-    for note in score["events"]:
-        if not groups or note["at"] - groups[-1][0]["at"] > 0.025:
-            groups.append([note])
-        else:
-            groups[-1].append(note)
-    batches = []
-    for group in groups:
-        # Folding and multiple tracks may create the same pitch near one onset.
-        unique = {}
-        for note in group:
-            existing = unique.get(note["midi"])
-            if existing is None or existing["duration"] < note["duration"]:
-                unique[note["midi"]] = note
-        if len(unique) > 6:
-            raise ValueError("钢琴同一组和弦最多支持 6 个音，请精简音轨。")
-        parts = []
-        for shifted in (False, True):
-            part = [(note, profile.keys[note_name(note["midi"])]) for note in unique.values()
-                    if profile.keys[note_name(note["midi"])].shifted == shifted]
-            if part:
-                parts.append((shifted, part))
-        for offset, (shifted, part) in enumerate(parts):
-            batches.append((group[0]["at"] + 0.02 + offset * 0.055, shifted, part))
-    events, owns_shift, last_release = [], False, 0
-    for index, (at, shifted, part) in enumerate(batches):
-        release_cap = float("inf")
-        if index + 1 < len(batches):
-            next_at, next_shift, _ = batches[index + 1]
-            release_cap = next_at - (0.025 if shifted != next_shift else 0.008)
-        if release_cap - at < 0.005:
-            raise ValueError("钢琴和弦过密，无法留出分组与松键时间，请降低速度倍率或减少音轨。")
-        if shifted != owns_shift:
-            events.append((at - 0.015, int(shifted), SHIFT))
-            owns_shift = shifted
-        last_release = at
-        for note, mapped in part:
-            key = PianoKey(mapped.label.replace("Shift + ", ""), mapped.virtual_key, mapped.scan_code)
-            release = min(at + min(hold_ms / 1000, note["duration"] * 0.8), release_cap)
-            events.extend([(at, 1, key), (release, 0, key)])
-            last_release = max(last_release, release)
-    if owns_shift:
-        events.append((last_release + 0.001, 0, SHIFT))
-    events.sort(key=lambda e: (e[0], e[1], e[2].virtual_key))
-    return events
+from .performance import key_schedule, piano_schedule, piano_chord_schedule, performance_plan
 
 
 def play_timed(score, backend, hold_ms=300, clock=time.perf_counter, sleep=time.sleep):
-    schedule = key_schedule(score, hold_ms)
+    plan = performance_plan(score, hold_ms)
+    schedule = plan.key_events
     started, sent = clock(), 0
 
     def wait_until(deadline):
@@ -166,7 +62,7 @@ def play_timed(score, backend, hold_ms=300, clock=time.perf_counter, sleep=time.
                 sent += key.virtual_key != SHIFT.virtual_key
             else:
                 backend.up(key)
-        wait_until(started + max(score.get("summary", {}).get("seconds", 0), max(e["at"] + e["duration"] for e in score["events"]), schedule[-1][0]))
+        wait_until(started + plan.duration)
         return sent
     finally:
         backend.release_all()
@@ -194,7 +90,7 @@ def write_progress(report_path, phase, **values):
 
 def play_file(args):
     score = load_score(args.play)
-    key_schedule(score, args.hold_ms)  # Reject unsupported timing before UAC or focus changes.
+    plan = performance_plan(score, args.hold_ms)  # Reject unsupported timing before UAC or focus changes.
     if sys.platform != "win32":
         raise RuntimeError("游戏演奏仅支持 Windows。")
     if not ctypes.windll.shell32.IsUserAnAdmin():
@@ -209,7 +105,7 @@ def play_file(args):
         return run_elevated_and_wait(__file__, arguments)
     backend, code = None, 0
     destination = Path(args.report) if args.report else ROOT / "nte_midi_last_run.json"
-    duration = max(score.get("summary", {}).get("seconds", 0), max(e["at"] + e["duration"] for e in score["events"]))
+    duration = plan.duration
     report = {"title": score.get("title", "MIDI"), "status": "starting", "elevated": True,
               "planned_notes": len(score["events"]), "planned_seconds": duration, "settings": score.get("settings", {})}
     try:
@@ -248,10 +144,17 @@ def play_file(args):
     return code
 
 
-def render_preview(score, path, seconds=20):
-    """Short, quiet synthesized preview. Does not interact with the game."""
-    score = limit_score(score, seconds)
-    return render_audio(score["events"], path, score["summary"]["seconds"])
+def render_preview(score, path, seconds=20, hold_ms=300):
+    """Synthesize actual planned note attacks/releases, including Shift groups."""
+    if not math.isfinite(seconds) or not 0 < seconds <= 60:
+        raise ValueError("试听时长需为 0–60 秒。")
+    plan = performance_plan(score, hold_ms)
+    stop = min(seconds, plan.duration)
+    events = [{"at": n.at, "duration": min(n.duration, stop - n.at), "midi": n.midi}
+              for n in plan.notes if n.at < stop]
+    if not events:
+        raise ValueError("试听范围内没有音符，请调整片段起点。")
+    return render_audio(events, path, stop)
 
 
 def render_song_preview(song, path, tracks=None, start=0, end=None, speed=1, transpose=0, seconds=20):

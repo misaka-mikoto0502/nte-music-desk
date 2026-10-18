@@ -51,8 +51,8 @@ def recommend_transpositions(song, *, tracks=None, mode="melody", speed=1, trans
     return candidates[:limit]
 
 
-def adaptation_report(score):
-    return {"schema": "nte-adaptation-report-v1", "title": score.get("title", "曲谱"),
+def adaptation_report(score, plan=None):
+    result = {"schema": "nte-adaptation-report-v1", "title": score.get("title", "曲谱"),
             "instrument": score.get("instrument", "guitar"), "mode": score["mode"],
             "settings": dict(score.get("settings", {})), "summary": dict(score["summary"]),
             "metrics": adaptation_metrics(score), "warnings": list(score.get("warnings", [])),
@@ -60,3 +60,9 @@ def adaptation_report(score):
             "total_changes": score.get("adaptation", {}).get("total_changes", 0),
             "truncated": score.get("adaptation", {}).get("truncated", False),
             "note": "规则适配结果，不代表听感还原度或游戏实际发声；变更明细最多保存 2000 条，统计为完整计数。"}
+    if plan is not None:
+        from dataclasses import asdict
+        result["performance"] = {"seconds": plan.duration, "planned_notes": len(plan.notes),
+                                 "mixed_groups": plan.mixed_groups,
+                                 "notes": [asdict(n) for n in plan.notes[:2000]], "truncated": len(plan.notes) > 2000}
+    return result

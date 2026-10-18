@@ -5,6 +5,7 @@ import sys
 import unittest
 import tempfile
 import wave
+import copy
 from unittest.mock import patch
 from types import SimpleNamespace
 
@@ -12,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from nte_music_desk import midi, cli
 from nte_music_desk.instruments import SHIFT
 from nte_music_desk.keyboard import PlaybackStopped, WindowsKeyboard, elevation_command
+from nte_music_desk.performance import performance_plan
 
 
 def song(pitches=(60,63,67)):
@@ -39,6 +41,31 @@ class Keyboard:
 
 
 class MidiChecks(unittest.TestCase):
+    def test_preview_and_execution_share_mixed_chord_and_repeated_key_timing(self):
+        for instrument in ('piano', 'guitar'):
+            for mode in ('melody', 'chords'):
+                original = midi.convert(song(), instrument=instrument, mode=mode)
+                before = copy.deepcopy(original)
+                performance_plan(original)
+                self.assertEqual(original, before)
+        score = midi.convert(song((60, 61, 67)), mode='chords', instrument='piano')
+        plan = performance_plan(score, 200)
+        self.assertEqual(plan.mixed_groups, 1)
+        self.assertEqual([round(n.at, 3) for n in plan.notes], [.02, .02, .075])
+        self.assertEqual(list(plan.key_events), cli.key_schedule(score, 200))
+        with patch.object(cli, 'render_audio') as render:
+            cli.render_preview(score, 'unused.wav', hold_ms=200)
+            self.assertEqual(render.call_args.args[0], [{'at': n.at, 'duration': n.duration, 'midi': n.midi} for n in plan.notes])
+        clock = Clock(); keyboard = Keyboard(clock)
+        cli.play_timed(score, keyboard, 200, clock=clock.read, sleep=clock.sleep)
+        self.assertAlmostEqual(clock.now, plan.duration)
+        self.assertEqual(len(keyboard.notes), len(plan.notes))
+        self.assertFalse(keyboard.held)
+        repeated = song((60,))
+        repeated.notes.append(midi.MidiNote(0, 0, 60, 80, .1, .4))
+        plan = performance_plan(midi.convert(repeated, mode='chords', instrument='guitar'))
+        self.assertLess(plan.notes[0].at + plan.notes[0].duration, plan.notes[1].at)
+
     def test_track_audition_preserves_source_polyphony_and_range(self):
         fixture = song((24, 36, 48, 60, 72, 84, 96, 108))
         fixture.notes.append(midi.MidiNote(1, 0, 65, 80, 0, .5))
