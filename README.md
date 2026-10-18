@@ -14,6 +14,8 @@ Windows 桌面曲谱演奏工具：导入或下载曲谱，一键操控《异环
 
 [音频转谱配置](docs/AUDIO_TRANSCRIPTION.md) · [本轮复查与下一轮计划](docs/NEXT_STEPS.md)
 
+1.3.1 提供暖灰/墨绿界面、圆角面板与按钮，城市吉他背景可在“外观”菜单关闭或调节浓度。[界面设计记录](docs/APPEARANCE.md)
+
 ## 功能
 
 - 吉他钢琴模式 E3–D#6 与钢琴 Shift 黑键模式（暂按 C3–B5）。
@@ -33,16 +35,16 @@ Windows 桌面曲谱演奏工具：导入或下载曲谱，一键操控《异环
 
 ## 从源码运行
 
-需要 Windows 和带 Tcl/Tk 的 Python 3.10 或更高版本，核心曲谱功能只用标准库，可选音频引擎独立安装：
-
-```powershell
-python src/nte_music_desk/_bootstrap.py
-```
-
-也可安装为桌面启动命令：
+需要 Windows 和带 Tcl/Tk 的 Python 3.10 或更高版本。先安装项目依赖（界面使用 Pillow），可选音频引擎独立安装：
 
 ```powershell
 python -m pip install -e .
+python src/nte_music_desk/_bootstrap.py
+```
+
+安装后也可使用桌面启动命令：
+
+```powershell
 nte-music-desk
 ```
 

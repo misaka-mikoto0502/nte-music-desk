@@ -51,6 +51,8 @@ def run_self_test(engine, destination):
         app = App(root, engine)
         root.update_idletasks()
         assert app.score is not None
+        assert app.artwork._image is not None, 'Background asset could not be decoded'
+        assert app.artwork._image.width > 0
         app.instrument.set("钢琴 · Shift 黑键")
         app.mode.set("和弦版（最多 6 音）")
         assert app.update_score()["mode"] == "chords"
@@ -81,6 +83,7 @@ def run_self_test(engine, destination):
               "catalogs": counts, "conversion": converted, "musicxml_import_export":"passed", "tk_gui": "passed",
               "arrangement_memory": "passed", "excerpt": "passed", "recommendations": "passed",
               "multitrack_gui": "passed", "audio_setup_gui": "passed", "audio_model_inference": "not_run_requires_authorized_weights",
+              "rounded_controls": "passed", "background_asset": "passed",
               "performance_preview": "passed", "game_input_sent": False}
     destination = Path(destination).resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
