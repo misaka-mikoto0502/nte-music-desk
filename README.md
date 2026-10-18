@@ -2,7 +2,7 @@
 
 Windows 桌面曲谱演奏工具：在《异环》的吉他钢琴模式或钢琴 Shift 黑键模式中演奏 MIDI / MusicXML，支持旋律、和弦、在线搜曲与格式转换。
 
-![应用图标](src/nte_music_desk/assets/icon.png)
+<img src="src/nte_music_desk/assets/icon.png" alt="异环演奏工作台应用图标" width="160" height="160">
 
 ## 下载与使用
 
@@ -66,6 +66,6 @@ MusicXML 支持 partwise、普通反复与编号房子、声部/和弦/连音及
 
 ## 资源与许可
 
-项目代码采用 [MIT](LICENSE)。仅附自行编码的《小星星》示例、原创图标和曲库元数据。三叶与黄昏是在线搜索入口，第三方曲谱原件不进入此仓库。原有个人曲谱可通过本地导入继续使用。
+项目代码采用 [MIT](LICENSE)。仅附自行编码的《小星星》示例、原创琴键与音符图标和曲库元数据。三叶与黄昏是在线搜索入口，第三方曲谱原件不进入此仓库。原有个人曲谱可通过本地导入继续使用。
 
 外部站点、曲谱和运行库的来源及许可说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。软件与游戏官方无关联。
