@@ -32,6 +32,15 @@ def run_self_test(engine, destination):
     engine.render_preview(convert(song), preview, seconds=1)
     assert preview.stat().st_size > 1000
     preview.unlink()
+    from .analysis import recommend_transpositions, adaptation_report
+    from .performance import performance_plan
+    clip = convert(song, start=1, end=3)
+    assert clip["summary"]["seconds"] == 2
+    assert len(recommend_transpositions(song, planner=engine.key_schedule)) == 3
+    assert adaptation_report(clip, performance_plan(clip))["performance"]["planned_notes"] > 0
+    engine.render_song_preview(song, preview, start=1, end=3, seconds=1)
+    assert preview.stat().st_size > 1000
+    preview.unlink()
     original_error = App.show_error
     def fail(self, error):
         raise RuntimeError(str(error))
@@ -45,6 +54,14 @@ def run_self_test(engine, destination):
         app.instrument.set("钢琴 · Shift 黑键")
         app.mode.set("和弦版（最多 6 音）")
         assert app.update_score()["mode"] == "chords"
+        app.start.set("1")
+        app.end.set("3")
+        app.speed.set("0.8")
+        assert app.update_score()["summary"]["seconds"] == 2.5
+        app.instrument.set("吉他 · 钢琴模式")
+        assert float(app.speed.get()) == 1
+        app.instrument.set("钢琴 · Shift 黑键")
+        assert float(app.speed.get()) == .8 and float(app.end.get()) == 3
         assert app.assets != app.directory
         assert app.open_path(engine.ASSETS / "scores/twinkle.musicxml")
     finally:
@@ -54,7 +71,9 @@ def run_self_test(engine, destination):
         else:
             root.destroy()
     result = {"status": "passed", "version": __version__, "frozen": bool(getattr(sys, "frozen", False)),
-              "catalogs": counts, "conversion": converted, "musicxml_import_export":"passed", "tk_gui": "passed", "game_input_sent": False}
+              "catalogs": counts, "conversion": converted, "musicxml_import_export":"passed", "tk_gui": "passed",
+              "arrangement_memory": "passed", "excerpt": "passed", "recommendations": "passed",
+              "performance_preview": "passed", "game_input_sent": False}
     destination = Path(destination).resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")

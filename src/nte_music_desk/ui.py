@@ -266,7 +266,7 @@ class App:
         self.range_label = self.label(bottom, "36 键 · E3–D#6", 9, "#90A6BF")
         self.range_label.pack(anchor="w", pady=(3, 19))
         tk.Frame(bottom, bg="#2B3D53", height=1).pack(fill="x", pady=(0, 15))
-        for key, action in [("Ctrl + F", "在线搜曲"), ("Ctrl + O", "导入曲谱"), ("Ctrl + Enter", "完整演奏"), ("F8", "停止演奏")]:
+        for key, action in [("Ctrl + F", "在线搜曲"), ("Ctrl + O", "导入曲谱"), ("Ctrl + Enter", "开始演奏"), ("F8", "停止演奏")]:
             row = tk.Frame(bottom, bg=C["nav"])
             row.pack(fill="x", pady=4)
             self.label(row, key, 9, "#DAE6F2", True).pack(side="left")
@@ -389,7 +389,7 @@ class App:
         Tooltip(mode_box, "旋律版：同一时刻只保留最高音。\n和弦版：最多保留 6 音。钢琴混合黑白键会快速分组。\n需要伴奏时，请按 Ctrl 多选对应音轨。")
 
         segment = self.card(content)
-        segment.pack(fill="x", pady=(12, 0))
+        segment.pack(fill="x", before=middle, pady=(0, 12))
         self.label(segment, "演奏片段", 11, bold=True).pack(side="left", padx=(0, 12))
         for label, variable in (("从", self.start), ("到", self.end)):
             self.label(segment, label, 9, C["muted"]).pack(side="left", padx=(4, 5))
@@ -779,7 +779,10 @@ class App:
             changed = summary["folded"] + summary["dropped"]
             self.metric_values[2].configure(text=f"{changed} 音" if changed else "直接适配", fg=C["amber"] if changed else C["teal"])
             self.metric_details[2].configure(text=f'折回 {summary["folded"]} 音 · 丢弃 {summary["dropped"]} 音' if changed else "音域全部在当前键位内")
-            self.metric_details[0].configure(text=f'原曲 {duration_label(self.song.seconds)} · {float(self.speed.get()):g}× 速度')
+            settings = score['settings']
+            span = (f'片段 {duration_label(settings["start"])}–{duration_label(settings["end"] if settings["end"] is not None else self.song.seconds)}'
+                    if settings['start'] > 0 or settings['end'] is not None else f'原曲 {duration_label(self.song.seconds)}')
+            self.metric_details[0].configure(text=f'{span} · {float(self.speed.get()):g}× 速度')
             for index, (key_label, note_label) in enumerate(self.key_cells):
                 if index < len(score["events"]):
                     event = score["events"][index]

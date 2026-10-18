@@ -63,7 +63,7 @@ def main():
     shutil.copyfile(ROOT / "docs/USAGE.md", app / "使用说明.md")
     (app / "开始使用.txt").write_text(
         f"异环演奏工作台 v{__version__}\n\n双击“异环演奏工作台.exe”打开，无需安装 Python。\n"
-        "请完整解压并保留 _internal 文件夹。\n选曲 → 选择乐器 → 电脑试听 → 游戏试奏 → 完整演奏。\n"
+        "请完整解压并保留 _internal 文件夹。\n选曲 → 选择乐器与片段 → 时序试听 → 游戏试奏 → 开始演奏。\n"
         "F8 停止；切出游戏自动停止。只有游戏演奏需要手动确认 UAC。\n"
         "个人数据在 %LOCALAPPDATA%\\NteMusicDesk；可从“文件 → 打开数据目录”查看。\n", encoding="utf-8")
     archive = output / f"NTE-Music-Desk-v{__version__}-Windows-x64.zip"
