@@ -63,6 +63,12 @@ class TrackPanel(tk.Frame):
         self.enabled_rows.clear()
         self.render()
 
+    def set_enabled_tracks(self, tracks):
+        selected = set(tracks)
+        self.enabled_rows = {i for i, row in enumerate(self.rows) if not row['drums'] and row['index'] in selected}
+        self.focused = min(self.enabled_rows, default=0)
+        self.render()
+
     def selection_set(self, index):
         index = int(index)
         if not self.rows[index]['drums']:
@@ -180,7 +186,7 @@ class TrackPanel(tk.Frame):
             color = COLORS[i % len(COLORS)] if i in self.enabled_rows else '#BCC5D0'
             canvas.create_text(8, y + 14, text=f'{i + 1:02d}  {row["name"][:15]}', anchor='w', fill=color)
             notes = by_track.get(row['index'], [])
-            stride = max(1, len(notes) // 2000)
+            stride = max(1, (len(notes) + 1999) // 2000)
             for note in notes[::stride]:
                 height = y + 24 - 19 * (note.pitch - row['low']) / max(1, row['high'] - row['low'])
                 canvas.create_rectangle(left + note.start * scale, height, max(left + note.start * scale + 1, left + note.end * scale), height + 3, outline='', fill=color)

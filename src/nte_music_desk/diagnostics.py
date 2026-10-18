@@ -24,7 +24,7 @@ def run_self_test(engine, destination):
     roundtrip.unlink()
     converted = {}
     for instrument in ("guitar", "piano"):
-        for mode in ("melody", "chords"):
+        for mode in ("melody", "chords", "faithful", "balanced"):
             score = convert(song, instrument=instrument, mode=mode)
             plan = engine.key_schedule(score)
             converted[instrument + "/" + mode] = {"notes": len(score["events"]), "key_events": len(plan)}
@@ -64,6 +64,13 @@ def run_self_test(engine, destination):
         assert float(app.speed.get()) == .8 and float(app.end.get()) == 3
         assert app.assets != app.directory
         assert app.open_path(engine.ASSETS / "scores/twinkle.musicxml")
+        app.tracks.show_workspace()
+        root.update_idletasks()
+        assert len(app.tracks.views) == 2 and len(app.tracks.timeline.find_all()) > 0
+        app.open_audio()
+        assert app.audio_dialog.window.winfo_exists()
+        app.audio_dialog.help()
+        app.audio_dialog.close()
     finally:
         App.show_error = original_error
         if app is not None:
@@ -73,6 +80,7 @@ def run_self_test(engine, destination):
     result = {"status": "passed", "version": __version__, "frozen": bool(getattr(sys, "frozen", False)),
               "catalogs": counts, "conversion": converted, "musicxml_import_export":"passed", "tk_gui": "passed",
               "arrangement_memory": "passed", "excerpt": "passed", "recommendations": "passed",
+              "multitrack_gui": "passed", "audio_setup_gui": "passed", "audio_model_inference": "not_run_requires_authorized_weights",
               "performance_preview": "passed", "game_input_sent": False}
     destination = Path(destination).resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)

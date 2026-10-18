@@ -101,6 +101,7 @@ class App:
         self.preferences = self.read_preferences()
         self.preset_store = PresetStore(self.directory)
         self.song_fingerprint, self.syncing_settings = None, False
+        self.invalid_presets = set()
         self.speed = tk.StringVar(value=str(self.preferences.get("speed", "1.0")))
         self.transpose = tk.StringVar(value=str(self.preferences.get("transpose", "0")))
         self.start, self.countdown, self.hold_ms = tk.StringVar(value="0"), tk.StringVar(value="7"), tk.StringVar(value="300")
@@ -662,7 +663,7 @@ class App:
                 "countdown": int(self.countdown.get()), "hold_ms": int(self.hold_ms.get()), "roles": dict(self.tracks.roles)}
 
     def save_arrangement(self):
-        if not self.song_fingerprint or self.syncing_settings or self.song is None:
+        if not self.song_fingerprint or self.syncing_settings or self.song is None or (self.song_fingerprint, self.applied_instrument) in self.invalid_presets:
             return
         try:
             settings = self.arrangement_settings()
@@ -686,7 +687,8 @@ class App:
                 settings = saved
                 message = "已恢复本曲方案 · 钢琴与吉他独立保存"
         except (OSError, ValueError):
-            message = "保存的方案无法读取，已使用默认设置"
+            message = "原方案读取失败，原文件已保留；点击恢复默认可重建方案"
+            self.invalid_presets.add((self.song_fingerprint, self.applied_instrument))
         self.syncing_settings = True
         try:
             for name in ("speed", "transpose", "start", "countdown", "hold_ms", "max_polyphony"):
@@ -694,10 +696,7 @@ class App:
             self.end.set("" if settings["end"] is None else str(settings["end"]))
             self.mode.set(MODES[settings["mode"]])
             self.range_policy.set({"fold": "超出音域折回八度", "drop": "丢弃超出音域的音", "strict": "超出音域时报错"}[settings["range_policy"]])
-            self.tracks.selection_clear(0, "end")
-            for index, track in enumerate(self.track_ids):
-                if track in settings["tracks"]:
-                    self.tracks.selection_set(index)
+            self.tracks.set_enabled_tracks(settings['tracks'])
             self.tracks.roles.update(settings.get('roles', {}))
             self.tracks.render()
             self.arrangement_label.configure(text=message)
@@ -839,11 +838,27 @@ class App:
             return None
 
     def reset_settings(self):
+        if (self.song_fingerprint, self.applied_instrument) in self.invalid_presets:
+            # Explicit reset retains a copy of unreadable / future-version data.
+            path = self.preset_store.path(self.song_fingerprint, self.applied_instrument)
+            backup = path.with_suffix('.unreadable.backup.json')
+            try:
+                if path.exists() and not backup.exists():
+                    import shutil
+                    shutil.copyfile(path, backup)
+            except OSError as error:
+                self.show_error(error)
+                return
+            self.invalid_presets.discard((self.song_fingerprint, self.applied_instrument))
         for variable, value in [(self.speed, "1.0"), (self.transpose, "0"), (self.start, "0"),
                                 (self.end, ""),
                                 (self.mode, MODES['faithful']), (self.max_polyphony, "12"), (self.range_policy, "超出音域折回八度"),
                                 (self.countdown, "7"), (self.hold_ms, "300")]:
             variable.set(value)
+        if self.song:
+            self.tracks.set_enabled_tracks([p['index'] for p in self.tracks.rows if not p['drums']])
+            self.tracks.roles = {str(p['index']): p['role'] for p in self.tracks.rows}
+            self.tracks.render()
         self.update_score(quiet=True)
 
     def reset_segment(self):

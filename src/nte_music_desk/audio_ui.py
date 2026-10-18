@@ -155,13 +155,21 @@ class AudioDialog:
                 self.log.insert('end', clean_log(value))
                 self.log.configure(state='disabled')
                 continue
+            cancelled = self.job is not None and self.job.cancelled.is_set()
             self.job = None
             self.progress.stop()
             for widget, state in self.controls: widget.configure(state=state)
             self.cancel_button.configure(state='disabled')
             self.app.refresh_controls()
-            if kind == 'error':
-                self.state.set(clean_log(value)[-900:])
+            if cancelled:
+                self.state.set('任务已取消；未自动导入结果。')
+            elif kind == 'error':
+                detail = clean_log(value)
+                self.state.set(detail.splitlines()[0][:200])
+                self.log.configure(state='normal')
+                self.log.delete('1.0', 'end')
+                self.log.insert('end', detail)
+                self.log.configure(state='disabled')
             elif value[0] == 'installed':
                 self.executable.set(str(value[1]))
                 self.save()

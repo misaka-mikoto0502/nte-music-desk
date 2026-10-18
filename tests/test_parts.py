@@ -6,11 +6,31 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-from nte_music_desk.midi import parse_midi
+from nte_music_desk.midi import parse_midi, write_midi, MidiSong, MidiNote
 from nte_music_desk.presets import PresetStore, DEFAULTS
 
 
 class PartChecks(unittest.TestCase):
+    def test_export_preserves_distinct_instruments_sharing_original_channel(self):
+        with tempfile.TemporaryDirectory() as d:
+            notes = [MidiNote(0,0,60,90,0,.5,40), MidiNote(1,0,48,80,0,.7,32), MidiNote(2,9,36,80,0,.1,0)]
+            song = MidiSong('patches', 1, 480, notes, ['violin', 'bass', 'drums'], [(0,500000)], .7, [])
+            target = Path(d) / 'roundtrip.mid'
+            write_midi(song, target)
+            loaded = parse_midi(target.read_bytes())
+            self.assertEqual({(n.pitch, n.program) for n in loaded.notes if n.channel != 9}, {(60,40),(48,32)})
+            self.assertEqual(len(loaded.notes), 3)
+            self.assertEqual(len(loaded.track_info()), 2)
+            self.assertEqual(len({n.channel for n in loaded.notes}), 3)
+
+    def test_large_preset_and_bulk_track_restore(self):
+        with tempfile.TemporaryDirectory() as d:
+            store = PresetStore(d)
+            settings = {**DEFAULTS, 'tracks': list(range(2048)), 'roles': {str(i): 'harmony' for i in range(2048)}}
+            store.save('b'*64, 'guitar', settings)
+            self.assertGreater(store.path('b'*64, 'guitar').stat().st_size, 65536)
+            self.assertEqual(store.load('b'*64, 'guitar', list(range(2048))), settings)
+
     def test_type_zero_and_mid_note_program_change_split_without_losing_notes(self):
         track = (b'\x00\xc0\x28\x00\xc1\x20\x00\x90\x3c\x50\x00\x91\x24\x50'
                  b'\x00\x99\x24\x50\x78\xc0\x49\x00\x90\x48\x50'

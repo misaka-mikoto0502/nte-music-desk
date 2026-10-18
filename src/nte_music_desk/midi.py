@@ -372,6 +372,12 @@ def validate_score(score):
     if not isinstance(events, list) or not 1 <= len(events) <= 100000:
         raise ValueError("曲谱音符数量无效。")
     previous, at_count = -1, 0
+    settings = score.get('settings', {})
+    if not isinstance(settings, dict):
+        raise ValueError('曲谱设置无效。')
+    limit = settings.get('max_polyphony', 6)
+    if type(limit) is not int or not 1 <= limit <= 36:
+        raise ValueError('曲谱和弦音数上限无效。')
     for event in events:
         if not isinstance(event, dict):
             raise ValueError("曲谱事件无效。")
@@ -382,8 +388,9 @@ def validate_score(score):
                 or at < previous or type(pitch) is not int or not profile.low <= pitch <= profile.high):
             raise ValueError("曲谱的时间顺序、音高或时值无效。")
         at_count = at_count + 1 if at == previous else 1
-        limit = score.get('settings', {}).get('max_polyphony', 6)
-        if type(limit) is not int or not 1 <= limit <= 36 or at_count > limit:
+        if type(event.get('velocity', 80)) is not int or not 1 <= event.get('velocity', 80) <= 127:
+            raise ValueError('曲谱力度需为 1–127。')
+        if at_count > limit:
             raise ValueError("同一时刻的音符数超过配置上限（最多 36）。")
         previous = at
     if score.get("mode") not in ("melody", "chords", "faithful", "balanced"):
@@ -420,17 +427,27 @@ def write_midi(song, path):
         return bytes(parts)
     def chunk(track):return b"MTrk"+struct.pack(">I",len(track))+track
     tracks = []
+    # SMF1 shares 16 channels across tracks. Allocate one channel per patch so
+    # MusicXML parts that all defaulted to channel 1 do not change each other.
+    programs = sorted({n.program for n in song.notes if n.channel != 9})
+    if len(programs) > 15:
+        raise ValueError('标准 MIDI 单端口最多同时保留 15 种有音高乐器；请在制谱软件中合并音色后导出。')
+    channels = dict(zip(programs, [c for c in range(16) if c != 9]))
     for index,name in enumerate(song.track_names):
         events = []
         for note in song.notes:
             if note.track!=index:continue
-            if not (math.isfinite(note.start) and math.isfinite(note.end) and 0<=note.start<note.end<=7200 and 0<=note.pitch<=127 and 0<=note.channel<=15):
+            if not (math.isfinite(note.start) and math.isfinite(note.end) and 0<=note.start<note.end<=7200 and 0<=note.pitch<=127 and 0<=note.channel<=15 and type(note.program) is int and 0<=note.program<=127):
                 raise ValueError("导出 MIDI 的音高或时间无效。")
             start,end = round(note.start*960),max(round(note.start*960)+1,round(note.end*960))
-            events.extend([(start,1,note.channel,note.pitch,max(1,min(127,note.velocity))), (end,0,note.channel,note.pitch,0)])
+            channel = 9 if note.channel == 9 else channels[note.program]
+            events.extend([(start,1,channel,note.pitch,max(1,min(127,note.velocity))), (end,0,channel,note.pitch,0)])
         if not events:continue
         text = str(name).encode("utf-8")[:1024]
         track = bytearray(b"\x00\xff\x03"+vlq(len(text))+text)
+        used = {n.program for n in song.notes if n.track == index and n.channel != 9}
+        for program in sorted(used):
+            track.extend(bytes([0, 0xC0 | channels[program], program]))
         previous = 0
         for tick,on,channel,pitch,velocity in sorted(events):
             track.extend(vlq(tick-previous)+bytes([(0x90 if on else 0x80)|channel,pitch,velocity]))

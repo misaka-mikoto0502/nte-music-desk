@@ -292,7 +292,8 @@ def parse_musicxml(data, title="MusicXML"):
         description = info.get(parts[track].get('id'))
         value = description.findtext('midi-instrument/midi-program', '1') if description is not None else '1'
         return integer(value, 'MIDI 乐器编号', 1, 128) - 1
-    notes = [MidiNote(n["track"],n["channel"],n["pitch"],80,at_seconds(n["start"]),at_seconds(n["end"]),program(n['track'])) for n in raw]
+    programs = [program(track) for track in range(len(parts))]
+    notes = [MidiNote(n["track"],n["channel"],n["pitch"],80,at_seconds(n["start"]),at_seconds(n["end"]),programs[n['track']]) for n in raw]
     notes.sort(key=lambda n:(n.start,n.track,n.pitch))
     if skipped_grace:
         warnings.append(f"MusicXML 的 {skipped_grace} 个无时值装饰音未展开。")

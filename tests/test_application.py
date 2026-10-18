@@ -31,9 +31,37 @@ class ApplicationChecks(unittest.TestCase):
                 dialog.transcribe()
                 self.assertIsNone(dialog.job)
                 self.assertIn('安装', dialog.state.get())
+                from nte_music_desk.transcription import ProcessJob
+                dialog.job = ProcessJob()
+                dialog.job.cancel()
+                dialog.messages.put(('done', ('transcribed', Path(directory) / 'late.mid')))
+                dialog.window.after_cancel(dialog.poll_id)
+                dialog.poll()
+                self.assertIsNone(dialog.result)
+                self.assertIn('取消', dialog.state.get())
                 dialog.help()
                 dialog.close()
                 self.assertIsNone(app.audio_dialog)
+            finally:
+                app.close()
+
+    def test_corrupt_preset_is_not_overwritten_without_explicit_reset(self):
+        import tkinter as tk
+        from nte_music_desk import cli
+        from nte_music_desk.ui import App
+        from nte_music_desk.paths import asset_dir
+        with tempfile.TemporaryDirectory() as directory:
+            root = tk.Tk(); root.withdraw()
+            app = App(root, SimpleNamespace(ROOT=Path(directory), ASSETS=asset_dir(), key_schedule=cli.key_schedule))
+            try:
+                path = app.preset_store.path(app.song_fingerprint, app.applied_instrument)
+                path.write_text('{ broken future data', encoding='utf-8')
+                app.restore_arrangement()
+                app.update_score()
+                self.assertEqual(path.read_text(), '{ broken future data')
+                app.reset_settings()
+                self.assertEqual(path.with_suffix('.unreadable.backup.json').read_text(), '{ broken future data')
+                self.assertEqual(json.loads(path.read_text())['schema'], 'nte-arrangement-v2')
             finally:
                 app.close()
 

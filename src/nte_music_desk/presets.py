@@ -56,7 +56,7 @@ class PresetStore:
         path = self.path(digest, instrument)
         if not path.exists():
             return None
-        if path.stat().st_size > 65536:
+        if path.stat().st_size > 512 * 1024:
             raise ValueError("演奏方案文件过大。")
         data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict) or data.get("schema") not in ("nte-arrangement-v1", "nte-arrangement-v2") or data.get("sha256") != digest or data.get("instrument") != instrument:
