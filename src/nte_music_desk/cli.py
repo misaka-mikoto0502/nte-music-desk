@@ -27,10 +27,12 @@ from .instruments import INSTRUMENTS, SHIFT, score_instrument
 
 def limit_score(score, seconds):
     result = {**score, "events": [dict(e) for e in score["events"] if e["at"] < seconds]}
+    if not result["events"]:
+        raise ValueError("试听范围内没有音符，请调整片段起点。")
     for event in result["events"]:
         event["duration"] = min(event["duration"], seconds - event["at"])
     result["summary"] = {**score.get("summary", {}), "notes": len(result["events"]),
-                         "seconds": min(seconds, max(e["at"] + e["duration"] for e in result["events"]))}
+                         "seconds": min(seconds, score.get("summary", {}).get("seconds", max(e["at"] + e["duration"] for e in result["events"])))}
     return validate_score(result)
 
 
@@ -164,7 +166,7 @@ def play_timed(score, backend, hold_ms=300, clock=time.perf_counter, sleep=time.
                 sent += key.virtual_key != SHIFT.virtual_key
             else:
                 backend.up(key)
-        wait_until(started + max(max(e["at"] + e["duration"] for e in score["events"]), schedule[-1][0]))
+        wait_until(started + max(score.get("summary", {}).get("seconds", 0), max(e["at"] + e["duration"] for e in score["events"]), schedule[-1][0]))
         return sent
     finally:
         backend.release_all()
@@ -207,7 +209,7 @@ def play_file(args):
         return run_elevated_and_wait(__file__, arguments)
     backend, code = None, 0
     destination = Path(args.report) if args.report else ROOT / "nte_midi_last_run.json"
-    duration = max(e["at"] + e["duration"] for e in score["events"])
+    duration = max(score.get("summary", {}).get("seconds", 0), max(e["at"] + e["duration"] for e in score["events"]))
     report = {"title": score.get("title", "MIDI"), "status": "starting", "elevated": True,
               "planned_notes": len(score["events"]), "planned_seconds": duration, "settings": score.get("settings", {})}
     try:
@@ -249,7 +251,7 @@ def play_file(args):
 def render_preview(score, path, seconds=20):
     """Short, quiet synthesized preview. Does not interact with the game."""
     score = limit_score(score, seconds)
-    return render_audio(score["events"], path)
+    return render_audio(score["events"], path, score["summary"]["seconds"])
 
 
 def render_song_preview(song, path, tracks=None, start=0, end=None, speed=1, transpose=0, seconds=20):
@@ -313,6 +315,7 @@ def main(argv=None):
     parser.add_argument("--transpose", type=int, default=0)
     parser.add_argument("--range-policy", choices=["fold", "drop", "strict"], default="fold")
     parser.add_argument("--start", type=float, default=0)
+    parser.add_argument("--end", type=float, help="片段终点（原曲秒数），留空演奏至曲末")
     parser.add_argument("--play", metavar="JSON", help="将已转换曲谱发送到游戏（请求 UAC）")
     parser.add_argument("--countdown", type=int, default=7)
     parser.add_argument("--hold-ms", type=int, default=300)
@@ -344,7 +347,7 @@ def main(argv=None):
                               "warnings": song.warnings}, ensure_ascii=False, indent=2))
         else:
             tracks = None if args.tracks == "auto" else ([t["index"] for t in song.track_info()] if args.tracks == "all" else [int(t) for t in args.tracks.split(",")])
-            score = convert(song, tracks, args.mode, args.speed, args.transpose, args.range_policy, args.start, args.instrument)
+            score = convert(song, tracks, args.mode, args.speed, args.transpose, args.range_policy, args.start, args.instrument, args.end)
             destination = Path(args.output) if args.output else Path(args.convert).with_suffix(f".{args.instrument}.json")
             save_score(score, destination)
             print(json.dumps({"output": str(destination.resolve()), **score["summary"], "warnings": score["warnings"]}, ensure_ascii=False, indent=2))

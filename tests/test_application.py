@@ -33,13 +33,15 @@ class ApplicationChecks(unittest.TestCase):
                 app.update_score()
                 app.instrument.set('钢琴 · Shift 黑键')
                 self.assertEqual(float(app.speed.get()), 1)
-                app.speed.set('1.25'); app.hold_ms.set('220'); app.update_score()
+                app.speed.set('1.25'); app.hold_ms.set('220')
+                app.start.set('0:02'); app.end.set('0:09'); app.update_score()
                 app.instrument.set('吉他 · 钢琴模式')
                 self.assertEqual(float(app.speed.get()), .75)
                 self.assertTrue(app.mode.get().startswith('和弦'))
                 app.instrument.set('钢琴 · Shift 黑键')
                 self.assertEqual(float(app.speed.get()), 1.25)
                 self.assertEqual(app.hold_ms.get(), '220')
+                self.assertEqual(float(app.end.get()), 9)
             finally:
                 app.close()
             renamed = score.rename(Path(directory) / 'renamed.mid')
@@ -49,6 +51,8 @@ class ApplicationChecks(unittest.TestCase):
                 self.assertTrue(app.open_path(renamed))
                 self.assertEqual(float(app.speed.get()), 1.25)
                 self.assertEqual(app.hold_ms.get(), '220')
+                self.assertEqual(float(app.start.get()), 2)
+                self.assertEqual(float(app.end.get()), 9)
             finally:
                 app.close()
 

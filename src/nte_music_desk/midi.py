@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from collections import defaultdict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import math
 from pathlib import Path
@@ -213,7 +213,7 @@ def parse_midi(data, title="MIDI"):
     return MidiSong(title, fmt, division, notes, names, list(zip(ticks, tempos)), duration, warnings)
 
 
-def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_policy="fold", start=0.0, instrument="guitar"):
+def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_policy="fold", start=0.0, instrument="guitar", end=None):
     profile = get_instrument(instrument)
     low, high = profile.low, profile.high
     if mode not in ("melody", "chords") or range_policy not in ("fold", "drop", "strict"):
@@ -222,10 +222,15 @@ def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_poli
         raise ValueError("速度倍率需为 0.25–2；移调需为 -36–36 半音。")
     if not math.isfinite(start) or not 0 <= start <= 7200:
         raise ValueError("起始位置需为 0–7200 秒。")
+    segmented = start > 0 or end is not None
+    stop = song.seconds if end is None else end
+    if not math.isfinite(stop) or not start < stop <= song.seconds:
+        raise ValueError("片段终点需大于起点，且不超过原曲时长。")
     tracks = [song.suggested_track()] if tracks is None else sorted(set(tracks))
     if not tracks or any(t < 0 or t >= len(song.track_names) for t in tracks):
         raise ValueError("请至少选择一个有效音轨。")
-    notes = [n for n in song.notes if n.track in tracks and n.channel != 9 and n.start >= start]
+    notes = [replace(n, start=max(start, n.start), end=min(stop, n.end))
+             for n in song.notes if n.track in tracks and n.channel != 9 and n.start < stop and n.end > start]
     if not notes:
         raise ValueError("所选轨道和起点之后没有可用音符。")
     groups = []
@@ -241,7 +246,7 @@ def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_poli
         reduced += len(group) - len(chosen)
         retained.extend(chosen)
     retained.sort(key=lambda n: (n.start, n.pitch))
-    origin = min(n.start for n in retained)
+    origin = start if segmented else min(n.start for n in retained)
     events, folded, dropped = [], 0, 0
     seen = set()
     for note in retained:
@@ -267,7 +272,7 @@ def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_poli
     if not events:
         raise ValueError("全部音符均被音域过滤，请使用八度折回或调整音轨。")
     # Trim any leading silence introduced by range filtering, retain later rests.
-    first = events[0]["at"]
+    first = 0 if segmented else events[0]["at"]
     for event in events:
         event["at"] = round(event["at"] - first, 6)
     if mode == "melody":
@@ -281,10 +286,10 @@ def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_poli
     return {"schema": "nte-guitar-score-v1" if instrument == "guitar" else "nte-piano-score-v1",
             "instrument": instrument, "title": song.title, "mode": mode,
             "settings": {"tracks": tracks, "speed": speed, "transpose": transpose,
-                         "range_policy": range_policy, "start": start},
+                         "range_policy": range_policy, "start": start, "end": end},
             "summary": {"source_notes": len(notes), "notes": len(events), "folded": folded,
                         "dropped": dropped, "chord_notes_removed": reduced,
-                        "seconds": round(max(e["at"] + e["duration"] for e in events), 3),
+                        "seconds": round((stop - start) / speed if segmented else max(e["at"] + e["duration"] for e in events), 6),
                         "source_origin_seconds": round(origin + first * speed, 3)},
             "warnings": warnings, "events": events}
 

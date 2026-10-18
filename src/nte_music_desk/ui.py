@@ -19,6 +19,7 @@ from .catalog import CatalogClient
 from .instruments import INSTRUMENTS, score_instrument
 from . import APP_NAME, __version__
 from .presets import PresetStore, fingerprint, DEFAULTS
+from .segments import parse_time
 
 
 C = {"bg": "#F1F4F8", "paper": "#FFFFFF", "ink": "#1B2A41", "muted": "#718096",
@@ -93,6 +94,7 @@ class App:
         self.speed = tk.StringVar(value=str(self.preferences.get("speed", "1.0")))
         self.transpose = tk.StringVar(value=str(self.preferences.get("transpose", "0")))
         self.start, self.countdown, self.hold_ms = tk.StringVar(value="0"), tk.StringVar(value="7"), tk.StringVar(value="300")
+        self.end = tk.StringVar(value="")
         self.mode = tk.StringVar(value="旋律版（推荐）")
         selected = INSTRUMENTS.get(self.preferences.get("instrument"), INSTRUMENTS["guitar"])
         self.instrument = tk.StringVar(value=selected.title)
@@ -117,7 +119,7 @@ class App:
         self.configure_styles()
         self.build_layout()
         self.build_menu()
-        for variable in (self.speed, self.transpose, self.start, self.mode, self.range_policy, self.countdown, self.hold_ms, self.instrument):
+        for variable in (self.speed, self.transpose, self.start, self.end, self.mode, self.range_policy, self.countdown, self.hold_ms, self.instrument):
             variable.trace_add("write", self.queue_refresh)
         self.tracks.bind("<<ListboxSelect>>", self.queue_refresh)
         root.bind("<Control-o>", lambda _: self.open_file())
@@ -379,6 +381,24 @@ class App:
         self.controls.append((mode_box, "readonly"))
         Tooltip(mode_box, "旋律版：同一时刻只保留最高音。\n和弦版：最多保留 6 音。钢琴混合黑白键会快速分组。\n需要伴奏时，请按 Ctrl 多选对应音轨。")
 
+        segment = self.card(content)
+        segment.pack(fill="x", pady=(12, 0))
+        self.label(segment, "演奏片段", 11, bold=True).pack(side="left", padx=(0, 12))
+        for label, variable in (("从", self.start), ("到", self.end)):
+            self.label(segment, label, 9, C["muted"]).pack(side="left", padx=(4, 5))
+            entry = tk.Entry(segment, textvariable=variable, width=8, relief="solid", borderwidth=1)
+            entry.pack(side="left", ipady=5)
+            self.controls.append((entry, "normal"))
+            Tooltip(entry, "按原曲时间输入秒数或 分:秒；终点留空表示到曲末。\n片段内的休止和跨越起点的长音会保留。")
+        whole = self.button(segment, "整首", self.reset_segment, size=8)
+        whole.configure(padx=7, pady=5)
+        whole.pack(side="left", padx=8)
+        self.controls.append((whole, "normal"))
+        self.source_preview_button = self.button(segment, "♫ 原谱对照", self.preview_source, "preview", 9,
+            "试听所选音轨的原始声部；与电脑试听使用相同片段、速度和移调，保留完整音域及和弦。")
+        self.source_preview_button.configure(padx=8, pady=5)
+        self.source_preview_button.pack(side="right")
+
         advanced_head = tk.Frame(content, bg=C["bg"])
         advanced_head.pack(fill="x", pady=(10, 4))
         self.advanced_button = self.button(advanced_head, "▸  高级设置", self.toggle_advanced, size=9,
@@ -393,7 +413,6 @@ class App:
         grid = tk.Frame(self.advanced, bg="white")
         grid.pack(fill="x")
         for col, (label, variable, lower, upper, tip) in enumerate([
-                ("从第几秒开始", self.start, 0, 7200, "按原 MIDI 的时间选择起点，随后裁去开头空白。"),
                 ("开始前倒计时", self.countdown, 0, 60, "确认权限后，给你切回乐器界面和松开键鼠的时间。"),
                 ("按键上限 / 毫秒", self.hold_ms, 20, 400, "每个音按住的时长上限。默认 300 毫秒；长音只触发一次。")]):
             grid.columnconfigure(col, weight=1)
@@ -612,7 +631,8 @@ class App:
                 "mode": "melody" if self.mode.get().startswith("旋律") else "chords",
                 "speed": float(self.speed.get()), "transpose": int(self.transpose.get()),
                 "range_policy": {"超出音域折回八度": "fold", "丢弃超出音域的音": "drop", "超出音域时报错": "strict"}[self.range_policy.get()],
-                "start": float(self.start.get()), "countdown": int(self.countdown.get()), "hold_ms": int(self.hold_ms.get())}
+                "start": parse_time(self.start.get()), "end": parse_time(self.end.get()) if self.end.get().strip() else None,
+                "countdown": int(self.countdown.get()), "hold_ms": int(self.hold_ms.get())}
 
     def save_arrangement(self):
         if not self.song_fingerprint or self.syncing_settings or self.song is None:
@@ -620,7 +640,7 @@ class App:
         try:
             settings = self.arrangement_settings()
             convert(self.song, settings["tracks"], settings["mode"], settings["speed"], settings["transpose"],
-                    settings["range_policy"], settings["start"], self.applied_instrument)
+                    settings["range_policy"], settings["start"], self.applied_instrument, settings["end"])
             self.preset_store.save(self.song_fingerprint, self.applied_instrument, settings)
         except (OSError, ValueError, KeyError, tk.TclError):
             pass  # Incomplete edits must not replace a usable arrangement.
@@ -642,6 +662,7 @@ class App:
         try:
             for name in ("speed", "transpose", "start", "countdown", "hold_ms"):
                 getattr(self, name).set(str(settings[name]))
+            self.end.set("" if settings["end"] is None else str(settings["end"]))
             self.mode.set("旋律版（推荐）" if settings["mode"] == "melody" else "和弦版（最多 6 音）")
             self.range_policy.set({"fold": "超出音域折回八度", "drop": "丢弃超出音域的音", "strict": "超出音域时报错"}[settings["range_policy"]])
             self.tracks.selection_clear(0, "end")
@@ -661,7 +682,8 @@ class App:
         if not 0 <= countdown <= 60 or not 20 <= hold <= 400:
             raise ValueError("倒计时应为 0–60 秒，按键上限应为 20–400 毫秒。")
         score = convert(self.song, tracks, "melody" if self.mode.get().startswith("旋律") else "chords",
-                        float(self.speed.get()), int(self.transpose.get()), policies[self.range_policy.get()], float(self.start.get()), self.current_instrument().id)
+                        float(self.speed.get()), int(self.transpose.get()), policies[self.range_policy.get()], parse_time(self.start.get()), self.current_instrument().id,
+                        parse_time(self.end.get()) if self.end.get().strip() else None)
         if hasattr(self.engine, "key_schedule"):
             self.engine.key_schedule(score, hold)
         return validate_score(score)
@@ -730,9 +752,15 @@ class App:
 
     def reset_settings(self):
         for variable, value in [(self.speed, "1.0"), (self.transpose, "0"), (self.start, "0"),
+                                (self.end, ""),
                                 (self.mode, "旋律版（推荐）"), (self.range_policy, "超出音域折回八度"),
                                 (self.countdown, "7"), (self.hold_ms, "300")]:
             variable.set(value)
+        self.update_score(quiet=True)
+
+    def reset_segment(self):
+        self.start.set("0")
+        self.end.set("")
         self.update_score(quiet=True)
 
     def toggle_advanced(self):
@@ -767,6 +795,7 @@ class App:
             self.enabled(button, ready and not locked)
         self.enabled(self.preview_button, ready and not locked and not self.preview_token)
         self.enabled(self.track_preview_button, self.song is not None and not locked and not self.preview_token)
+        self.enabled(self.source_preview_button, self.song is not None and not locked and not self.preview_token)
         self.enabled(self.midi_export_button,self.song is not None and not locked)
         self.enabled(self.stop_button, locked or bool(self.preview_token))
         if locked or self.preview_token:
@@ -791,9 +820,21 @@ class App:
         focused = self.tracks.index("active")
         index = focused if focused in selected else selected[0]
         try:
-            options = {"tracks": [self.track_ids[index]], "start": float(self.start.get()),
+            options = {"tracks": [self.track_ids[index]], "start": parse_time(self.start.get()),
+                       "end": parse_time(self.end.get()) if self.end.get().strip() else None,
                        "speed": float(self.speed.get()), "transpose": int(self.transpose.get())}
             self.start_preview(source=self.song, options=options, caption=f"音轨 {self.track_ids[index]} 原声部")
+        except ValueError as error:
+            self.show_error(error)
+
+    def preview_source(self):
+        if self.song is None or self.active or self.preview_token:
+            return
+        try:
+            options = {"tracks": [self.track_ids[int(i)] for i in self.tracks.curselection()],
+                       "start": parse_time(self.start.get()), "end": parse_time(self.end.get()) if self.end.get().strip() else None,
+                       "speed": float(self.speed.get()), "transpose": int(self.transpose.get())}
+            self.start_preview(source=self.song, options=options, caption="原谱声部")
         except ValueError as error:
             self.show_error(error)
 
@@ -835,7 +876,7 @@ class App:
             run.mkdir(parents=True)
             path, cancel, report = run / "score.json", run / "stop", run / "result.json"
             save_score(score, path)
-            length = max(e["at"] + e["duration"] for e in score["events"])
+            length = score["summary"]["seconds"]
             self.active = {"cancel": cancel, "report": report, "progress": report.with_suffix(".progress.json"), "length": length}
             self.stop_requested = False
             self.progress.set(0)
