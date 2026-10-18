@@ -90,6 +90,7 @@ class App:
         self.directory.mkdir(parents=True, exist_ok=True)
         self.assets = getattr(engine, "ASSETS", self.directory)
         self.online_client, self.online_dialog = CatalogClient(self.directory, resources=self.assets), None
+        self.audio_dialog = None
         self.song, self.score, self.active = None, None, None
         self.track_ids, self.controls, self.library_buttons = [], [], []
         self.messages, self.refresh_job = queue.Queue(), None
@@ -151,6 +152,7 @@ class App:
         menu = tk.Menu(self.root)
         files = tk.Menu(menu, tearoff=False)
         files.add_command(label="导入曲谱…", command=self.open_file, accelerator="Ctrl+O")
+        files.add_command(label="音频转谱…", command=self.open_audio)
         files.add_command(label="另存原曲为 MIDI…", command=self.export_midi)
         files.add_command(label="在线搜曲…", command=self.open_online, accelerator="Ctrl+F")
         files.add_separator()
@@ -164,8 +166,16 @@ class App:
         menu.add_cascade(label="帮助", menu=help_menu)
         self.root.configure(menu=menu)
 
-    def show_help(self):
-        path = self.assets / "USAGE.md"
+    def open_audio(self):
+        if self.active: return
+        if self.audio_dialog:
+            self.audio_dialog.window.lift()
+            return
+        from .audio_ui import AudioDialog
+        self.audio_dialog = AudioDialog(self)
+
+    def show_help(self, filename='USAGE.md'):
+        path = self.assets / filename
         window = tk.Toplevel(self.root)
         window.title("使用说明")
         window.geometry("800x620")
@@ -244,6 +254,8 @@ class App:
         self.import_button = self.button(sidebar, "+  导入曲谱", self.open_file, "nav", 11,
                                          "支持 MIDI、KAR、RMI、MusicXML、XML、MXL。\n快捷键：Ctrl + O")
         self.import_button.pack(fill="x")
+        self.audio_button = self.button(sidebar, "♫  音频转谱", self.open_audio, "nav", 11, "使用可选的 MuScriptor 本地引擎，将音频转为多轨 MIDI。首次需配置引擎及模型授权。")
+        self.audio_button.pack(fill='x', pady=(8, 0))
         nav_area = tk.Frame(sidebar, bg=C["nav"])
         nav_area.pack(fill="both", expand=True, pady=(8, 8))
         self.nav_canvas = tk.Canvas(nav_area, bg=C["nav"], highlightthickness=0, width=170)
@@ -865,7 +877,7 @@ class App:
         ready, locked = self.score is not None, self.active is not None
         for widget, normal in self.controls:
             self.enabled(widget, not locked, normal)
-        for button in [self.online_button, self.import_button, *self.recent_buttons, *[b for b, _ in self.library_buttons]]:
+        for button in [self.online_button, self.import_button, self.audio_button, *self.recent_buttons, *[b for b, _ in self.library_buttons]]:
             self.enabled(button, not locked)
         for button in [self.play_button, self.trial_button, self.export_button, self.details_button, self.notes_button, self.report_button]:
             self.enabled(button, ready and not locked)
@@ -878,6 +890,9 @@ class App:
         if locked or self.preview_token:
             self.stop_button.configure(bg=C["red"], fg="white", activebackground="#A52B40", activeforeground="white")
         self.play_button.configure(text="演奏进行中…" if locked else "▶  开始演奏")
+        if self.audio_dialog and self.audio_dialog.job:
+            self.enabled(self.play_button, False)
+            self.enabled(self.trial_button, False)
 
     def preview(self):
         if self.active or self.preview_token:
@@ -946,7 +961,7 @@ class App:
         winsound.PlaySound(None, 0)
 
     def play(self, seconds):
-        if self.active:
+        if self.active or (self.audio_dialog and self.audio_dialog.job):
             return
         self.recommend_token = None
         self.stop_preview()
@@ -1173,6 +1188,8 @@ class App:
         messagebox.showerror("无法完成", str(error), parent=self.root)
 
     def close(self):
+        if self.audio_dialog is not None:
+            self.audio_dialog.close()
         if self.online_dialog is not None:
             self.online_dialog.close()
         self.save_preferences()

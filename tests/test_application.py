@@ -15,6 +15,28 @@ ROOT=Path(__file__).resolve().parents[1]
 
 @unittest.skipUnless(sys.platform=="win32","Desktop integration requires Windows")
 class ApplicationChecks(unittest.TestCase):
+    def test_audio_dialog_configuration_help_and_close_without_engine(self):
+        import tkinter as tk
+        from nte_music_desk import cli
+        from nte_music_desk.ui import App
+        from nte_music_desk.paths import asset_dir
+        with tempfile.TemporaryDirectory() as directory:
+            root = tk.Tk(); root.withdraw()
+            app = App(root, SimpleNamespace(ROOT=Path(directory), ASSETS=asset_dir(), key_schedule=cli.key_schedule))
+            try:
+                app.open_audio()
+                dialog = app.audio_dialog
+                root.update_idletasks()
+                self.assertTrue(dialog.window.winfo_exists())
+                dialog.transcribe()
+                self.assertIsNone(dialog.job)
+                self.assertIn('安装', dialog.state.get())
+                dialog.help()
+                dialog.close()
+                self.assertIsNone(app.audio_dialog)
+            finally:
+                app.close()
+
     def setUp(self):
         sys.path.insert(0, str(ROOT / 'src'))
         def fail(app, error):
