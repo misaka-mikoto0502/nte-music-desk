@@ -235,11 +235,13 @@ def parse_midi(data, title="MIDI"):
     return normalize_parts(MidiSong(title, fmt, division, notes, names, list(zip(ticks, tempos)), duration, warnings))
 
 
-def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_policy="fold", start=0.0, instrument="guitar", end=None):
+def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_policy="fold", start=0.0, instrument="guitar", end=None, max_polyphony=12, roles=None):
     profile = get_instrument(instrument)
     low, high = profile.low, profile.high
-    if mode not in ("melody", "chords") or range_policy not in ("fold", "drop", "strict"):
+    if mode not in ("melody", "chords", "faithful", "balanced") or range_policy not in ("fold", "drop", "strict"):
         raise ValueError("转换模式无效。")
+    if type(max_polyphony) is not int or not 2 <= max_polyphony <= 36:
+        raise ValueError('并行音符上限需为 2–36。')
     if not math.isfinite(speed) or not 0.25 <= speed <= 2 or not -36 <= transpose <= 36:
         raise ValueError("速度倍率需为 0.25–2；移调需为 -36–36 半音。")
     if not math.isfinite(start) or not 0 <= start <= 7200:
@@ -248,13 +250,21 @@ def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_poli
     stop = song.seconds if end is None else end
     if not math.isfinite(stop) or not start < stop <= song.seconds:
         raise ValueError("片段终点需大于起点，且不超过原曲时长。")
-    tracks = [song.suggested_track()] if tracks is None else sorted(set(tracks))
+    tracks = ([p['index'] for p in song.track_info()] if mode in ('faithful', 'balanced') else [song.suggested_track()]) if tracks is None else sorted(set(tracks))
     if not tracks or any(t < 0 or t >= len(song.track_names) for t in tracks):
         raise ValueError("请至少选择一个有效音轨。")
     notes = [replace(n, start=max(start, n.start), end=min(stop, n.end))
              for n in song.notes if n.track in tracks and n.channel != 9 and n.start < stop and n.end > start]
+    notes.sort(key=lambda n: (n.start, n.track, n.pitch))
     if not notes:
         raise ValueError("所选轨道和起点之后没有可用音符。")
+    from .arranging import voice_octaves, choose_voices
+    role_map = {str(p['index']): p['role'] for p in song.track_info()}
+    if roles:
+        role_map.update(roles)
+    preserve = mode in ('faithful', 'balanced')
+    offsets = voice_octaves(notes, low, high, transpose) if preserve and range_policy == 'fold' else {}
+    budget = 1 if mode == 'melody' else 6 if mode == 'chords' else min(6, max_polyphony) if mode == 'balanced' else max_polyphony
     changes, change_count = [], 0
     def record(action, note, adapted=None):
         nonlocal change_count
@@ -264,26 +274,38 @@ def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_poli
                             "source_midi": note.pitch, "requested_midi": note.pitch + transpose, "midi": adapted})
     groups = []
     for note in notes:
-        if not groups or note.start - groups[-1][0].start > 0.025:
+        if not groups or note.start - groups[-1][0].start > (0.000001 if preserve else 0.025):
             groups.append([note])
         else:
             groups[-1].append(note)
-    retained, reduced = [], 0
+    retained, reduced, premerged = [], 0, 0
     for group in groups:
-        chosen = sorted(group, key=lambda n: (n.pitch, n.velocity), reverse=True)
-        chosen = chosen[:1] if mode == "melody" else chosen[:6]
-        reduced += len(group) - len(chosen)
+        pool, duplicates = group, []
+        if preserve:
+            unique = {}
+            for note in sorted(group, key=lambda n: (n.end - n.start, role_map.get(str(n.track)) == 'melody', n.velocity), reverse=True):
+                pitch = note.pitch + offsets.get(note.track, 0)
+                if pitch in unique:
+                    duplicates.append(note)
+                    record('merged', note, pitch + transpose)
+                else:
+                    unique[pitch] = note
+            pool = list(unique.values())
+            premerged += len(duplicates)
+        chosen = choose_voices(pool, budget, role_map) if preserve else sorted(pool, key=lambda n: (n.pitch, n.velocity), reverse=True)[:budget]
+        reduced += len(pool) - len(chosen)
         kept_ids = {id(note) for note in chosen}
-        for note in group:
+        for note in pool:
             if id(note) not in kept_ids:
                 record("simplified", note)
         retained.extend(chosen)
     retained.sort(key=lambda n: (n.start, n.pitch))
     origin = start if segmented else min(n.start for n in retained)
-    events, folded, dropped, merged = [], 0, 0, 0
+    events, folded, dropped, merged = [], 0, 0, premerged
     seen = set()
     for note in retained:
-        pitch = note.pitch + transpose
+        pitch = note.pitch + transpose + offsets.get(note.track, 0)
+        adjusted = offsets.get(note.track, 0) != 0
         if not low <= pitch <= high:
             if range_policy == "strict":
                 raise ValueError(f"{note_name(pitch)} 超出 {profile.range_label}。请选择八度折回或调整移调。")
@@ -291,11 +313,13 @@ def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_poli
                 dropped += 1
                 record("dropped", note)
                 continue
-            folded += 1
+            adjusted = True
             while pitch < low:
                 pitch += 12
             while pitch > high:
                 pitch -= 12
+        if adjusted:
+            folded += 1
             record("folded", note, pitch)
         at = round((note.start - origin) / speed, 6)
         signature = (at, pitch)
@@ -306,7 +330,7 @@ def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_poli
         seen.add(signature)
         events.append({"at": at, "duration": round(max(0.01, (note.end - note.start) / speed), 6),
                        "midi": pitch, "source_midi": note.pitch,
-                       "source_at": round(note.start, 6), "source_track": note.track})
+                       "source_at": round(note.start, 6), "source_track": note.track, "velocity": note.velocity})
     if not events:
         raise ValueError("全部音符均被音域过滤，请使用八度折回或调整音轨。")
     # Trim any leading silence introduced by range filtering, retain later rests.
@@ -317,21 +341,25 @@ def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_poli
         for current, following in zip(events, events[1:]):
             current["duration"] = min(current["duration"], following["at"] - current["at"])
     warnings = list(song.warnings)
-    if instrument == "piano" and mode == "chords":
-        warnings.append("钢琴和弦最多 6 音；混合黑白键会分组错开约 55 毫秒，原 MIDI 需含和弦或伴奏音轨。")
+    if instrument == "piano" and mode != "melody":
+        warnings.append(f"钢琴每组最多 {budget} 音；混合黑白键分组约错开 55 毫秒，无法严格同时按住两种 Shift 状态。")
+    if preserve:
+        warnings.append('保留原声部起音；并行上限是软件设置，游戏实际多音能力需试奏确认。力度保留于曲谱/试听，键盘不能表达原曲力度与踏板。')
     if any(0 < b["at"] - a["at"] < 0.06 for a, b in zip(events, events[1:])):
         warnings.append("含间距小于 60 毫秒的音，游戏可能吞音，可降低速度倍率。")
     return {"schema": "nte-guitar-score-v1" if instrument == "guitar" else "nte-piano-score-v1",
             "instrument": instrument, "title": song.title, "mode": mode,
             "settings": {"tracks": tracks, "speed": speed, "transpose": transpose,
-                         "range_policy": range_policy, "start": start, "end": end},
+                         "range_policy": range_policy, "start": start, "end": end,
+                         "max_polyphony": budget, "roles": role_map, "onset_group_ms": 0 if preserve else 25},
             "summary": {"source_notes": len(notes), "notes": len(events), "folded": folded,
                         "dropped": dropped, "merged": merged, "chord_notes_removed": reduced,
                         "seconds": round((stop - start) / speed if segmented else max(e["at"] + e["duration"] for e in events), 6),
-                        "source_origin_seconds": round(origin + first * speed, 3)},
+                        "source_origin_seconds": round(origin + first * speed, 6)},
             "warnings": warnings, "events": events,
             "adaptation": {"changes": sorted(changes, key=lambda c: (c["source_at"], c["track"])),
-                           "total_changes": change_count, "truncated": change_count > len(changes)}}
+                           "total_changes": change_count, "truncated": change_count > len(changes),
+                           "voice_octaves": {str(k): v for k, v in offsets.items() if v}}}
 
 
 def validate_score(score):
@@ -354,10 +382,11 @@ def validate_score(score):
                 or at < previous or type(pitch) is not int or not profile.low <= pitch <= profile.high):
             raise ValueError("曲谱的时间顺序、音高或时值无效。")
         at_count = at_count + 1 if at == previous else 1
-        if at_count > 6:
-            raise ValueError("同一时刻最多支持 6 个音。")
+        limit = score.get('settings', {}).get('max_polyphony', 6)
+        if type(limit) is not int or not 1 <= limit <= 36 or at_count > limit:
+            raise ValueError("同一时刻的音符数超过配置上限（最多 36）。")
         previous = at
-    if score.get("mode") not in ("melody", "chords"):
+    if score.get("mode") not in ("melody", "chords", "faithful", "balanced"):
         raise ValueError("曲谱演奏模式无效。")
     if profile.id == "piano" and score["mode"] == "melody" and any(a["at"] == b["at"] for a, b in zip(events, events[1:])):
         raise ValueError("旋律版同一时刻只能有一个音，请选择和弦版。")

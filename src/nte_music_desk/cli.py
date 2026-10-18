@@ -150,7 +150,7 @@ def render_preview(score, path, seconds=20, hold_ms=300, cancel=None):
         raise ValueError("试听时长需为 0–60 秒。")
     plan = performance_plan(score, hold_ms)
     stop = min(seconds, plan.duration)
-    events = [{"at": n.at, "duration": min(n.duration, stop - n.at), "midi": n.midi}
+    events = [{"at": n.at, "duration": min(n.duration, stop - n.at), "midi": n.midi, 'velocity': n.velocity}
               for n in plan.notes if n.at < stop]
     if not events:
         raise ValueError("试听范围内没有音符，请调整片段起点。")
@@ -170,7 +170,7 @@ def render_song_preview(song, path, tracks=None, start=0, end=None, speed=1, tra
     stop = min(end, start + seconds * speed)
     events = [{"at": (max(start, n.start) - start) / speed,
                "duration": (min(stop, n.end) - max(start, n.start)) / speed,
-               "midi": n.pitch + transpose}
+               "midi": n.pitch + transpose, 'velocity': n.velocity}
               for n in song.notes if n.track in tracks and n.channel != 9 and n.start < stop and n.end > start]
     if not events:
         raise ValueError("这条音轨在所选片段内没有可试听音符。")
@@ -191,10 +191,11 @@ def render_audio(events, path, length=None, cancel=None):
         duration = min(3.0, event["duration"])
         size = min(int(duration * rate), len(samples) - begin)
         frequency = 440 * 2 ** ((event["midi"] - 69) / 12)
+        amplitude = 3500 * (event.get('velocity', 80) / 127) ** .7
         for index in range(size):
             t = index / rate
             envelope = min(1, t / 0.008) * min(1, (size - index) / (rate * 0.03)) * math.exp(-1.8 * t)
-            samples[begin + index] += int(3500 * envelope * math.sin(2 * math.pi * frequency * t))
+            samples[begin + index] += int(amplitude * envelope * math.sin(2 * math.pi * frequency * t))
     gain = min(1, 24000 / max(1, max(abs(v) for v in samples)))
     pcm = array("h", (int(value * gain) for value in samples))
     if sys.byteorder != "little":
@@ -216,7 +217,8 @@ def main(argv=None):
     parser.add_argument("--to-midi", metavar="SCORE", help="将原曲全部声部另存为标准 MIDI")
     parser.add_argument("--output", help="转换后的 JSON 文件")
     parser.add_argument("--tracks", default="auto", help="auto、all 或逗号分隔的 0 起始音轨编号")
-    parser.add_argument("--mode", choices=["melody", "chords"], default="melody")
+    parser.add_argument("--mode", choices=["melody", "chords", "balanced", "faithful"], default="melody")
+    parser.add_argument('--max-polyphony', type=int, default=12, help='原曲声部模式每个起音组的音符上限（2–36）')
     parser.add_argument("--instrument", choices=list(INSTRUMENTS), default="guitar", help="guitar：吉他钢琴模式；piano：钢琴 Shift 黑键")
     parser.add_argument("--speed", type=float, default=1.0)
     parser.add_argument("--transpose", type=int, default=0)
@@ -254,7 +256,7 @@ def main(argv=None):
                               "warnings": song.warnings}, ensure_ascii=False, indent=2))
         else:
             tracks = None if args.tracks == "auto" else ([t["index"] for t in song.track_info()] if args.tracks == "all" else [int(t) for t in args.tracks.split(",")])
-            score = convert(song, tracks, args.mode, args.speed, args.transpose, args.range_policy, args.start, args.instrument, args.end)
+            score = convert(song, tracks, args.mode, args.speed, args.transpose, args.range_policy, args.start, args.instrument, args.end, args.max_polyphony)
             destination = Path(args.output) if args.output else Path(args.convert).with_suffix(f".{args.instrument}.json")
             save_score(score, destination)
             print(json.dumps({"output": str(destination.resolve()), **score["summary"], "warnings": score["warnings"]}, ensure_ascii=False, indent=2))

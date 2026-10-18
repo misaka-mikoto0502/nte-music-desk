@@ -15,6 +15,7 @@ class PlannedNote:
     source_midi: int
     source_at: float
     source_track: int
+    velocity: int = 80
 
 
 @dataclass(frozen=True)
@@ -28,7 +29,7 @@ class PerformancePlan:
 def _record(notes, event, at, release):
     if notes is not None:
         notes.append(PlannedNote(at, release - at, event["midi"], event.get("source_midi", event["midi"]),
-                                 event.get("source_at", event["at"]), event.get("source_track", -1)))
+                                 event.get("source_at", event["at"]), event.get("source_track", -1), event.get('velocity', 80)))
 
 
 def _compile_keys(score, hold_ms=300, notes=None):
@@ -58,7 +59,7 @@ def _compile_keys(score, hold_ms=300, notes=None):
 
 def piano_schedule(score, hold_ms, notes=None):
     """Reserve a modifier-settle gap; no note remains down across a Shift change."""
-    if score["mode"] == "chords":
+    if score["mode"] != "melody":
         return piano_chord_schedule(score, hold_ms, notes)
     events, shifted, last_release = [], False, 0
     source_notes = score["events"]
@@ -96,7 +97,7 @@ def piano_chord_schedule(score, hold_ms, notes=None):
     profile = score_instrument(score)
     groups = []
     for note in score["events"]:
-        if not groups or note["at"] - groups[-1][0]["at"] > 0.025:
+        if not groups or note["at"] - groups[-1][0]["at"] > max(.000001, score.get('settings', {}).get('onset_group_ms', 25) / 1000):
             groups.append([note])
         else:
             groups[-1].append(note)
@@ -108,8 +109,8 @@ def piano_chord_schedule(score, hold_ms, notes=None):
             existing = unique.get(note["midi"])
             if existing is None or existing["duration"] < note["duration"]:
                 unique[note["midi"]] = note
-        if len(unique) > 6:
-            raise ValueError("钢琴同一组和弦最多支持 6 个音，请精简音轨。")
+        if len(unique) > score.get('settings', {}).get('max_polyphony', 6):
+            raise ValueError("钢琴同组音符超过配置上限，请调整和弦音数。")
         parts = []
         for shifted in (False, True):
             part = [(note, profile.keys[note_name(note["midi"])]) for note in unique.values()
@@ -119,9 +120,23 @@ def piano_chord_schedule(score, hold_ms, notes=None):
         for offset, (shifted, part) in enumerate(parts):
             batches.append((group[0]["at"] + 0.02 + offset * 0.055, shifted, part))
     events, owns_shift, last_release = [], False, 0
+    preserving = score['mode'] in ('faithful', 'balanced')
+    switch_at, next_switch = float('inf'), {}
+    for i in range(len(batches) - 1, -1, -1):
+        if i + 1 < len(batches) and batches[i][1] != batches[i + 1][1]:
+            switch_at = batches[i + 1][0]
+        next_switch[i] = switch_at
+    future, same_key_at = {}, {}
+    for i in range(len(batches) - 1, -1, -1):
+        at, _, part = batches[i]
+        for note, mapped in part:
+            same_key_at[i, mapped.virtual_key] = future.get(mapped.virtual_key, float('inf'))
+            future[mapped.virtual_key] = at
     for index, (at, shifted, part) in enumerate(batches):
         release_cap = float("inf")
-        if index + 1 < len(batches):
+        if preserving:
+            release_cap = next_switch[index] - .025
+        elif index + 1 < len(batches):
             next_at, next_shift, _ = batches[index + 1]
             release_cap = next_at - (0.025 if shifted != next_shift else 0.008)
         if release_cap - at < 0.005:
@@ -133,6 +148,10 @@ def piano_chord_schedule(score, hold_ms, notes=None):
         for note, mapped in part:
             key = PianoKey(mapped.label.replace("Shift + ", ""), mapped.virtual_key, mapped.scan_code)
             release = min(at + min(hold_ms / 1000, note["duration"] * 0.8), release_cap)
+            if preserving:
+                release = min(release, same_key_at[index, mapped.virtual_key] - .008)
+                if release - at < .005:
+                    raise ValueError('钢琴声部在 Shift 切换或重复键处过密，请降低速度或使用吉他钢琴模式。')
             events.extend([(at, 1, key), (release, 0, key)])
             _record(notes, note, at, release)
             last_release = max(last_release, release)
@@ -150,7 +169,7 @@ def performance_plan(score, hold_ms=300):
     notes.sort(key=lambda n: (n.at, n.midi))
     groups = []
     for event in score["events"]:
-        if not groups or event["at"] - groups[-1][0]["at"] > .025:
+        if not groups or event["at"] - groups[-1][0]["at"] > max(.000001, score.get('settings', {}).get('onset_group_ms', 25) / 1000):
             groups.append([event])
         else:
             groups[-1].append(event)

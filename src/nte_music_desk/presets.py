@@ -9,7 +9,7 @@ from pathlib import Path
 from .instruments import INSTRUMENTS
 
 DEFAULTS = {"tracks": [], "mode": "melody", "speed": 1.0, "transpose": 0,
-            "range_policy": "fold", "start": 0.0, "end": None, "countdown": 7, "hold_ms": 300, "roles": {}}
+            "range_policy": "fold", "start": 0.0, "end": None, "countdown": 7, "hold_ms": 300, "roles": {}, "max_polyphony": 12}
 
 
 def fingerprint(path):
@@ -28,13 +28,13 @@ def validate_settings(value):
     if not isinstance(roles, dict) or len(roles) > 2048 or any(not isinstance(k, str) or not k.isdigit() or int(k) >= 2048 or v not in ('melody', 'bass', 'harmony') for k, v in roles.items()):
         raise ValueError('演奏方案的声部角色无效。')
     result['roles'] = dict(roles)
-    if result["mode"] not in ("melody", "chords") or result["range_policy"] not in ("fold", "drop", "strict"):
+    if result["mode"] not in ("melody", "chords", "faithful", "balanced") or result["range_policy"] not in ("fold", "drop", "strict"):
         raise ValueError("演奏方案的模式无效。")
     for name, low, high in (("speed", .25, 2), ("start", 0, 7200)):
         v = result[name]
         if type(v) not in (int, float) or not math.isfinite(v) or not low <= v <= high:
             raise ValueError(f"演奏方案的 {name} 无效。")
-    for name, low, high in (("transpose", -36, 36), ("countdown", 0, 60), ("hold_ms", 20, 400)):
+    for name, low, high in (("transpose", -36, 36), ("countdown", 0, 60), ("hold_ms", 20, 400), ("max_polyphony", 2, 36)):
         if type(result[name]) is not int or not low <= result[name] <= high:
             raise ValueError(f"演奏方案的 {name} 无效。")
     end = result["end"]

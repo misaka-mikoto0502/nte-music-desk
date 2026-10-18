@@ -55,7 +55,7 @@ class MidiChecks(unittest.TestCase):
         self.assertEqual(list(plan.key_events), cli.key_schedule(score, 200))
         with patch.object(cli, 'render_audio') as render:
             cli.render_preview(score, 'unused.wav', hold_ms=200)
-            self.assertEqual(render.call_args.args[0], [{'at': n.at, 'duration': n.duration, 'midi': n.midi} for n in plan.notes])
+            self.assertEqual(render.call_args.args[0], [{'at': n.at, 'duration': n.duration, 'midi': n.midi, 'velocity': n.velocity} for n in plan.notes])
         clock = Clock(); keyboard = Keyboard(clock)
         cli.play_timed(score, keyboard, 200, clock=clock.read, sleep=clock.sleep)
         self.assertAlmostEqual(clock.now, plan.duration)

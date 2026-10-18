@@ -31,6 +31,11 @@ C = {"bg": "#F1F4F8", "paper": "#FFFFFF", "ink": "#1B2A41", "muted": "#718096",
      "blue": "#285DBF", "blue_light": "#EAF1FF", "amber": "#95620D", "amber_light": "#FFF2D8",
      "red": "#BE354B", "red_light": "#FCECEF", "disabled": "#EBEFF4", "disabled_ink": "#9AA6B5"}
 FONT = "Microsoft YaHei UI"
+MODES = {"faithful": "原曲声部（推荐）", "balanced": "旋律＋低音", "melody": "旋律版（推荐）", "chords": "和弦版（最多 6 音）"}
+
+
+def mode_key(label):
+    return next(key for key, value in MODES.items() if value == label)
 
 
 def export_name(title):
@@ -99,7 +104,8 @@ class App:
         self.transpose = tk.StringVar(value=str(self.preferences.get("transpose", "0")))
         self.start, self.countdown, self.hold_ms = tk.StringVar(value="0"), tk.StringVar(value="7"), tk.StringVar(value="300")
         self.end = tk.StringVar(value="")
-        self.mode = tk.StringVar(value="旋律版（推荐）")
+        self.mode = tk.StringVar(value=MODES['faithful'])
+        self.max_polyphony = tk.StringVar(value="12")
         selected = INSTRUMENTS.get(self.preferences.get("instrument"), INSTRUMENTS["guitar"])
         self.instrument = tk.StringVar(value=selected.title)
         self.applied_instrument = selected.id
@@ -123,7 +129,7 @@ class App:
         self.configure_styles()
         self.build_layout()
         self.build_menu()
-        for variable in (self.speed, self.transpose, self.start, self.end, self.mode, self.range_policy, self.countdown, self.hold_ms, self.instrument):
+        for variable in (self.speed, self.transpose, self.start, self.end, self.mode, self.max_polyphony, self.range_policy, self.countdown, self.hold_ms, self.instrument):
             variable.trace_add("write", self.queue_refresh)
         self.tracks.bind("<<ListboxSelect>>", self.queue_refresh)
         root.bind("<Control-o>", lambda _: self.open_file())
@@ -384,11 +390,11 @@ class App:
             "试听最后点选的音轨，保留原始声部，不折回音域、不删减和弦；不会改变演奏选轨。")
         self.track_preview_button.configure(pady=5)
         self.track_preview_button.pack(fill="x", pady=(7, 0))
-        mode_box = ttk.Combobox(tracks_card, textvariable=self.mode, values=["旋律版（推荐）", "和弦版（最多 6 音）"], state="readonly")
+        mode_box = ttk.Combobox(tracks_card, textvariable=self.mode, values=list(MODES.values()), state="readonly")
         mode_box.pack(fill="x", pady=(10, 0))
         self.mode_box = mode_box
         self.controls.append((mode_box, "readonly"))
-        Tooltip(mode_box, "旋律版：同一时刻只保留最高音。\n和弦版：最多保留 6 音。钢琴混合黑白键会快速分组。\n需要伴奏时，请按 Ctrl 多选对应音轨。")
+        Tooltip(mode_box, "原曲声部：保留各声部起音，每组默认最多 12 音。\n旋律＋低音：优先保留主旋律与低音，最多 6 音。\n旧旋律版保留最高音，旧和弦版最多 6 音。\n钢琴混合黑白键会快速分组；声部角色可在多轨工作区修改。")
 
         segment = self.card(content)
         segment.pack(fill="x", before=middle, pady=(0, 12))
@@ -427,7 +433,8 @@ class App:
         grid.pack(fill="x")
         for col, (label, variable, lower, upper, tip) in enumerate([
                 ("开始前倒计时", self.countdown, 0, 60, "确认权限后，给你切回乐器界面和松开键鼠的时间。"),
-                ("按键上限 / 毫秒", self.hold_ms, 20, 400, "每个音按住的时长上限。默认 300 毫秒；长音只触发一次。")]):
+                ("按键上限 / 毫秒", self.hold_ms, 20, 400, "每个音按住的时长上限。默认 300 毫秒；长音只触发一次。"),
+                ("和弦音数上限", self.max_polyphony, 2, 36, "原曲声部模式每组保留 2–36 音，默认 12。长音重叠时，实际并行键数可能更高；游戏多音能力需要试奏确认。")]):
             grid.columnconfigure(col, weight=1)
             cell = tk.Frame(grid, bg="white")
             cell.grid(row=0, column=col, sticky="ew", padx=(0, 14 if col < 2 else 0))
@@ -636,7 +643,7 @@ class App:
 
     def arrangement_settings(self):
         return {"tracks": [self.track_ids[int(i)] for i in self.tracks.curselection()],
-                "mode": "melody" if self.mode.get().startswith("旋律") else "chords",
+                "mode": mode_key(self.mode.get()), "max_polyphony": int(self.max_polyphony.get()),
                 "speed": float(self.speed.get()), "transpose": int(self.transpose.get()),
                 "range_policy": {"超出音域折回八度": "fold", "丢弃超出音域的音": "drop", "超出音域时报错": "strict"}[self.range_policy.get()],
                 "start": parse_time(self.start.get()), "end": parse_time(self.end.get()) if self.end.get().strip() else None,
@@ -648,7 +655,7 @@ class App:
         try:
             settings = self.arrangement_settings()
             score = convert(self.song, settings["tracks"], settings["mode"], settings["speed"], settings["transpose"],
-                            settings["range_policy"], settings["start"], self.applied_instrument, settings["end"])
+                            settings["range_policy"], settings["start"], self.applied_instrument, settings["end"], settings["max_polyphony"], settings["roles"])
             performance_plan(score, settings["hold_ms"])
             self.preset_store.save(self.song_fingerprint, self.applied_instrument, settings)
         except (OSError, ValueError, KeyError, tk.TclError):
@@ -658,7 +665,7 @@ class App:
         self.applied_instrument = self.current_instrument().id
         if self.song is None:
             return
-        settings = {**DEFAULTS, "tracks": [self.song.suggested_track()]}
+        settings = {**DEFAULTS, "mode": "faithful", "tracks": [p['index'] for p in self.tracks.rows if not p['drums']]}
         message = "本曲使用默认方案 · 修改后自动保存"
         try:
             saved = self.preset_store.load(self.song_fingerprint, self.applied_instrument,
@@ -670,10 +677,10 @@ class App:
             message = "保存的方案无法读取，已使用默认设置"
         self.syncing_settings = True
         try:
-            for name in ("speed", "transpose", "start", "countdown", "hold_ms"):
+            for name in ("speed", "transpose", "start", "countdown", "hold_ms", "max_polyphony"):
                 getattr(self, name).set(str(settings[name]))
             self.end.set("" if settings["end"] is None else str(settings["end"]))
-            self.mode.set("旋律版（推荐）" if settings["mode"] == "melody" else "和弦版（最多 6 音）")
+            self.mode.set(MODES[settings["mode"]])
             self.range_policy.set({"fold": "超出音域折回八度", "drop": "丢弃超出音域的音", "strict": "超出音域时报错"}[settings["range_policy"]])
             self.tracks.selection_clear(0, "end")
             for index, track in enumerate(self.track_ids):
@@ -693,9 +700,9 @@ class App:
         countdown, hold = int(self.countdown.get()), int(self.hold_ms.get())
         if not 0 <= countdown <= 60 or not 20 <= hold <= 400:
             raise ValueError("倒计时应为 0–60 秒，按键上限应为 20–400 毫秒。")
-        score = convert(self.song, tracks, "melody" if self.mode.get().startswith("旋律") else "chords",
+        score = convert(self.song, tracks, mode_key(self.mode.get()),
                         float(self.speed.get()), int(self.transpose.get()), policies[self.range_policy.get()], parse_time(self.start.get()), self.current_instrument().id,
-                        parse_time(self.end.get()) if self.end.get().strip() else None)
+                        parse_time(self.end.get()) if self.end.get().strip() else None, int(self.max_polyphony.get()), dict(self.tracks.roles))
         if hasattr(self.engine, "key_schedule"):
             self.engine.key_schedule(score, hold)
         return validate_score(score)
@@ -765,7 +772,7 @@ class App:
             return self.score
         try:
             profile = self.current_instrument()
-            self.mode_box.configure(values=["旋律版（推荐）", "和弦版（最多 6 音）"])
+            self.mode_box.configure(values=list(MODES.values()))
             self.instrument_label.configure(text=profile.title)
             self.range_label.configure(text=f"36 键 · {profile.range_label}")
             self.instrument_hint.configure(text="Shift 黑键 · 混合和弦快速分组" if profile.id == "piano" else "三排独立半音键 · 支持和弦版")
@@ -822,7 +829,7 @@ class App:
     def reset_settings(self):
         for variable, value in [(self.speed, "1.0"), (self.transpose, "0"), (self.start, "0"),
                                 (self.end, ""),
-                                (self.mode, "旋律版（推荐）"), (self.range_policy, "超出音域折回八度"),
+                                (self.mode, MODES['faithful']), (self.max_polyphony, "12"), (self.range_policy, "超出音域折回八度"),
                                 (self.countdown, "7"), (self.hold_ms, "300")]:
             variable.set(value)
         self.update_score(quiet=True)
@@ -914,6 +921,8 @@ class App:
         hold_ms = int(self.hold_ms.get()) if source is None else 300
         token = uuid.uuid4().hex
         self.preview_token, self.preview_started = token, None
+        self.preview_origin = options['start'] if source is not None else score['summary']['source_origin_seconds']
+        self.preview_speed = options['speed'] if source is not None else score['settings']['speed']
         self.set_status("正在准备电脑试听…", "准备试听", "blue")
         self.refresh_controls()
 
@@ -1001,6 +1010,7 @@ class App:
                     elapsed = min(self.active["length"], max(0, time.time() - data["started_at"]))
                     self.progress.set(elapsed / self.active["length"] * 100)
                     self.time_text.set(f'{duration_label(elapsed)} / {duration_label(self.active["length"])}')
+                    self.tracks.set_playhead(self.score['summary']['source_origin_seconds'] + elapsed * self.score['settings']['speed'])
                     self.set_status("正在游戏中演奏 · F8 停止 · 切出游戏会自动停止", "演奏中", "teal")
             except (OSError, ValueError, KeyError, TypeError):
                 pass
@@ -1008,6 +1018,7 @@ class App:
             elapsed = min(self.preview_length, max(0, time.perf_counter() - self.preview_started))
             self.progress.set(elapsed / self.preview_length * 100)
             self.time_text.set(f"{duration_label(elapsed)} / {duration_label(self.preview_length)}")
+            self.tracks.set_playhead(self.preview_origin + elapsed * self.preview_speed)
             if elapsed >= self.preview_length + 0.0:
                 self.stop_preview()
                 self.set_status("电脑试听结束，可以在游戏中试奏。", "试听完成", "blue")
@@ -1101,7 +1112,8 @@ class App:
         text = (f'选中 {summary["source_notes"]} 音 → 保留 {summary["notes"]} 音  ·  简化 {summary["chord_notes_removed"]}  ·  '
                 f'折回 {summary["folded"]}  ·  丢弃 {summary["dropped"]}  ·  重合合并 {summary.get("merged", 0)}')
         self.label(window, text, 9, C["muted"], padx=20).pack(anchor="w")
-        self.label(window, f'混合黑白键 {report["performance"]["mixed_groups"]} 组 · 试听与演奏共享时序；以下变更位置按原曲时间显示。', 9, C["muted"], padx=20, pady=8).pack(anchor="w")
+        timing = report['performance']
+        self.label(window, f'并行峰值 {timing["peak_held_keys"]} 键 · 起音最大偏差 {timing["max_onset_deviation_ms"]:.1f} ms · 混合黑白键 {timing["mixed_groups"]} 组\n以上为软件排程；游戏实际发声仍需实听。变更位置按原曲时间显示。', 9, C["muted"], padx=20, pady=8).pack(anchor="w")
         footer = tk.Frame(window, bg=C["bg"])
         footer.pack(side="bottom", fill="x", padx=20, pady=15)
         self.label(footer, f'变更操作 {report["total_changes"]} 条' + (' · 明细只保留前 2000 条，计数完整' if report['truncated'] else ''), 9, C['muted']).pack(side='left')
