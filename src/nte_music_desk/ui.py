@@ -22,6 +22,7 @@ from .presets import PresetStore, fingerprint, DEFAULTS
 from .segments import parse_time
 from .analysis import recommend_transpositions, adaptation_report
 from .performance import performance_plan
+from .track_ui import TrackPanel
 
 
 C = {"bg": "#F1F4F8", "paper": "#FFFFFF", "ink": "#1B2A41", "muted": "#718096",
@@ -370,14 +371,15 @@ class App:
 
         tracks_card = self.card(middle)
         tracks_card.grid(row=0, column=1, sticky="nsew")
-        self.label(tracks_card, "旋律音轨", 12, bold=True).pack(anchor="w")
-        self.label(tracks_card, "已自动推荐 · 按 Ctrl 可多选", 8, C["muted"]).pack(anchor="w", pady=(3, 10))
-        self.tracks = tk.Listbox(tracks_card, selectmode="extended", exportselection=False, height=4,
-                                 bg="#F7F9FC", fg=C["ink"], selectbackground=C["teal"], selectforeground="white",
-                                 activestyle="none", relief="flat", borderwidth=0, highlightthickness=0,
-                                 font=(FONT, 9))
-        self.tracks.pack(fill="both", expand=True, ipady=5)
+        self.label(tracks_card, "多乐器声部", 12, bold=True).pack(anchor="w")
+        self.label(tracks_card, "点击启用列开关声部 · 鼓组不映射琴键", 8, C["muted"]).pack(anchor="w", pady=(3, 10))
+        self.tracks = TrackPanel(tracks_card)
+        self.tracks.pack(fill="both", expand=True)
         self.controls.append((self.tracks, "normal"))
+        workspace = self.button(tracks_card, "打开多轨工作区 ↗", self.tracks.show_workspace, size=9)
+        workspace.configure(pady=5)
+        workspace.pack(fill='x', pady=(6, 0))
+        self.controls.append((workspace, 'normal'))
         self.track_preview_button = self.button(tracks_card, "♫  单独试听当前轨", self.preview_track, "preview", 9,
             "试听最后点选的音轨，保留原始声部，不折回音域、不删减和弦；不会改变演奏选轨。")
         self.track_preview_button.configure(pady=5)
@@ -596,15 +598,8 @@ class App:
             self.title.set(song.title)
             kind = "MusicXML" if path.suffix.lower() in (".xml",".musicxml",".mxl") else "MIDI"
             self.subtitle.set(f"{kind} 曲谱  ·  {path.name}")
-            self.tracks.delete(0, "end")
-            self.track_ids = []
-            for item in song.track_info():
-                self.track_ids.append(item["index"])
-                name = item["name"][:19]
-                marker = "推荐 · " if item["index"] == recommended else ""
-                self.tracks.insert("end", f'{marker}{item["index"]}  {name}   {note_name(item["low"])}–{note_name(item["high"])}')
-                if item["index"] == recommended:
-                    self.tracks.selection_set(len(self.track_ids) - 1)
+            self.tracks.load_song(song)
+            self.track_ids = [p['index'] for p in self.tracks.rows]
             self.restore_arrangement()
             for button, preset in self.library_buttons:
                 selected = path == preset
@@ -645,7 +640,7 @@ class App:
                 "speed": float(self.speed.get()), "transpose": int(self.transpose.get()),
                 "range_policy": {"超出音域折回八度": "fold", "丢弃超出音域的音": "drop", "超出音域时报错": "strict"}[self.range_policy.get()],
                 "start": parse_time(self.start.get()), "end": parse_time(self.end.get()) if self.end.get().strip() else None,
-                "countdown": int(self.countdown.get()), "hold_ms": int(self.hold_ms.get())}
+                "countdown": int(self.countdown.get()), "hold_ms": int(self.hold_ms.get()), "roles": dict(self.tracks.roles)}
 
     def save_arrangement(self):
         if not self.song_fingerprint or self.syncing_settings or self.song is None:
@@ -666,7 +661,8 @@ class App:
         settings = {**DEFAULTS, "tracks": [self.song.suggested_track()]}
         message = "本曲使用默认方案 · 修改后自动保存"
         try:
-            saved = self.preset_store.load(self.song_fingerprint, self.applied_instrument, self.track_ids)
+            saved = self.preset_store.load(self.song_fingerprint, self.applied_instrument,
+                [p['index'] for p in self.tracks.rows if not p['drums']], self.song.part_sources)
             if saved:
                 settings = saved
                 message = "已恢复本曲方案 · 钢琴与吉他独立保存"
@@ -683,6 +679,8 @@ class App:
             for index, track in enumerate(self.track_ids):
                 if track in settings["tracks"]:
                     self.tracks.selection_set(index)
+            self.tracks.roles.update(settings.get('roles', {}))
+            self.tracks.render()
             self.arrangement_label.configure(text=message)
         finally:
             self.syncing_settings = False
@@ -885,12 +883,14 @@ class App:
     def preview_track(self):
         if self.song is None or self.active or self.preview_token:
             return
-        selected = list(self.tracks.curselection())
-        if not selected:
+        if not self.tracks.rows:
             self.show_error(ValueError("请先点选一条音轨。"))
             return
         focused = self.tracks.index("active")
-        index = focused if focused in selected else selected[0]
+        index = focused
+        if self.tracks.rows[index]['drums']:
+            self.show_error(ValueError('鼓组不能直接作为钢琴音高试听。'))
+            return
         try:
             options = {"tracks": [self.track_ids[index]], "start": parse_time(self.start.get()),
                        "end": parse_time(self.end.get()) if self.end.get().strip() else None,

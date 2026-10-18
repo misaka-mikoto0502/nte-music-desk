@@ -40,6 +40,10 @@ class ApplicationChecks(unittest.TestCase):
             app = App(root, engine)
             try:
                 app.end.set('4'); app.update_score()
+                app.tracks.show_workspace()
+                root.update_idletasks()
+                self.assertEqual(len(app.tracks.views), 2)
+                self.assertGreater(len(app.tracks.timeline.find_all()), 0)
                 selection = app.tracks.curselection()
                 app.preview_track()
                 message = app.messages.get(timeout=15)

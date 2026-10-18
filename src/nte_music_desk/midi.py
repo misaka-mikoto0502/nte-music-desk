@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from collections import defaultdict, deque
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, replace, field
 import json
 import math
 from pathlib import Path
@@ -31,6 +31,7 @@ class MidiNote:
     velocity: int
     start: float
     end: float
+    program: int = 0
 
 
 @dataclass
@@ -43,15 +44,26 @@ class MidiSong:
     tempos: list[tuple[int, int]]
     seconds: float
     warnings: list[str]
+    part_sources: dict[int, int] = field(default_factory=dict)
 
-    def track_info(self):
+    def track_info(self, include_drums=False):
+        from .parts import instrument_name, role_hint
         result = []
+        grouped = defaultdict(list)
+        for note in self.notes:
+            if include_drums or note.channel != 9:
+                grouped[note.track].append(note)
         for index, name in enumerate(self.track_names):
-            notes = [n for n in self.notes if n.track == index and n.channel != 9]
+            notes = grouped[index]
             if notes:
+                average = sum(n.pitch for n in notes) / len(notes)
+                channel, program = notes[0].channel, notes[0].program
                 result.append({"index": index, "name": name or f"音轨 {index}", "notes": len(notes),
                                "low": min(n.pitch for n in notes), "high": max(n.pitch for n in notes),
-                               "average": sum(n.pitch for n in notes) / len(notes)})
+                               "average": average, "channel": channel, "program": program,
+                               "instrument": instrument_name(program, channel), "drums": channel == 9,
+                               "source_track": self.part_sources.get(index, index),
+                               "role": role_hint(name, program, average)})
         return result
 
     def suggested_track(self):
@@ -118,6 +130,7 @@ def parse_midi(data, title="MIDI"):
     if division == 0 or division & 0x8000:
         raise ValueError("只支持 PPQN 拍时钟；SMPTE 时间码请先另存为 PPQN MIDI。")
     raw_notes, tempo_events, names, warnings = [], [(0, -1, 0, 500000)], [], []
+    program_events = defaultdict(list)
     end_ticks, event_count = [], 0
     for track in range(track_count):
         if reader.take(4) != b"MTrk":
@@ -130,9 +143,9 @@ def parse_midi(data, title="MIDI"):
         def finish(channel, pitch):
             queue = active[channel, pitch]
             if queue:
-                start, velocity = queue.popleft()
+                start, velocity, onset_serial = queue.popleft()
                 if tick > start:
-                    raw_notes.append((track, channel, pitch, velocity, start, tick))
+                    raw_notes.append((track, channel, pitch, velocity, start, tick, onset_serial))
 
         while chunk.pos < len(chunk.data):
             tick += chunk.vlq()
@@ -169,9 +182,11 @@ def parse_midi(data, title="MIDI"):
                 if any(byte >= 128 for byte in payload):
                     raise ValueError("MIDI 通道事件含有非法数据字节。")
                 if kind == 9 and payload[1] > 0:
-                    active[channel, payload[0]].append((tick, payload[1]))
+                    active[channel, payload[0]].append((tick, payload[1], serial))
                 elif kind == 8 or (kind == 9 and payload[1] == 0):
                     finish(channel, payload[0])
+                elif kind == 0xC:
+                    program_events[channel].append((tick, track, serial, payload[0]))
                 elif kind == 0xB and payload[0] in (120, 123):
                     for chan, pitch in list(active):
                         if chan == channel:
@@ -184,8 +199,8 @@ def parse_midi(data, title="MIDI"):
             warnings.append(f"音轨 {track} 有 {unfinished} 个音没有松键事件，已在轨道末尾结束。")
             for (channel, pitch), queue in active.items():
                 while queue:
-                    start, velocity = queue.popleft()
-                    raw_notes.append((track, channel, pitch, velocity, start, max(tick, start + division // 4)))
+                    start, velocity, onset_serial = queue.popleft()
+                    raw_notes.append((track, channel, pitch, velocity, start, max(tick, start + division // 4), onset_serial))
         end_ticks.append(tick)
         names.append(name)
 
@@ -207,10 +222,17 @@ def parse_midi(data, title="MIDI"):
         index = bisect_right(ticks, tick) - 1
         return seconds[index] + (tick - ticks[index]) * tempos[index] / division / 1000000
 
-    notes = [MidiNote(t, c, p, v, in_seconds(a), in_seconds(b)) for t, c, p, v, a, b in raw_notes]
+    programs = {channel: sorted(values) for channel, values in program_events.items()}
+    def program_at(channel, tick, track, serial):
+        values = programs.get(channel, [])
+        index = bisect_right(values, (tick, track, serial, 127)) - 1
+        return values[index][3] if index >= 0 else 0
+    notes = [MidiNote(t, c, p, v, in_seconds(a), in_seconds(b), program_at(c, a, t, serial))
+             for t, c, p, v, a, b, serial in raw_notes]
     notes.sort(key=lambda n: (n.start, n.track, n.pitch))
     duration = max([in_seconds(max(end_ticks)), *[n.end for n in notes]])
-    return MidiSong(title, fmt, division, notes, names, list(zip(ticks, tempos)), duration, warnings)
+    from .parts import normalize_parts
+    return normalize_parts(MidiSong(title, fmt, division, notes, names, list(zip(ticks, tempos)), duration, warnings))
 
 
 def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_policy="fold", start=0.0, instrument="guitar", end=None):

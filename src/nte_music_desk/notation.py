@@ -288,7 +288,11 @@ def parse_musicxml(data, title="MusicXML"):
     def at_seconds(beat):
         index = bisect_right(beats, beat)-1
         return seconds[index]+float(beat-beats[index])*60/rates[index]
-    notes = [MidiNote(n["track"],n["channel"],n["pitch"],80,at_seconds(n["start"]),at_seconds(n["end"])) for n in raw]
+    def program(track):
+        description = info.get(parts[track].get('id'))
+        value = description.findtext('midi-instrument/midi-program', '1') if description is not None else '1'
+        return integer(value, 'MIDI 乐器编号', 1, 128) - 1
+    notes = [MidiNote(n["track"],n["channel"],n["pitch"],80,at_seconds(n["start"]),at_seconds(n["end"]),program(n['track'])) for n in raw]
     notes.sort(key=lambda n:(n.start,n.track,n.pitch))
     if skipped_grace:
         warnings.append(f"MusicXML 的 {skipped_grace} 个无时值装饰音未展开。")
@@ -303,7 +307,8 @@ def parse_musicxml(data, title="MusicXML"):
     duration = max(at_seconds(final_beat), max(n.end for n in notes))
     if duration > 7200:
         raise ValueError("曲谱超过两小时，请先分段导出。")
-    return MidiSong(str(title)[:180],1,480,notes,names,[(round(float(b)*480),round(60000000/r)) for b,r in zip(beats,rates)],duration,warnings)
+    from .parts import normalize_parts
+    return normalize_parts(MidiSong(str(title)[:180],1,480,notes,names,[(round(float(b)*480),round(60000000/r)) for b,r in zip(beats,rates)],duration,warnings))
 
 
 def read_score(path):

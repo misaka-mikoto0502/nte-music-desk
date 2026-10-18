@@ -31,7 +31,7 @@ def adaptation_metrics(score):
 
 def recommend_transpositions(song, *, tracks=None, mode="melody", speed=1, transpose=0,
                              range_policy="fold", start=0, end=None, instrument="guitar", hold_ms=300,
-                             planner=None, limit=3, cancel=None):
+                             planner=None, limit=3, cancel=None, roles=None):
     candidates = []
     for shift in sorted(set(range(-12, 13)) | {-36, -24, 24, 36, transpose}):
         if cancel is not None and cancel():
