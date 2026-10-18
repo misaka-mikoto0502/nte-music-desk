@@ -20,7 +20,7 @@ from .instruments import INSTRUMENTS, score_instrument
 from . import APP_NAME, __version__
 from .presets import PresetStore, fingerprint, DEFAULTS
 from .segments import parse_time
-from .analysis import recommend_transpositions
+from .analysis import recommend_transpositions, adaptation_report
 
 
 C = {"bg": "#F1F4F8", "paper": "#FFFFFF", "ink": "#1B2A41", "muted": "#718096",
@@ -415,6 +415,10 @@ class App:
                                          tip="展开前 8 个音的游戏键位，也可继续查看整首音符明细。")
         self.notes_button.configure(pady=6)
         self.notes_button.pack(side="right")
+        self.report_button = self.button(advanced_head, "适配报告 ↗", self.show_adaptation, size=9,
+            tip="查看折回、丢弃、重合与简化音符发生的位置，并导出适配报告。")
+        self.report_button.configure(pady=6)
+        self.report_button.pack(side="right", padx=8)
         self.advanced = self.card(content)
         grid = tk.Frame(self.advanced, bg="white")
         grid.pack(fill="x")
@@ -851,7 +855,7 @@ class App:
             self.enabled(widget, not locked, normal)
         for button in [self.online_button, self.import_button, *self.recent_buttons, *[b for b, _ in self.library_buttons]]:
             self.enabled(button, not locked)
-        for button in [self.play_button, self.trial_button, self.export_button, self.details_button, self.notes_button]:
+        for button in [self.play_button, self.trial_button, self.export_button, self.details_button, self.notes_button, self.report_button]:
             self.enabled(button, ready and not locked)
         self.enabled(self.preview_button, ready and not locked and not self.preview_token)
         self.enabled(self.track_preview_button, self.song is not None and not locked and not self.preview_token)
@@ -1072,6 +1076,50 @@ class App:
         for index, event in enumerate(score["events"], 1):
             name = note_name(event["midi"])
             tree.insert("", "end", values=(index, f'{event["at"]:.3f}', name, score_instrument(score).keys[name].label, f'{event["duration"]:.3f}'))
+
+    def show_adaptation(self):
+        score = self.update_score()
+        if score is None:
+            return
+        report = adaptation_report(score)
+        window = tk.Toplevel(self.root)
+        window.title(f'{self.song.title} · 适配报告')
+        window.geometry("790x590")
+        window.configure(bg=C["bg"])
+        self.label(window, "曲谱适配报告", 18, bold=True, padx=20, pady=15).pack(anchor="w")
+        summary = report["summary"]
+        text = (f'选中 {summary["source_notes"]} 音 → 保留 {summary["notes"]} 音  ·  简化 {summary["chord_notes_removed"]}  ·  '
+                f'折回 {summary["folded"]}  ·  丢弃 {summary["dropped"]}  ·  重合合并 {summary.get("merged", 0)}')
+        self.label(window, text, 9, C["muted"], padx=20).pack(anchor="w")
+        self.label(window, "折回与合并可能发生在同一个音上；以下位置按原曲时间显示。", 9, C["muted"], padx=20, pady=8).pack(anchor="w")
+        footer = tk.Frame(window, bg=C["bg"])
+        footer.pack(side="bottom", fill="x", padx=20, pady=15)
+        self.label(footer, f'变更操作 {report["total_changes"]} 条' + (' · 明细只保留前 2000 条，计数完整' if report['truncated'] else ''), 9, C['muted']).pack(side='left')
+        def export_report():
+            path = filedialog.asksaveasfilename(parent=window, title="导出适配报告", defaultextension=".json",
+                initialfile=export_name(report["title"]) + "_adaptation.json", filetypes=[("适配报告", "*.json")])
+            if path:
+                try:
+                    Path(path).write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
+                    self.set_status("适配报告已导出。", "导出成功", "teal")
+                except OSError as error:
+                    self.show_error(error)
+        self.button(footer, "导出报告", export_report, "preview", 9).pack(side="right")
+        frame = tk.Frame(window, bg='white')
+        frame.pack(fill='both', expand=True, padx=20, pady=8)
+        tree = ttk.Treeview(frame, columns=('time', 'track', 'action', 'source', 'target'), show='headings', style='Desk.Treeview')
+        for key, title, width in [('time', '原曲 / 秒', 120), ('track', '音轨', 70), ('action', '处理', 140), ('source', '原音 → 移调', 175), ('target', '适配音', 100)]:
+            tree.heading(key, text=title)
+            tree.column(key, width=width, anchor='center')
+        scroll = ttk.Scrollbar(frame, command=tree.yview)
+        scroll.pack(side='right', fill='y')
+        tree.configure(yscrollcommand=scroll.set)
+        tree.pack(fill='both', expand=True)
+        names = {'simplified': '声部简化', 'folded': '八度折回', 'dropped': '越界丢弃', 'merged': '同音重合合并'}
+        for change in report['changes']:
+            tree.insert('', 'end', values=(f'{change["source_at"]:.3f}', change['track'], names[change['action']],
+                f'{note_name(change["source_midi"])} → {note_name(change["requested_midi"])}',
+                note_name(change['midi']) if change['midi'] is not None else '—'))
 
     def export(self):
         score = self.score if self.refresh_job is None else self.update_score()

@@ -233,6 +233,13 @@ def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_poli
              for n in song.notes if n.track in tracks and n.channel != 9 and n.start < stop and n.end > start]
     if not notes:
         raise ValueError("所选轨道和起点之后没有可用音符。")
+    changes, change_count = [], 0
+    def record(action, note, adapted=None):
+        nonlocal change_count
+        change_count += 1
+        if len(changes) < 2000:
+            changes.append({"action": action, "source_at": round(note.start, 6), "track": note.track,
+                            "source_midi": note.pitch, "requested_midi": note.pitch + transpose, "midi": adapted})
     groups = []
     for note in notes:
         if not groups or note.start - groups[-1][0].start > 0.025:
@@ -244,10 +251,14 @@ def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_poli
         chosen = sorted(group, key=lambda n: (n.pitch, n.velocity), reverse=True)
         chosen = chosen[:1] if mode == "melody" else chosen[:6]
         reduced += len(group) - len(chosen)
+        kept_ids = {id(note) for note in chosen}
+        for note in group:
+            if id(note) not in kept_ids:
+                record("simplified", note)
         retained.extend(chosen)
     retained.sort(key=lambda n: (n.start, n.pitch))
     origin = start if segmented else min(n.start for n in retained)
-    events, folded, dropped = [], 0, 0
+    events, folded, dropped, merged = [], 0, 0, 0
     seen = set()
     for note in retained:
         pitch = note.pitch + transpose
@@ -256,19 +267,24 @@ def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_poli
                 raise ValueError(f"{note_name(pitch)} 超出 {profile.range_label}。请选择八度折回或调整移调。")
             if range_policy == "drop":
                 dropped += 1
+                record("dropped", note)
                 continue
             folded += 1
             while pitch < low:
                 pitch += 12
             while pitch > high:
                 pitch -= 12
+            record("folded", note, pitch)
         at = round((note.start - origin) / speed, 6)
         signature = (at, pitch)
         if signature in seen:
+            merged += 1
+            record("merged", note, pitch)
             continue
         seen.add(signature)
         events.append({"at": at, "duration": round(max(0.01, (note.end - note.start) / speed), 6),
-                       "midi": pitch, "source_midi": note.pitch})
+                       "midi": pitch, "source_midi": note.pitch,
+                       "source_at": round(note.start, 6), "source_track": note.track})
     if not events:
         raise ValueError("全部音符均被音域过滤，请使用八度折回或调整音轨。")
     # Trim any leading silence introduced by range filtering, retain later rests.
@@ -288,10 +304,12 @@ def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_poli
             "settings": {"tracks": tracks, "speed": speed, "transpose": transpose,
                          "range_policy": range_policy, "start": start, "end": end},
             "summary": {"source_notes": len(notes), "notes": len(events), "folded": folded,
-                        "dropped": dropped, "chord_notes_removed": reduced,
+                        "dropped": dropped, "merged": merged, "chord_notes_removed": reduced,
                         "seconds": round((stop - start) / speed if segmented else max(e["at"] + e["duration"] for e in events), 6),
                         "source_origin_seconds": round(origin + first * speed, 3)},
-            "warnings": warnings, "events": events}
+            "warnings": warnings, "events": events,
+            "adaptation": {"changes": sorted(changes, key=lambda c: (c["source_at"], c["track"])),
+                           "total_changes": change_count, "truncated": change_count > len(changes)}}
 
 
 def validate_score(score):

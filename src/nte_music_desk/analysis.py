@@ -7,7 +7,7 @@ from .instruments import get_instrument
 
 def adaptation_metrics(score):
     events, summary = score["events"], score["summary"]
-    collisions = max(0, summary["source_notes"] - summary["chord_notes_removed"] - summary["dropped"] - len(events))
+    collisions = summary.get("merged", max(0, summary["source_notes"] - summary["chord_notes_removed"] - summary["dropped"] - len(events)))
     skyline = []
     groups = []
     for event in events:
@@ -49,3 +49,14 @@ def recommend_transpositions(song, *, tracks=None, mode="melody", speed=1, trans
         raise ValueError("没有可演奏的移调候选，请先降低速度、减少音轨或调整音域策略。")
     candidates.sort(key=lambda c: (c["cost"], abs(c["transpose"]), c["transpose"]))
     return candidates[:limit]
+
+
+def adaptation_report(score):
+    return {"schema": "nte-adaptation-report-v1", "title": score.get("title", "曲谱"),
+            "instrument": score.get("instrument", "guitar"), "mode": score["mode"],
+            "settings": dict(score.get("settings", {})), "summary": dict(score["summary"]),
+            "metrics": adaptation_metrics(score), "warnings": list(score.get("warnings", [])),
+            "changes": score.get("adaptation", {}).get("changes", []),
+            "total_changes": score.get("adaptation", {}).get("total_changes", 0),
+            "truncated": score.get("adaptation", {}).get("truncated", False),
+            "note": "规则适配结果，不代表听感还原度或游戏实际发声；变更明细最多保存 2000 条，统计为完整计数。"}

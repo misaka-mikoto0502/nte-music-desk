@@ -5,10 +5,25 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from nte_music_desk.midi import MidiSong, MidiNote, convert
 from nte_music_desk.segments import parse_time
-from nte_music_desk.analysis import recommend_transpositions
+from nte_music_desk.analysis import recommend_transpositions, adaptation_report
 
 
 class ArrangementChecks(unittest.TestCase):
+    def test_report_accounts_for_removed_and_merged_notes_with_source_positions(self):
+        song = MidiSong('dense', 0, 480, [MidiNote(0, 0, p, 80, 2, 3) for p in (24, 36, 48, 60, 72, 84, 96)], ['lead'], [], 4, [])
+        score = convert(song, tracks=[0], mode='chords')
+        report = adaptation_report(score)
+        summary = report['summary']
+        self.assertEqual(summary['source_notes'], summary['notes'] + summary['chord_notes_removed'] + summary['dropped'] + summary['merged'])
+        self.assertEqual(summary['folded'], 3)
+        self.assertEqual({c['action'] for c in report['changes']}, {'simplified', 'folded', 'merged'})
+        self.assertTrue(all(c['source_at'] == 2 for c in report['changes']))
+        song.notes = [MidiNote(0, 0, 60, 80, 2, 3)] * 3000
+        report = adaptation_report(convert(song))
+        self.assertTrue(report['truncated'])
+        self.assertEqual(len(report['changes']), 2000)
+        self.assertEqual(report['total_changes'], 2999)
+
     def test_transpose_candidates_prefer_full_range_and_do_not_mutate_source(self):
         song = MidiSong('low lead', 0, 480, [MidiNote(0, 0, pitch, 80, i, i + .5) for i, pitch in enumerate((40, 44, 47))], ['lead'], [], 3, [])
         from nte_music_desk.cli import key_schedule
