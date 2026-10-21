@@ -33,7 +33,8 @@ def main():
         for item in bundle.infolist():
             resolved = (target / item.filename).resolve()
             assert resolved.is_relative_to(target.resolve())
-            assert resolved.suffix.lower() not in ('.safetensors', '.pt', '.onnx')
+            assert resolved.suffix.lower() not in ('.safetensors', '.pt', '.onnx', '.ckpt', '.pth')
+            assert not {'__pycache__', 'catalogs', 'audio-models', 'transcriptions', 'downloaded_midis', 'audio-engine'} & set(Path(item.filename).parts)
         bundle.extractall(target)
     app = target / '异环演奏工作台'
     exe = app / '异环演奏工作台.exe'

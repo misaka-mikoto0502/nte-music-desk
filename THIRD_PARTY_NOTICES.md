@@ -5,7 +5,7 @@
 ## 曲谱与历史目录
 
 - 内置 twinkle.mid / twinkle.musicxml 由本项目根据传统《小星星》旋律自行编码，不包含第三方录音或编曲。
-- 当前开发版已删除 BitMidi、动漫公开目录和 Mutopia 的搜索下载代码及随包元数据。旧 Git 版本和已发布的旧软件仍保留历史行为，不能用新版说明替代旧版事实。
+- v1.4.0已删除 BitMidi、动漫公开目录和 Mutopia 的搜索下载代码及随包元数据。旧 Git 版本和已发布的旧软件仍保留历史行为，不能用新版说明替代旧版事实。
 - 用户旧下载文件不删除，仅支持本地导入和读取原曲名。来源记录不等于授权证明。
 - 项目不提供商业歌曲录音、第三方曲谱或转谱结果下载。合法获取输入文件、模型许可、改编与公开传播权限需分别核对。
 
@@ -25,7 +25,7 @@
 
 [MuScriptor 模型](https://huggingface.co/MuScriptor/muscriptor-medium) 权重另受 CC BY-NC 4.0 非商用许可及附加条件约束，尤其要求输入音乐具备转谱所需的权利。用户自行接受上游条款并完成官方认证。工作台 MIT 许可不替代权重许可，不代表识别结果可自由传播。
 
-[GAME](https://github.com/openvpi/GAME) 代码为 MIT，[1.0 系列模型权重](https://github.com/openvpi/GAME/releases/tag/v1.0.0)为 CC BY-NC-SA 4.0。当前开发版以官方 1.0.3 small ONNX 权重作为可选旋律 Beta，确认条件后才下载或使用；不把权重放进源码或便携包。遵循官方 ONNX 接口调用本机模型，相关第三方依赖许可各自适用。
+[GAME](https://github.com/openvpi/GAME) 代码为 MIT，[1.0 系列模型权重](https://github.com/openvpi/GAME/releases/tag/v1.0.0)为 CC BY-NC-SA 4.0。v1.4.0以官方 1.0.3 small ONNX 权重作为可选旋律 Beta，确认条件后才下载或使用；不把权重放进源码或便携包。遵循官方 ONNX 接口调用本机模型，相关第三方依赖许可各自适用。
 
 [Audio Separator](https://github.com/nomadkaraoke/python-audio-separator) 包装程序采用 MIT。前期尝试的 ViperX BS-RoFormer 检查点来自公开模型仓库，但其独立权重许可尚未核实，已停用下载与调用，不随当前引擎安装或软件包分发。原唱分离暂缓开放。
 

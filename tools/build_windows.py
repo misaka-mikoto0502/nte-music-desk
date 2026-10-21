@@ -8,6 +8,7 @@ import sys
 import zipfile
 import importlib.metadata
 import json
+import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -24,10 +25,15 @@ def main():
     output, work = args.output.resolve(), args.work.resolve()
     output.mkdir(parents=True, exist_ok=True)
     work.mkdir(parents=True, exist_ok=True)
+    # Never copy bytecode caches from local audio-engine checks into the app.
+    # Use a fresh staging folder so removed resources cannot survive a rebuild.
+    resources = work / 'resources' / uuid.uuid4().hex / 'assets'
+    shutil.copytree(ROOT / 'src/nte_music_desk/assets', resources,
+                    ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '*.pyo'))
     subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir", "--windowed",
                     "--noupx", "--name", "异环演奏工作台", "--distpath", str(output), "--workpath", str(work / "pyinstaller"),
                     "--specpath", str(work), "--paths", str(ROOT / "src"),
-                    "--add-data", f"{ROOT / 'src/nte_music_desk/assets'}:nte_music_desk/assets",
+                    "--add-data", f"{resources}:nte_music_desk/assets",
                     "--icon", str(ROOT / "src/nte_music_desk/assets/icon.ico"),
                     "--version-file", str(ROOT / "tools/version_info.txt"),
                     str(ROOT / "src/nte_music_desk/_bootstrap.py")], check=True, cwd=ROOT)

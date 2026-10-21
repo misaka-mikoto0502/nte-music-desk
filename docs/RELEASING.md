@@ -44,3 +44,9 @@ Actions 在 pull_request、手动触发或推送 v* 标签时运行自包含测�
 音频引擎、权重、登录缓存、个人转谱和 Python 虚拟环境不得放进源码包或便携包。软件须附带音频配置说明和上游许可边界。冻结自检要覆盖多轨窗口和音频配置窗口，报告真实模型推理未执行。
 
 本地构建后运行 `python tools/verify_release.py`，核对 ZIP 散列、CRC、独立解压、隔离环境启动、片段转换和资源只读。默认读取当前版本 releases/v<版本> 目录，其他位置可用 --archive 指定。
+
+## v1.4.0 发布范围
+
+开发分支 feat/audio-accompaniment-beta。在 releases/v1.4.0 独立生成 Windows 包，保留历史版本。在线搜曲、下载及目录资源均已移除；可选音频识别仍属实验功能，原唱分离停用。发布说明使用 docs/RELEASE_NOTES_1.4.0.md，不能宣传已完成高保真模型或原唱分离验收。
+
+构建使用干净资源副本，排除本机 __pycache__。独立验证还检查不包含曲库快照、个人数据目录和模型权重。Source 包和 Windows 包均不得包含 .build、outputs 或父目录 work。

@@ -48,6 +48,7 @@ def run_self_test(engine, destination):
         app = App(root, engine)
         root.update_idletasks()
         assert app.score is not None
+        assert not hasattr(app, 'open_online')
         assert app.artwork._image is not None, 'Background asset could not be decoded'
         assert app.artwork._image.width > 0
         app.instrument.set("钢琴 · Shift 黑键")
@@ -68,6 +69,10 @@ def run_self_test(engine, destination):
         assert len(app.tracks.views) == 2 and len(app.tracks.timeline.find_all()) > 0
         app.open_audio()
         assert app.audio_dialog.window.winfo_exists()
+        assert not app.audio_dialog.muscriptor_terms.get()
+        assert not app.audio_dialog.game_terms.get()
+        for resource in ('audio_worker.py', 'audio_runtime.py', 'melody_worker.py', 'COPYRIGHT_AND_MODELS.md'):
+            assert (engine.ASSETS / resource).is_file(), resource
         app.audio_dialog.help()
         app.audio_dialog.close()
     finally:
@@ -80,6 +85,7 @@ def run_self_test(engine, destination):
               "music_sources": "local_files_only", "conversion": converted, "musicxml_import_export":"passed", "tk_gui": "passed",
               "arrangement_memory": "passed", "excerpt": "passed", "recommendations": "passed",
               "multitrack_gui": "passed", "audio_setup_gui": "passed", "audio_model_inference": "not_run_requires_authorized_weights",
+              "music_download_feature": "removed", "model_terms_defaults": "unchecked", "audio_worker_resources": "passed",
               "rounded_controls": "passed", "background_asset": "passed",
               "performance_preview": "passed", "game_input_sent": False}
     destination = Path(destination).resolve()
