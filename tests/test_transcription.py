@@ -8,6 +8,8 @@ import unittest
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from nte_music_desk.transcription import ProcessJob, TranscriptionCancelled, transcription_command, clean_log
+from nte_music_desk.rights import MUSCRIPTOR_TERMS
+USE = dict(rights_basis='original', rights_reference='self-created fixture', accepted_models=(MUSCRIPTOR_TERMS,))
 from nte_music_desk.midi import MidiSong, MidiNote, write_midi, parse_midi
 
 
@@ -32,7 +34,7 @@ class TranscriptionChecks(unittest.TestCase):
             script = root / 'engine.py'
             script.write_text('import pathlib,sys\npathlib.Path(sys.argv[sys.argv.index("--output")+1]).write_bytes(pathlib.Path(' + repr(str(fixture)) + ').read_bytes())\nprint("hf_abcdefgh123456")\n', encoding='utf-8')
             with patch('nte_music_desk.transcription.engine_command', return_value=[sys.executable, str(script)]):
-                result = ProcessJob().transcribe(sys.executable, source, root)
+                result = ProcessJob().transcribe(sys.executable, source, root, **USE)
             self.assertEqual(len(parse_midi(result.read_bytes()).notes), 2)
             provenance = json.loads((result.parent / 'provenance.json').read_text(encoding='utf-8'))
             self.assertEqual(provenance['parts'], 2)
@@ -41,7 +43,7 @@ class TranscriptionChecks(unittest.TestCase):
             self.assertFalse((result.parent / 'partial.mid').exists())
             script.write_text('import pathlib,sys\npathlib.Path(sys.argv[sys.argv.index("--output")+1]).write_bytes(b"not MIDI")\n', encoding='utf-8')
             with patch('nte_music_desk.transcription.engine_command', return_value=[sys.executable, str(script)]):
-                with self.assertRaises(ValueError): ProcessJob().transcribe(sys.executable, source, root)
+                with self.assertRaises(ValueError): ProcessJob().transcribe(sys.executable, source, root, **USE)
             self.assertEqual(len(list((root / 'transcriptions').rglob('original.mid'))), 1)
 
     def test_cancellation_terminates_child_and_discards_partial(self):
@@ -52,7 +54,7 @@ class TranscriptionChecks(unittest.TestCase):
             script.write_text('import time,pathlib,sys\npathlib.Path(' + repr(str(marker)) + ').touch()\npathlib.Path(sys.argv[sys.argv.index("--output")+1]).write_bytes(b"partial")\ntime.sleep(30)\n', encoding='utf-8')
             job, errors = ProcessJob(), []
             def run():
-                try: job.transcribe(sys.executable, source, root)
+                try: job.transcribe(sys.executable, source, root, **USE)
                 except Exception as e: errors.append(e)
             with patch('nte_music_desk.transcription.engine_command', return_value=[sys.executable, str(script)]):
                 thread = threading.Thread(target=run); thread.start()

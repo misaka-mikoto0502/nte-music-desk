@@ -17,6 +17,9 @@ nte-music-desk/
 │   ├── arranging.py        # 声部八度与旋律/低音优先保留
 │   ├── transcription.py    # 可选 MuScriptor 子进程与结果校验
 │   ├── audio_ui.py         # 引擎配置、安装、转谱与取消界面
+│   ├── audio_pipeline.py   # 本地选段、伴奏与独立旋律 Beta 流程
+│   ├── melody.py           # GAME 权重确认/校验与旋律结果转换
+│   ├── rights.py           # 用户来源说明与逐模型条款检查
 │   ├── notation.py         # MusicXML/MXL、KAR/RMI 统一导入
 │   ├── instruments.py      # 乐器键位表
 │   ├── keyboard.py         # 前台核对、按键及 UAC 启动

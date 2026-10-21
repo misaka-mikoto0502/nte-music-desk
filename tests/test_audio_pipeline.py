@@ -8,7 +8,13 @@ from unittest.mock import patch
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'))
 from nte_music_desk.audio_pipeline import AudioPipeline, AudioRequest, python_engine
+from nte_music_desk.rights import MUSCRIPTOR_TERMS, GAME_TERMS
 from nte_music_desk.midi import MidiNote, MidiSong, write_midi, read_midi
+
+
+def fixture_request(source, **options):
+    return AudioRequest(source, rights_basis='original', rights_reference='self-created test fixture',
+                        accepted_models=(MUSCRIPTOR_TERMS, GAME_TERMS), **options)
 
 
 class FixturePipeline(AudioPipeline):
@@ -27,7 +33,7 @@ class FixturePipeline(AudioPipeline):
             return {}
         if operation=='diagnose':
             return {'muscriptor':'0.3.0','audio-separator':'0.47.1','soundfile':'0.14.0',
-                    'imageio-ffmpeg':'0.6.0','decoder':True,'model_login_configured':True,'muscriptor_weights_cached':False,'cuda_available':False}
+                    'imageio-ffmpeg':'0.6.0','decoder':True,'model_login_configured':True,'muscriptor_weights_cached':False,'cuda_available':False,'torch':'2.8.0','onnxruntime':'1.22.1','onnxruntime_ready':True}
         raise AssertionError(operation)
 
 
@@ -41,13 +47,13 @@ class AudioPipelineChecks(unittest.TestCase):
         engine.write_text('import sys,pathlib\npathlib.Path(sys.argv[1]).write_bytes(pathlib.Path('+repr(str(midi))+').read_bytes())\n',encoding='utf-8')
         return source,engine
 
-    def test_original_separates_and_publishes_only_valid_midi_with_timeline(self):
+    def test_instrumental_publishes_valid_multitrack_midi_with_timeline(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d); source,engine=self.fixture(root)
             job=FixturePipeline()
             with patch('nte_music_desk.audio_pipeline.transcription_command',side_effect=lambda e,s,o,*a:[sys.executable,str(engine),str(o)]):
-                result=job.accompaniment(sys.executable,AudioRequest(source,start=52,end=56),root)
-            self.assertEqual(job.operations,['diagnose','prepare','separate'])
+                result=job.accompaniment(sys.executable,fixture_request(source,start=52,end=56),root)
+            self.assertEqual(job.operations,['diagnose','prepare'])
             self.assertTrue(result.accompaniment.is_file())
             self.assertTrue(result.accompaniment_audio.is_file())
             self.assertEqual([n.start for n in read_midi(result.accompaniment).notes],[0,1.25])
@@ -61,7 +67,7 @@ class AudioPipelineChecks(unittest.TestCase):
             root=Path(d);source,engine=self.fixture(root)
             job=FixturePipeline()
             with patch('nte_music_desk.audio_pipeline.transcription_command',side_effect=lambda e,s,o,*a:[sys.executable,str(engine),str(o)]):
-                result=job.accompaniment(sys.executable,AudioRequest(source,source_kind='instrumental'),root)
+                result=job.accompaniment(sys.executable,fixture_request(source,source_kind='instrumental'),root)
             self.assertEqual(job.operations,['diagnose','prepare'])
             self.assertEqual(result.source_audio,result.accompaniment_audio)
 
@@ -71,7 +77,7 @@ class AudioPipelineChecks(unittest.TestCase):
             engine.write_text('import sys,pathlib\npathlib.Path(sys.argv[1]).write_bytes(b"not midi")\n')
             with patch('nte_music_desk.audio_pipeline.transcription_command',side_effect=lambda e,s,o,*a:[sys.executable,str(engine),str(o)]):
                 with self.assertRaises(ValueError):
-                    FixturePipeline().accompaniment(sys.executable,AudioRequest(source),root)
+                    FixturePipeline().accompaniment(sys.executable,fixture_request(source),root)
             self.assertFalse(list((root/'transcriptions').rglob('*.mid')))
 
     def test_options_and_executable_are_checked_before_work(self):
@@ -80,7 +86,7 @@ class AudioPipelineChecks(unittest.TestCase):
             for settings in ({'start':float('nan')},{'start':True},{'end':0},{'end':1801},{'source_kind':'unknown'},
                              {'device':'shell'},{'model':'unknown'},{'melody_beta':1},
                              {'source_kind':'instrumental','melody_beta':True}):
-                with self.assertRaises(ValueError):AudioRequest(source,**settings).validate()
+                with self.assertRaises(ValueError):fixture_request(source,**settings).validate()
             with self.assertRaises(ValueError):python_engine(Path(d)/'muscriptor.exe')
 
     def test_missing_model_login_is_actionable_before_separation(self):
@@ -94,7 +100,7 @@ class AudioPipelineChecks(unittest.TestCase):
                 return result
             job.worker=worker
             with self.assertRaisesRegex(ValueError,'模型授权'):
-                job.accompaniment(sys.executable,AudioRequest(source),root)
+                job.accompaniment(sys.executable,fixture_request(source),root)
             self.assertEqual(job.operations,['diagnose'])
 
 

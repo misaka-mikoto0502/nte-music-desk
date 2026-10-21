@@ -20,3 +20,8 @@ arrangements/
 runs/
 self-test*.json
 test-data/
+audio-engine/
+audio-engine.json
+audio-models/
+audio-checks/
+transcriptions/

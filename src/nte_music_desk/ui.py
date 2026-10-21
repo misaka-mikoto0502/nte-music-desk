@@ -160,6 +160,7 @@ class App:
         menu.add_cascade(label='外观', menu=appearance)
         help_menu = tk.Menu(menu, tearoff=False)
         help_menu.add_command(label="使用说明", command=self.show_help)
+        help_menu.add_command(label="素材与模型许可", command=lambda: self.show_help(filename='COPYRIGHT_AND_MODELS.md'))
         help_menu.add_command(label="关于", command=lambda: messagebox.showinfo(
             "关于", f"{APP_NAME}\nv{__version__}\n\n支持吉他钢琴模式、钢琴 Shift 黑键、MIDI 旋律与和弦。\n\n数据目录：\n{self.directory}\n\n与游戏官方无关联。", parent=self.root))
         menu.add_cascade(label="帮助", menu=help_menu)
@@ -258,7 +259,7 @@ class App:
             "支持 MIDI、KAR、RMI、MusicXML、XML、MXL。快捷键 Ctrl+O")
         self.import_button.pack(fill='x', pady=(0, 7))
         self.audio_button = self.button(sidebar, "音频转谱", self.open_audio, "nav", 10,
-            "可选 MuScriptor 本地引擎，将音频识别为多轨 MIDI。首次需配置引擎及模型授权。")
+            "本地伴奏转多轨 MIDI，或试用歌声旋律 Beta。首次需独立引擎与模型条款确认。")
         self.audio_button.pack(fill='x')
         nav_area = tk.Frame(sidebar, bg=C['nav'])
         nav_area.pack(fill='both', expand=True, pady=(15, 8))

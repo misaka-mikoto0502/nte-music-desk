@@ -138,7 +138,9 @@ class ProcessJob:
         self.run(engine_command(target) + ['transcribe', '--help'], log, notify, timeout=120)
         return target
 
-    def transcribe(self, executable, source, directory, model='small', device='cpu', notify=None):
+    def transcribe(self, executable, source, directory, model='small', device='cpu', notify=None, *, rights_basis='', rights_reference='', accepted_models=()):
+        from .rights import validate_use, MUSCRIPTOR_TERMS
+        use_record = validate_use(rights_basis, rights_reference, accepted_models, [MUSCRIPTOR_TERMS])
         source = Path(source).expanduser().resolve()
         if not source.is_file() or source.suffix.lower() not in AUDIO_SUFFIXES:
             raise ValueError('请选择 WAV、MP3、FLAC、OGG、M4A 或 AIFF 音频；具体解码支持取决于引擎。')
@@ -161,7 +163,7 @@ class ProcessJob:
             with source.open('rb') as stream:
                 for block in iter(lambda: stream.read(1024 * 1024), b''):
                     digest.update(block)
-            data = {'schema': 'nte-transcription-v1', 'engine': 'MuScriptor',
+            data = {'schema': 'nte-transcription-v1', 'engine': 'MuScriptor', 'rights': use_record,
                 'engine_contract': ENGINE_VERSION, 'model': model, 'device': device,
                 'source_name': source.name, 'source_sha256': digest.hexdigest(),
                 'midi_sha256': hashlib.sha256(staging.read_bytes()).hexdigest(),

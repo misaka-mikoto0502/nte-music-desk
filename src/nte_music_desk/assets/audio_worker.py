@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
-import logging
 import math
 import os
 from pathlib import Path
 import subprocess
 import sys
+from audio_runtime import prefer_system_runtime
+
+prefer_system_runtime()
 
 
 def audio_info(path):
@@ -44,31 +46,7 @@ def prepare(config):
 
 
 def separate(config):
-    from audio_separator.separator import Separator
-    import imageio_ffmpeg
-    # Some separator backends use the executable name rather than an API. Its
-    # own soundfile path is used here; the packaged decoder is also on PATH.
-    os.environ['PATH'] = str(Path(imageio_ffmpeg.get_ffmpeg_exe()).parent) + os.pathsep + os.environ.get('PATH', '')
-    separator = Separator(log_level=logging.INFO, model_file_dir=config['models'],
-                          output_dir=config['directory'], output_format='WAV',
-                          use_soundfile=True, normalization_threshold=1.0,
-                          amplification_threshold=0.0,
-                          mdxc_params={'segment_size':256, 'override_model_segment_size':False,
-                                       'batch_size':1, 'overlap':8, 'pitch_shift':0})
-    separator.load_model(config['model'])
-    separator.separate(config['source'], custom_output_names={'Instrumental':'accompaniment', 'Vocals':'vocals'})
-    directory = Path(config['directory'])
-    paths = {'accompaniment': directory / 'accompaniment.wav', 'vocals': directory / 'vocals.wav'}
-    original = audio_info(config['source'])
-    result = {}
-    for key, path in paths.items():
-        if not path.is_file():
-            raise ValueError(f'分离引擎没有产生 {key} 音轨，请检查模型版本。')
-        info = audio_info(path)
-        if abs(info['seconds'] - original['seconds']) > .1:
-            raise ValueError('分离结果时长变化过大，不能保证人声与伴奏对齐。')
-        result[key] = {'path':str(path), **info}
-    return result
+    raise ValueError('原唱分离已暂停：ViperX 权重许可尚未核实，不下载或调用该模型。')
 
 
 def diagnose(config):
@@ -78,10 +56,20 @@ def diagnose(config):
             checks[package] = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:
             checks[package] = None
-    import torch
-    checks['torch'] = torch.__version__
-    checks['cuda_available'] = torch.cuda.is_available()
-    checks['cuda_devices'] = [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]
+    checks.update(torch=None,cuda_available=False,cuda_devices=[])
+    try:
+        import torch
+        checks['torch'] = torch.__version__
+        checks['cuda_available'] = torch.cuda.is_available()
+        checks['cuda_devices'] = [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]
+    except (ImportError,OSError) as error:
+        checks['torch_error'] = str(error)
+    try:
+        import onnxruntime
+        checks['onnxruntime_ready'] = True
+    except (ImportError,OSError) as error:
+        checks['onnxruntime_ready'] = False
+        checks['onnxruntime_error'] = str(error)
     try:
         import imageio_ffmpeg
         checks['decoder'] = Path(imageio_ffmpeg.get_ffmpeg_exe()).is_file()
