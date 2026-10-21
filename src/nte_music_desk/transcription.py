@@ -63,6 +63,15 @@ class ProcessJob:
         self.cancelled.set()
 
     @staticmethod
+    def sanitize_log(path):
+        path = Path(path)
+        if path.exists():
+            with path.open('rb') as reader:
+                reader.seek(max(0,path.stat().st_size-4000))
+                tail=clean_log(reader.read().decode('utf-8',errors='replace'))
+            path.write_text(tail,encoding='utf-8')
+
+    @staticmethod
     def kill(process):
         if process.poll() is not None:
             return
@@ -84,11 +93,13 @@ class ProcessJob:
             process.kill()
             process.wait(timeout=5)
 
-    def run(self, command, log, notify=None, timeout=7200):
+    def run(self, command, log, notify=None, timeout=7200, *, failure=None, environment=None):
         if self.cancelled.is_set():
             raise TranscriptionCancelled('任务已取消。')
         started, position = time.monotonic(), 0
         env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUNBUFFERED='1', HF_HUB_DISABLE_PROGRESS_BARS='1')
+        if environment:
+            env.update(environment)
         with Path(log).open('ab') as stream:
             process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=stream, stderr=subprocess.STDOUT,
                 shell=False, env=env, creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
@@ -113,7 +124,7 @@ class ProcessJob:
             with Path(log).open('rb') as reader:
                 reader.seek(max(0, Path(log).stat().st_size - 4000))
                 detail = clean_log(reader.read().decode('utf-8', errors='replace'))
-            raise ValueError('引擎运行失败。首次使用请确认模型授权与 Hugging Face 登录；详细配置见音频转谱说明。\n' + detail)
+            raise ValueError((failure or '引擎运行失败。首次使用请确认模型授权与 Hugging Face 登录；详细配置见音频转谱说明。') + '\n' + detail)
 
     def install(self, python, directory, notify=None):
         python = Path(python).resolve()
@@ -164,9 +175,4 @@ class ProcessJob:
             return result
         finally:
             staging.unlink(missing_ok=True)
-            if log.exists():
-                # Log is bounded and token-redacted before being kept on disk.
-                with log.open('rb') as reader:
-                    reader.seek(max(0, log.stat().st_size - 4000))
-                    tail = clean_log(reader.read().decode('utf-8', errors='replace'))
-                log.write_text(tail, encoding='utf-8')
+            self.sanitize_log(log)
