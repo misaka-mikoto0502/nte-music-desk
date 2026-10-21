@@ -7,7 +7,6 @@ nte-music-desk/
 │   ├── cli.py              # 命令行、演奏调度、合成试听与子进程
 │   ├── ui.py               # 主窗口
 │   ├── appearance.py       # Pillow 圆角、可调浓度背景与原生按钮皮肤
-│   ├── library_ui.py       # 在线曲库窗口
 │   ├── midi.py             # 标准 MIDI 读取、节奏与音域转换
 │   ├── performance.py      # 统一按键时序与计划发声音符
 │   ├── presets.py          # 按曲谱哈希与乐器保存方案
@@ -21,10 +20,10 @@ nte-music-desk/
 │   ├── notation.py         # MusicXML/MXL、KAR/RMI 统一导入
 │   ├── instruments.py      # 乐器键位表
 │   ├── keyboard.py         # 前台核对、按键及 UAC 启动
-│   ├── catalog.py          # 搜索索引、受限下载与来源记录
+│   ├── local_library.py    # 只读旧版本地曲名，不含网络访问
 │   ├── paths.py            # 资源与用户数据目录
 │   ├── diagnostics.py      # 不发送按键的离线发布自检
-│   └── assets/             # 图标、帮助、示例 MIDI、曲库快照
+│   └── assets/             # 图标、帮助、示例 MIDI
 ├── tests/                  # 自包含离线测试，不使用个人曲谱
 ├── tools/                  # EXE 构建与版本元信息
 ├── docs/                   # 使用、结构与发布说明
@@ -40,9 +39,7 @@ nte-music-desk/
 
 只读资源与写入目录分开：资源来自包内 assets（EXE 中为 _internal 下的包资源），写入默认位于 %LOCALAPPDATA%\NteMusicDesk。可用 --data-dir 或 NTE_MUSIC_DESK_DATA_DIR 覆盖数据目录，方便离线测试与个人备份。
 
-在线搜索默认读随包目录。下载限制为支持的 HTTPS 来源域名，校验重定向、大小、MIDI 头及可解析性后保存；不用 Cookie、登录凭据或网页脚本。索引更新与下载均在后台线程执行，可取消；过时任务不能重新导入或自动演奏。
-
-Mutopia 目录只解析公开 musiccache.dat 的曲目字段，保留作曲家、乐器、许可与普通下载路径，省去维护者邮箱等字段。多乐章 ZIP 在内存中校验并读取 MIDI，不按压缩包路径写文件。MXL 同样不解压到磁盘，拒绝重复、越界、过大或加密的内部文件。MusicXML 不解析实体或访问外部 DTD。
+在线搜索、下载模块与目录快照已移除；界面和命令行只读取主动选择的本地音乐文件。旧版 downloaded_midis 来源侧车仅用于恢复曲名，不访问外部地址。MXL 在内存中校验并读取，拒绝重复、越界、过大或加密的文件；MusicXML 不解析实体或访问外部 DTD。
 
 所有导入最终生成同一 MidiSong 时间化音符模型，复用选轨、演奏与试听。另存 MIDI 以固定速度网格编码秒级音符时刻，面向互通和演奏，不作为保真制谱文档导出。
 

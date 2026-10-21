@@ -15,7 +15,7 @@ import re
 
 from .midi import convert, note_name, save_score, validate_score, write_midi
 from .notation import read_score
-from .catalog import CatalogClient
+from .local_library import local_title
 from .instruments import INSTRUMENTS, score_instrument
 from . import APP_NAME, __version__
 from .presets import PresetStore, fingerprint, DEFAULTS
@@ -85,7 +85,6 @@ class App:
         self.root, self.engine, self.directory = root, engine, engine.ROOT
         self.directory.mkdir(parents=True, exist_ok=True)
         self.assets = getattr(engine, "ASSETS", self.directory)
-        self.online_client, self.online_dialog = CatalogClient(self.directory, resources=self.assets), None
         self.audio_dialog = None
         self.song, self.score, self.active = None, None, None
         self.track_ids, self.controls, self.library_buttons = [], [], []
@@ -132,7 +131,6 @@ class App:
             variable.trace_add("write", self.queue_refresh)
         self.tracks.bind("<<ListboxSelect>>", self.queue_refresh)
         root.bind("<Control-o>", lambda _: self.open_file())
-        root.bind("<Control-f>", lambda _: self.open_online())
         root.bind("<Control-Return>", lambda _: self.play(None))
         root.bind("<F8>", lambda _: self.stop())
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -152,7 +150,6 @@ class App:
         files.add_command(label="导入曲谱…", command=self.open_file, accelerator="Ctrl+O")
         files.add_command(label="音频转谱…", command=self.open_audio)
         files.add_command(label="另存原曲为 MIDI…", command=self.export_midi)
-        files.add_command(label="在线搜曲…", command=self.open_online, accelerator="Ctrl+F")
         files.add_separator()
         files.add_command(label="打开数据目录", command=lambda: os.startfile(self.directory))
         files.add_command(label="退出", command=self.close)
@@ -200,8 +197,6 @@ class App:
     def choose_library(self, title, path):
         if path is not None:
             self.open_path(path)
-        else:
-            self.open_online(query=title,source="Mutopia 古典" if title in ("致爱丽丝","月光奏鸣曲") else None)
 
     def configure_styles(self):
         style = ttk.Style(self.root)
@@ -262,9 +257,6 @@ class App:
         self.import_button = self.button(sidebar, "+  导入曲谱", self.open_file, "primary", 11,
             "支持 MIDI、KAR、RMI、MusicXML、XML、MXL。快捷键 Ctrl+O")
         self.import_button.pack(fill='x', pady=(0, 7))
-        self.online_button = self.button(sidebar, "在线搜曲", self.open_online, "nav", 10,
-            "在公开曲库中搜索，下载并自动导入。快捷键 Ctrl+F")
-        self.online_button.pack(fill='x', pady=(0, 7))
         self.audio_button = self.button(sidebar, "音频转谱", self.open_audio, "nav", 10,
             "可选 MuScriptor 本地引擎，将音频识别为多轨 MIDI。首次需配置引擎及模型授权。")
         self.audio_button.pack(fill='x')
@@ -280,11 +272,10 @@ class App:
         self.nav_content.bind('<Configure>', lambda _: self.nav_canvas.configure(scrollregion=self.nav_canvas.bbox('all')))
         self.nav_canvas.bind('<Configure>', lambda e: self.nav_canvas.itemconfigure(nav_window, width=e.width))
         self.label(self.nav_content, '曲目架', 9, '#A9B9A6').pack(anchor='w', pady=(0, 10))
-        for name, filename, caption in [('小星星', 'twinkle.mid', '离线示例'), ('致爱丽丝', None, '古典钢琴'),
-                ('月光奏鸣曲', None, '古典 · 多乐章'), ('三叶的主题曲', None, '搜索曲谱'), ('黄昏之时', None, '搜索曲谱')]:
+        for name, filename, caption in [('小星星', 'twinkle.mid', '自制离线示例')]:
             path = self.assets / 'scores' / filename if filename else None
             button = self.button(self.nav_content, f'{name}\n{caption}', lambda n=name, p=path: self.choose_library(n,p),
-                'nav', 9, '载入示例或搜索所选曲目。', anchor='w', justify='left')
+                'nav', 9, '载入本机自制示例曲谱。', anchor='w', justify='left')
             button.configure(pady=7, padx=10)
             button.pack(fill='x', pady=(0, 5))
             self.library_buttons.append((button, path))
@@ -300,7 +291,7 @@ class App:
         self.range_label = self.label(bottom, '', 9, '#A9B9A6')
         self.range_label.pack(anchor='w', pady=(4, 14))
         self.label(bottom, 'F8  停止演奏', 10, C['mint'], True).pack(anchor='w')
-        self.label(bottom, 'Ctrl+O 导入   /   Ctrl+F 搜曲', 8, '#A9B9A6').pack(anchor='w', pady=(8, 0))
+        self.label(bottom, 'Ctrl+O 导入本地曲谱', 8, '#A9B9A6').pack(anchor='w', pady=(8, 0))
 
         main = tk.Frame(self.root, bg=C['bg'])
         main.pack(side='left', fill='both', expand=True)
@@ -578,7 +569,7 @@ class App:
         if not paths:
             self.label(self.recent_frame, "导入自己的曲谱后\n会显示在这里", 9, "#90A6BF", justify="left").pack(anchor="w")
         for path in paths:
-            title = self.online_client.title_for(path) or path.stem
+            title = local_title(path, self.directory) or path.stem
             title = title if len(title) < 17 else title[:15] + "…"
             button = self.button(self.recent_frame, title, lambda p=path: self.open_path(p), "nav", 9, str(path), anchor="w")
             button.configure(pady=7, padx=9)
@@ -593,19 +584,6 @@ class App:
         if path:
             self.open_path(path)
 
-    def open_online(self, query=None, source=None):
-        if self.active:
-            return
-        self.stop_preview()
-        self.refresh_controls()
-        if self.online_dialog is not None and not self.online_dialog.closed:
-            self.online_dialog.window.lift()
-            return
-        from .library_ui import OnlineLibrary
-        self.online_dialog = OnlineLibrary(self)
-        if query:
-            self.online_dialog.use_example(query,source)
-
     def open_path(self, path):
         if self.active:
             return
@@ -618,7 +596,7 @@ class App:
             self.recommend_token = None
             self.stop_preview()
             examples = {self.assets / "scores/twinkle.mid": "小星星"}
-            song.title = examples.get(path, self.online_client.title_for(path) or song.title)
+            song.title = examples.get(path, local_title(path, self.directory) or song.title)
             self.song, self.current_path = song, path
             self.song_fingerprint = digest
             self.title.set(song.title)
@@ -900,7 +878,7 @@ class App:
         ready, locked = self.score is not None, self.active is not None
         for widget, normal in self.controls:
             self.enabled(widget, not locked, normal)
-        for button in [self.online_button, self.import_button, self.audio_button, *self.recent_buttons, *[b for b, _ in self.library_buttons]]:
+        for button in [self.import_button, self.audio_button, *self.recent_buttons, *[b for b, _ in self.library_buttons]]:
             self.enabled(button, not locked)
         for button in [self.play_button, self.trial_button, self.export_button, self.details_button, self.notes_button, self.report_button]:
             self.enabled(button, ready and not locked)
@@ -1213,8 +1191,6 @@ class App:
     def close(self):
         if self.audio_dialog is not None:
             self.audio_dialog.close()
-        if self.online_dialog is not None:
-            self.online_dialog.close()
         self.save_preferences()
         self.save_arrangement()
         self.stop()

@@ -6,13 +6,10 @@ from . import __version__
 
 
 def run_self_test(engine, destination):
-    from .catalog import CatalogClient
     from .midi import read_midi, convert
     from .ui import App
     import tkinter as tk
 
-    catalog = CatalogClient(engine.ROOT, resources=engine.ASSETS)
-    counts = {source: len(catalog.load(source)[0]) for source in ("bitmidi", "murashin","mutopia")}
     song = read_midi(engine.ASSETS / "scores/twinkle.mid")
     from .notation import read_score
     from .midi import write_midi
@@ -80,7 +77,7 @@ def run_self_test(engine, destination):
         else:
             root.destroy()
     result = {"status": "passed", "version": __version__, "frozen": bool(getattr(sys, "frozen", False)),
-              "catalogs": counts, "conversion": converted, "musicxml_import_export":"passed", "tk_gui": "passed",
+              "music_sources": "local_files_only", "conversion": converted, "musicxml_import_export":"passed", "tk_gui": "passed",
               "arrangement_memory": "passed", "excerpt": "passed", "recommendations": "passed",
               "multitrack_gui": "passed", "audio_setup_gui": "passed", "audio_model_inference": "not_run_requires_authorized_weights",
               "rounded_controls": "passed", "background_asset": "passed",

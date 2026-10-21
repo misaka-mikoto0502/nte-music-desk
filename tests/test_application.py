@@ -191,46 +191,33 @@ class ApplicationChecks(unittest.TestCase):
             finally:
                 app.close()
 
-    def test_classical_zip_auto_import_and_musicxml_export_ui(self):
-        sys.path.insert(0,str(ROOT/'src'))
+    def test_local_only_import_keeps_legacy_title_and_musicxml_export(self):
         import tkinter as tk
         from nte_music_desk import cli
         from nte_music_desk.ui import App
-        from nte_music_desk.catalog import CatalogClient
         from nte_music_desk.paths import asset_dir
         from nte_music_desk.midi import read_midi
-        import time
-        archive=io.BytesIO()
-        with zipfile.ZipFile(archive,'w') as z:
-            for name in ('movement2.mid','movement1.mid'):
-                z.writestr(name,(asset_dir()/'scores/twinkle.mid').read_bytes())
         with tempfile.TemporaryDirectory() as directory:
-            root=tk.Tk();root.withdraw();root.lift=lambda:None
-            app=App(root,SimpleNamespace(ROOT=Path(directory),ASSETS=asset_dir(),key_schedule=cli.key_schedule))
-            try:
-                app.online_client=CatalogClient(directory,resources=asset_dir(),fetch=lambda *args,**kwargs:archive.getvalue())
-                with patch.object(tk.Toplevel,'grab_set',lambda self:None):
-                    app.open_online('贝多芬 月光','Mutopia 古典')
-                dialog=app.online_dialog
-                def finish():
-                    deadline=time.monotonic()+15
-                    while dialog.busy and not dialog.closed:
-                        message=dialog.messages.get(timeout=max(.1,deadline-time.monotonic()))
-                        dialog.handle_message(*message)
-                finish()
-                self.assertEqual(dialog.current_item().key,'276')
-                dialog.import_selected();finish()
-                self.assertTrue(dialog.closed)
-                self.assertIn('movement1',app.song.title)
-                self.assertEqual(len(app.online_client.downloaded()),2)
-                self.assertIn('2 个乐章',app.status.get())
-                self.assertTrue(app.open_path(asset_dir()/'scores/twinkle.musicxml'))
-                destination=Path(directory)/'exported.mid'
-                with patch('nte_music_desk.ui.filedialog.asksaveasfilename',return_value=str(destination)):
-                    app.export_midi()
-                self.assertEqual(len(read_midi(destination).notes),42)
-                self.assertIsNone(app.active)
-            finally:app.close()
+            target=Path(directory)/'downloaded_midis'/'legacy.mid'
+            target.parent.mkdir()
+            target.write_bytes((asset_dir()/'scores/twinkle.mid').read_bytes())
+            target.with_suffix('.source.json').write_text(json.dumps({'filename':target.name,'title':'本地旧曲谱'}),encoding='utf-8')
+            root=tk.Tk();root.withdraw()
+            with patch('socket.socket.connect',side_effect=AssertionError('local import must not connect')):
+                app=App(root,SimpleNamespace(ROOT=Path(directory),ASSETS=asset_dir(),key_schedule=cli.key_schedule))
+                try:
+                    self.assertFalse(hasattr(app,'open_online'))
+                    self.assertFalse(root.bind('<Control-f>'))
+                    self.assertTrue(app.open_path(target))
+                    self.assertEqual(app.song.title,'本地旧曲谱')
+                    self.assertTrue(app.open_path(asset_dir()/'scores/twinkle.musicxml'))
+                    destination=Path(directory)/'exported.mid'
+                    with patch('nte_music_desk.ui.filedialog.asksaveasfilename',return_value=str(destination)):
+                        app.export_midi()
+                    self.assertEqual(len(read_midi(destination).notes),42)
+                    self.assertIsNone(app.active)
+                    self.assertTrue(target.is_file())
+                finally:app.close()
 
     def test_isolated_bootstrap_and_read_only_assets(self):
         assets=ROOT/"src/nte_music_desk/assets"
