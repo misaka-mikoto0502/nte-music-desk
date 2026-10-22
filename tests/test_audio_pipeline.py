@@ -32,7 +32,7 @@ class FixturePipeline(AudioPipeline):
                 (directory/name).write_bytes(b'stem fixture')
             return {}
         if operation=='diagnose':
-            return {'muscriptor':'0.3.0','audio-separator':'0.47.1','soundfile':'0.14.0',
+            return {'muscriptor':'0.3.0','openunmix':'1.3.0','soundfile':'0.14.0',
                     'imageio-ffmpeg':'0.6.0','decoder':True,'model_login_configured':True,'muscriptor_weights_cached':False,'cuda_available':False,'torch':'2.8.0','onnxruntime':'1.22.1','onnxruntime_ready':True}
         raise AssertionError(operation)
 

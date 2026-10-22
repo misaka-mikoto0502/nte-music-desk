@@ -40,18 +40,19 @@ def prepare(config):
     info = audio_info(config['output'])
     if info['seconds'] > 1800:
         raise ValueError('音频超过 30 分钟，请先选取更短的片段。')
-    if end is not None and info['seconds'] + .05 < end - start:
+    if end is not None and not config.get('allow_short',False) and info['seconds'] + .05 < end - start:
         raise ValueError('片段终点超过音频末尾，请缩短终点或留空。')
     return {**info, 'source_start_seconds': start, 'source_end_seconds': start + info['seconds']}
 
 
 def separate(config):
-    raise ValueError('原唱分离已暂停：ViperX 权重许可尚未核实，不下载或调用该模型。')
+    from separation_runtime import separate as run
+    return run(config)
 
 
 def diagnose(config):
     checks = {}
-    for package in ('muscriptor', 'audio-separator', 'soundfile', 'imageio-ffmpeg', 'onnxruntime'):
+    for package in ('muscriptor', 'openunmix', 'soundfile', 'imageio-ffmpeg', 'onnxruntime'):
         try:
             checks[package] = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:
