@@ -38,9 +38,10 @@ class RoundedButton(tk.Button):
         for key in ('relief', 'borderwidth', 'highlightthickness', 'highlightbackground', 'highlightcolor'):
             kwargs.pop(key, None)
         placeholder = tk.PhotoImage(master=master, width=1, height=1)
+        takefocus=kwargs.pop('takefocus',True)
         super().__init__(master, image=placeholder, compound='center', bg=self._outer,
             activebackground=self._outer, relief='flat', borderwidth=0, highlightthickness=0,
-            padx=0, pady=0, takefocus=True, disabledforeground=COLORS['disabled_ink'], **kwargs)
+            padx=0, pady=0, takefocus=takefocus, disabledforeground=COLORS['disabled_ink'], **kwargs)
         self._skin = placeholder
         self._ready = True
         self.bind('<Configure>', self._paint, add='+')

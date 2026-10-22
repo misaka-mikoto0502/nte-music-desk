@@ -40,33 +40,9 @@ def limit_score(score, seconds):
 from .performance import key_schedule, piano_schedule, piano_chord_schedule, performance_plan
 
 
-def play_timed(score, backend, hold_ms=300, clock=time.perf_counter, sleep=time.sleep):
-    plan = performance_plan(score, hold_ms)
-    schedule = plan.key_events
-    started, sent = clock(), 0
-
-    def wait_until(deadline):
-        while True:
-            backend.check()
-            remaining = deadline - clock()
-            if remaining <= 0:
-                return
-            sleep(min(0.01, remaining))
-
-    try:
-        for at, is_down, key in schedule:
-            wait_until(started + at)
-            if clock() - started - at > 0.3:
-                raise PlaybackStopped("系统调度延迟超过 300 毫秒，已停止，避免音符挤在一起。")
-            if is_down:
-                backend.down(key)
-                sent += key.virtual_key != SHIFT.virtual_key
-            else:
-                backend.up(key)
-        wait_until(started + plan.duration)
-        return sent
-    finally:
-        backend.release_all()
+def play_timed(score, backend, hold_ms=300, clock=time.perf_counter, sleep=time.sleep, *, control=None, on_progress=None):
+    from .playback import execute_plan
+    return execute_plan(performance_plan(score,hold_ms),backend,clock=clock,sleep=sleep,control=control,on_progress=on_progress)
 
 
 class CancellableKeyboard(WindowsKeyboard):
@@ -103,6 +79,8 @@ def play_file(args):
             arguments.extend(["--report", str(Path(args.report).resolve())])
         if args.cancel_file:
             arguments.extend(["--cancel-file", str(Path(args.cancel_file).resolve())])
+        if args.control_file:
+            arguments.extend(['--control-file',str(Path(args.control_file).resolve())])
         return run_elevated_and_wait(__file__, arguments)
     backend, code = None, 0
     destination = Path(args.report) if args.report else ROOT / "nte_midi_last_run.json"
@@ -125,8 +103,11 @@ def play_file(args):
                     raise PlaybackStopped("倒计时期间取消。")
                 time.sleep(0.01)
         backend.check()
-        write_progress(destination, "playing", started_at=time.time(), seconds=duration)
-        report["sent_notes"] = play_timed(score, backend, args.hold_ms)
+        from .playback import PauseControl
+        control=PauseControl(args.control_file,hotkey=lambda:bool(backend.user32.GetAsyncKeyState(0x76)&0x8000))
+        def progress(phase,elapsed,sequence):
+            write_progress(destination,phase,elapsed=elapsed,seconds=duration,control_sequence=sequence)
+        report["sent_notes"] = play_timed(score, backend, args.hold_ms,control=control,on_progress=progress)
         report["status"] = "completed"
         print("演奏按键已发送完毕。实际发声请在游戏中确认。", flush=True)
     except (PlaybackStopped, KeyboardInterrupt) as error:
@@ -230,6 +211,7 @@ def main(argv=None):
     parser.add_argument("--countdown", type=int, default=7)
     parser.add_argument("--hold-ms", type=int, default=300)
     parser.add_argument("--cancel-file", help=argparse.SUPPRESS)
+    parser.add_argument('--control-file',help=argparse.SUPPRESS)
     parser.add_argument("--report", help=argparse.SUPPRESS)
     parser.add_argument("--elevated-child", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)

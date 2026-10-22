@@ -94,6 +94,8 @@ class App:
         self.stop_requested, self.syncing_speed, self.closed = False, False, False
         self.advanced_visible, self.notes_visible = False, False
         self.preferences = self.read_preferences()
+        self.mini=None
+        self.mini_visible=tk.BooleanVar(value=self.preferences.get('mini_player_visible',True) is True)
         self.background_opacity = tk.DoubleVar(value=self.background_strength())
         self.preset_store = PresetStore(self.directory)
         self.song_fingerprint, self.syncing_settings = None, False
@@ -133,6 +135,7 @@ class App:
         root.bind("<Control-o>", lambda _: self.open_file())
         root.bind("<Control-Return>", lambda _: self.play(None))
         root.bind("<F8>", lambda _: self.stop())
+        root.bind('<F7>',lambda _: self.toggle_pause())
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.report_callback_exception = self.callback_error
         last = self.preferences.get("last_file", "")
@@ -141,6 +144,9 @@ class App:
             candidate = self.assets / "scores/twinkle.mid"
         if candidate.is_file():
             self.open_path(candidate)
+        from .mini_player import MiniPlayer
+        self.mini=MiniPlayer(self)
+        if self.mini_visible.get() and root.state()!='withdrawn':self.mini.show()
         self.refresh_controls()
         self.poll_job = root.after(120, self.poll)
 
@@ -158,6 +164,10 @@ class App:
         for name, value in [('关闭背景图片', 0), ('淡雅', .18), ('柔和（默认）', .32), ('清晰', .52)]:
             appearance.add_radiobutton(label=name, variable=self.background_opacity, value=value, command=self.set_background_strength)
         menu.add_cascade(label='外观', menu=appearance)
+        player=tk.Menu(menu,tearoff=False)
+        player.add_checkbutton(label='显示迷你播放器',variable=self.mini_visible,command=self.toggle_mini)
+        player.add_command(label='暂停 / 继续演奏',command=self.toggle_pause,accelerator='F7')
+        menu.add_cascade(label='播放器',menu=player)
         help_menu = tk.Menu(menu, tearoff=False)
         help_menu.add_command(label="使用说明", command=self.show_help)
         help_menu.add_command(label="素材与模型许可", command=lambda: self.show_help(filename='COPYRIGHT_AND_MODELS.md'))
@@ -291,7 +301,7 @@ class App:
         self.instrument_label.pack(anchor='w')
         self.range_label = self.label(bottom, '', 9, '#A9B9A6')
         self.range_label.pack(anchor='w', pady=(4, 14))
-        self.label(bottom, 'F8  停止演奏', 10, C['mint'], True).pack(anchor='w')
+        self.label(bottom, 'F7  暂停 / 继续\nF8  停止演奏', 10, C['mint'], True,justify='left').pack(anchor='w')
         self.label(bottom, 'Ctrl+O 导入本地曲谱', 8, '#A9B9A6').pack(anchor='w', pady=(8, 0))
 
         main = tk.Frame(self.root, bg=C['bg'])
@@ -444,7 +454,7 @@ class App:
         grid = tk.Frame(self.advanced, bg=C["paper"])
         grid.pack(fill="x")
         for col, (label, variable, lower, upper, tip) in enumerate([
-                ("开始前倒计时", self.countdown, 0, 60, "确认权限后，给你切回乐器界面和松开键鼠的时间。"),
+                ("开始前倒计时", self.countdown, 0, 60, "开始演奏前，留出切回乐器界面和松开键鼠的时间。"),
                 ("按键上限 / 毫秒", self.hold_ms, 20, 400, "每个音按住的时长上限。默认 300 毫秒；长音只触发一次。"),
                 ("和弦音数上限", self.max_polyphony, 2, 36, "原曲声部模式每组保留 2–36 音，默认 12。长音重叠时，实际并行键数可能更高；游戏多音能力需要试奏确认。")]):
             grid.columnconfigure(col, weight=1)
@@ -499,22 +509,24 @@ class App:
         self.progress.trace_add('write', self.draw_progress)
         actions = tk.Frame(footer, bg=C['paper'])
         actions.pack(fill='x')
-        for index, weight in enumerate((3, 2, 2, 1)):
+        for index, weight in enumerate((3, 2, 2, 2, 1)):
             actions.columnconfigure(index, weight=weight, uniform='actions' if index else 'primary')
         self.play_button = self.button(actions, '▶  开始演奏', lambda: self.play(None), 'primary', 12,
-            '按当前片段演奏。先进入对应游戏乐器界面，再确认权限。Ctrl+Enter 开始。')
+            '按当前片段演奏。先进入对应游戏乐器界面。Ctrl+Enter 开始。')
+        self.pause_button=self.button(actions,'Ⅱ 暂停',self.toggle_pause,'preview',10,
+            '暂停时释放所有按键，继续时从当前位置演奏。游戏中可按 F7。')
         self.preview_button = self.button(actions, '时序试听', self.preview, 'preview', 10,
             '电脑试听前 20 秒，体现按键时序和 Shift 分组。合成音色，不操作游戏。')
         self.trial_button = self.button(actions, '游戏试奏', lambda: self.play(20), 'trial', 10,
             '向游戏发送前 20 秒的按键，先确认音色和旋律。')
         self.stop_button = self.button(actions, '■  停止', self.stop, 'stop', 10,
             '停止并释放程序按住的琴键。游戏中按 F8，切出游戏也会停止。')
-        for index, button in enumerate((self.play_button, self.preview_button, self.trial_button, self.stop_button)):
+        for index, button in enumerate((self.play_button, self.pause_button, self.preview_button, self.trial_button, self.stop_button)):
             button.configure(pady=10)
-            button.grid(row=0, column=index, sticky='nsew', padx=(0, 8 if index < 3 else 0))
+            button.grid(row=0, column=index, sticky='nsew', padx=(0, 7 if index < 4 else 0))
         row = tk.Frame(footer, bg=C['paper'])
         row.pack(fill='x', pady=(9, 0))
-        self.label(row, 'F8 停止  ·  切出游戏自动停止', 8, C['muted']).pack(side='left')
+        self.label(row, 'F7 暂停/继续 · F8 停止 · 切出游戏停止', 8, C['muted']).pack(side='left')
         self.export_button = self.button(row, '导出曲谱', self.export, size=8, tip='保存当前设置的 JSON 游戏曲谱。')
         self.export_button.configure(padx=8, pady=3)
         self.export_button.pack(side='right')
@@ -551,7 +563,9 @@ class App:
         try:
             values = {"last_file": str(self.current_path), "recent": self.preferences.get("recent", []),
                       "speed": self.speed.get(), "transpose": self.transpose.get(), "instrument": self.current_instrument().id,
-                      "background_strength": self.background_opacity.get()}
+                      "background_strength": self.background_opacity.get(),
+                      'mini_player_visible':self.mini_visible.get(),
+                      'mini_player_position':list(self.mini.position) if self.mini else self.preferences.get('mini_player_position')}
             path = self.directory / "midi_ui_settings.json"
             temporary = path.with_suffix(".tmp")
             temporary.write_text(json.dumps(values, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -891,10 +905,30 @@ class App:
         self.enabled(self.stop_button, locked or bool(self.preview_token))
         if locked or self.preview_token:
             self.stop_button.configure(bg=C["red"], fg="white", activebackground="#A52B40", activeforeground="white")
-        self.play_button.configure(text="演奏进行中…" if locked else "▶  开始演奏")
+        self.play_button.configure(text="演奏中…" if locked else "▶  开始演奏")
+        self.enabled(self.pause_button,locked and self.active.get('phase') in ('playing','paused') and not self.stop_requested)
+        self.pause_button.configure(text='▶ 继续' if locked and self.active.get('pause_requested') else 'Ⅱ 暂停')
         if self.audio_dialog and self.audio_dialog.job:
             self.enabled(self.play_button, False)
             self.enabled(self.trial_button, False)
+        if self.mini:self.mini.refresh()
+
+    def toggle_mini(self):
+        if self.mini_visible.get():self.mini.show()
+        else:self.mini.hide()
+
+    def toggle_pause(self):
+        if not self.active or self.stop_requested or self.active.get('phase') not in ('playing','paused'):return
+        from .playback import write_pause_command
+        active=self.active
+        paused=not active.get('pause_requested',False)
+        sequence=active.get('control_sequence',0)+1
+        try:
+            write_pause_command(active['control'],paused,sequence)
+            active.update(pause_requested=paused,control_sequence=sequence)
+            self.set_status('正在暂停并释放琴键…' if paused else '正在继续演奏…','暂停中' if paused else '继续中','amber')
+            self.refresh_controls()
+        except OSError as error:self.set_status('控制未送达，请按 F7 或 F8：'+str(error),'控制失败','red')
 
     def preview(self):
         if self.active or self.preview_token:
@@ -978,7 +1012,8 @@ class App:
             path, cancel, report = run / "score.json", run / "stop", run / "result.json"
             save_score(score, path)
             length = performance_plan(score, int(self.hold_ms.get())).duration
-            self.active = {"cancel": cancel, "report": report, "progress": report.with_suffix(".progress.json"), "length": length}
+            self.active = {"cancel": cancel, "report": report, "progress": report.with_suffix(".progress.json"), "length": length,
+                           'control':run/'control.json','control_sequence':0,'pause_requested':False,'phase':'waiting'}
             self.stop_requested = False
             self.progress.set(0)
             self.time_text.set(f"00:00 / {duration_label(length)}")
@@ -989,7 +1024,7 @@ class App:
             def worker():
                 try:
                     arguments = ["--play", str(path), "--cancel-file", str(cancel), "--report", str(report),
-                                 "--countdown", str(countdown), "--hold-ms", str(hold)]
+                                 "--countdown", str(countdown), "--hold-ms", str(hold), '--control-file',str(run/'control.json')]
                     arguments.extend(["--data-dir", str(self.directory)])
                     code = self.engine.run_playback_and_wait(None, arguments)
                     result = json.loads(report.read_text(encoding="utf-8")) if report.exists() else {}
@@ -1022,13 +1057,19 @@ class App:
                 data = json.loads(self.active["progress"].read_text(encoding="utf-8"))
                 phase = data.get("phase")
                 if phase == "countdown":
+                    self.active['phase']='countdown'
                     self.set_status(f'请保持游戏在前台，{data["remaining"]} 秒后开始。', f'{data["remaining"]} 秒后开始', "amber")
-                elif phase == "playing":
-                    elapsed = min(self.active["length"], max(0, time.time() - data["started_at"]))
+                elif phase in ('playing','paused'):
+                    self.active['phase']=phase
+                    if data.get('control_sequence',0)>=self.active['control_sequence']:
+                        self.active['pause_requested']=phase=='paused'
+                    elapsed = min(self.active["length"], max(0, float(data.get('elapsed',0))))
                     self.progress.set(elapsed / self.active["length"] * 100)
                     self.time_text.set(f'{duration_label(elapsed)} / {duration_label(self.active["length"])}')
                     self.tracks.set_playhead(self.score['summary']['source_origin_seconds'] + elapsed * self.score['settings']['speed'])
-                    self.set_status("正在游戏中演奏 · F8 停止 · 切出游戏会自动停止", "演奏中", "teal")
+                    self.set_status('已暂停 · F7 继续 · F8 停止' if phase=='paused' else '正在演奏 · F7 暂停 · F8 停止',
+                                    '已暂停' if phase=='paused' else '演奏中','amber' if phase=='paused' else 'teal')
+                self.refresh_controls()
             except (OSError, ValueError, KeyError, TypeError):
                 pass
         elif self.preview_started is not None:
@@ -1087,6 +1128,7 @@ class App:
         except queue.Empty:
             pass
         self.update_progress()
+        if self.mini:self.mini.refresh()
         self.poll_job = self.root.after(120, self.poll)
 
     def show_details(self):
@@ -1199,4 +1241,5 @@ class App:
         self.root.after_cancel(self.poll_job)
         if self.refresh_job is not None:
             self.root.after_cancel(self.refresh_job)
+        if self.mini:self.mini.close()
         self.root.destroy()
