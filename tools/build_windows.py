@@ -8,6 +8,7 @@ import sys
 import zipfile
 import importlib.metadata
 import json
+import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -24,10 +25,15 @@ def main():
     output, work = args.output.resolve(), args.work.resolve()
     output.mkdir(parents=True, exist_ok=True)
     work.mkdir(parents=True, exist_ok=True)
+    # Never copy bytecode caches from local audio-engine checks into the app.
+    # Use a fresh staging folder so removed resources cannot survive a rebuild.
+    resources = work / 'resources' / uuid.uuid4().hex / 'assets'
+    shutil.copytree(ROOT / 'src/nte_music_desk/assets', resources,
+                    ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '*.pyo'))
     subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir", "--windowed",
                     "--noupx", "--name", "异环演奏工作台", "--distpath", str(output), "--workpath", str(work / "pyinstaller"),
                     "--specpath", str(work), "--paths", str(ROOT / "src"),
-                    "--add-data", f"{ROOT / 'src/nte_music_desk/assets'}:nte_music_desk/assets",
+                    "--add-data", f"{resources}:nte_music_desk/assets",
                     "--icon", str(ROOT / "src/nte_music_desk/assets/icon.ico"),
                     "--version-file", str(ROOT / "tools/version_info.txt"),
                     str(ROOT / "src/nte_music_desk/_bootstrap.py")], check=True, cwd=ROOT)
@@ -58,12 +64,18 @@ def main():
     for file in distribution.files or []:
         if str(file).replace("\\", "/").endswith("licenses/COPYING.txt"):
             shutil.copyfile(distribution.locate_file(file), licenses / "PyInstaller.txt")
+    pillow = importlib.metadata.distribution('Pillow')
+    for file in pillow.files or []:
+        if '/licenses/' in str(file).replace('\\', '/'):
+            source = pillow.locate_file(file)
+            if source.is_file():
+                shutil.copyfile(source, licenses / ('Pillow_' + str(file).replace('\\', '_').replace('/', '_')))
     for filename in ("LICENSE", "THIRD_PARTY_NOTICES.md"):
         shutil.copyfile(ROOT / filename, app / filename)
     shutil.copyfile(ROOT / "docs/USAGE.md", app / "使用说明.md")
     (app / "开始使用.txt").write_text(
         f"异环演奏工作台 v{__version__}\n\n双击“异环演奏工作台.exe”打开，无需安装 Python。\n"
-        "请完整解压并保留 _internal 文件夹。\n选曲 → 选择乐器 → 电脑试听 → 游戏试奏 → 完整演奏。\n"
+        "请完整解压并保留 _internal 文件夹。\n选曲 → 选择乐器与片段 → 时序试听 → 游戏试奏 → 开始演奏。\n"
         "F8 停止；切出游戏自动停止。只有游戏演奏需要手动确认 UAC。\n"
         "个人数据在 %LOCALAPPDATA%\\NteMusicDesk；可从“文件 → 打开数据目录”查看。\n", encoding="utf-8")
     archive = output / f"NTE-Music-Desk-v{__version__}-Windows-x64.zip"

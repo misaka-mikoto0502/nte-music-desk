@@ -21,7 +21,7 @@ releases 中会生成“异环演奏工作台”目录、Windows x64 ZIP 及 SHA
 & './releases/异环演奏工作台/异环演奏工作台.exe' --data-dir './test-data' --self-test './self-test.json'
 ```
 
-报告应为 status=passed、frozen=true、game_input_sent=false。该检查覆盖内置资源、四种转换组合、试听文件生成和隐藏 GUI 初始化；不替代真实游戏试听。
+报告应为 status=passed、frozen=true、game_input_sent=false。该检查覆盖内置资源、两种乐器与四种模式、试听、圆角控件、背景解码和隐藏 GUI 初始化；不替代真实游戏试听。
 
 ## 上传 GitHub
 
@@ -35,4 +35,18 @@ Actions 在 pull_request、手动触发或推送 v* 标签时运行自包含测�
 
 同步修改 src/nte_music_desk/__init__.py、pyproject.toml、tools/version_info.txt 和 CHANGELOG.md。再次测试、构建，校验 ZIP 与 SHA-256。检查第三方曲谱没有被复制进资源目录。
 
-GUI 与演奏逻辑沿用使用者已实机验证的版本。整理后的发布版须额外检查普通双击、资源导入、数据目录、合成试听、UAC 子进程与停止功能；本次整理只执行无游戏输入的检查。EXE 未进行商业代码签名。
+每个功能验证完成后单独创建本地 commit，再同步版本与发布说明。1.3.0 在 feat/multitrack-1.3 分支开发；本地提交与标签不会自动上传 GitHub。
+
+1.3.1 界面更新位于 feat/visual-refresh-1.3.1。构建环境新增 Pillow，收集其完整许可证；保留 1.3.0 产物，避免覆盖可回退版本。
+
+更新后的发布版须额外检查普通双击、资源导入、数据目录、合成试听、UAC 子进程与停止功能；本轮只执行无游戏输入的检查。1.3.0 的新增多音实机效果和授权模型真实推理单独验收，不能用进程夹具测试代替。EXE 未进行商业代码签名。
+
+音频引擎、权重、登录缓存、个人转谱和 Python 虚拟环境不得放进源码包或便携包。软件须附带音频配置说明和上游许可边界。冻结自检要覆盖多轨窗口和音频配置窗口，报告真实模型推理未执行。
+
+本地构建后运行 `python tools/verify_release.py`，核对 ZIP 散列、CRC、独立解压、隔离环境启动、片段转换和资源只读。默认读取当前版本 releases/v<版本> 目录，其他位置可用 --archive 指定。
+
+## v1.4.0 发布范围
+
+开发分支 feat/audio-accompaniment-beta。在 releases/v1.4.0 独立生成 Windows 包，保留历史版本。在线搜曲、下载及目录资源均已移除；可选音频识别仍属实验功能，原唱分离停用。发布说明使用 docs/RELEASE_NOTES_1.4.0.md，不能宣传已完成高保真模型或原唱分离验收。
+
+构建使用干净资源副本，排除本机 __pycache__。独立验证还检查不包含曲库快照、个人数据目录和模型权重。Source 包和 Windows 包均不得包含 .build、outputs 或父目录 work。

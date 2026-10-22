@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nte-music-desk"
-version = "1.1.1"
+version = "1.4.0"
 description = "Windows MIDI performance desk for NTE in-game guitar and piano"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [{name = "NTE Music Desk contributors"}]
-dependencies = []
+dependencies = ["Pillow>=10.3,<14"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Operating System :: Microsoft :: Windows",
@@ -25,4 +25,4 @@ nte-music-desk = "nte_music_desk.cli:entrypoint"
 where = ["src"]
 
 [tool.setuptools.package-data]
-nte_music_desk = ["assets/*", "assets/catalogs/*.json.gz", "assets/scores/*.mid", "assets/scores/*.musicxml"]
+nte_music_desk = ["assets/*", "assets/scores/*.mid", "assets/scores/*.musicxml"]

@@ -16,6 +16,12 @@ releases/*
 midi_ui_settings.json
 downloaded_midis/
 catalog_cache/
+arrangements/
 runs/
 self-test*.json
 test-data/
+audio-engine/
+audio-engine.json
+audio-models/
+audio-checks/
+transcriptions/
