@@ -13,7 +13,7 @@ python -m venv .venv
 
 releases 中会生成“异环演奏工作台”目录、Windows x64 ZIP 及 SHA-256 文件。完整解压即可运行 EXE。发布时上传整个 ZIP，不能只复制 EXE 而丢掉 _internal。
 
-使用目录便携版以便普通界面与 UAC 演奏进程共享安装资源，不使用自解压单文件管理员程序。构建方式见 [PyInstaller 目录打包说明](https://pyinstaller.org/en/stable/operating-mode.html#bundling-to-one-folder)。
+使用目录便携版以便启动提权后的界面与演奏进程共享安装资源，不使用自解压单文件管理员程序。构建方式见 [PyInstaller 目录打包说明](https://pyinstaller.org/en/stable/operating-mode.html#bundling-to-one-folder)。
 
 安全离线自检（不会提权、联网下载或发送游戏按键）：
 
@@ -39,7 +39,7 @@ Actions 在 pull_request、手动触发或推送 v* 标签时运行自包含测�
 
 1.3.1 界面更新位于 feat/visual-refresh-1.3.1。构建环境新增 Pillow，收集其完整许可证；保留 1.3.0 产物，避免覆盖可回退版本。
 
-更新后的发布版须额外检查普通双击、资源导入、数据目录、合成试听、UAC 子进程与停止功能；本轮只执行无游戏输入的检查。1.3.0 的新增多音实机效果和授权模型真实推理单独验收，不能用进程夹具测试代替。EXE 未进行商业代码签名。
+更新后的发布版须额外检查普通双击、资源导入、数据目录、合成试听、启动 UAC、迷你播放器、暂停与停止功能；本轮只执行无游戏输入的检查。1.3.0 的新增多音实机效果和授权模型真实推理单独验收，不能用进程夹具测试代替。EXE 未进行商业代码签名。
 
 音频引擎、权重、登录缓存、个人转谱和 Python 虚拟环境不得放进源码包或便携包。软件须附带音频配置说明和上游许可边界。冻结自检要覆盖多轨窗口和音频配置窗口，报告真实模型推理未执行。
 
@@ -50,3 +50,9 @@ Actions 在 pull_request、手动触发或推送 v* 标签时运行自包含测�
 开发分支 feat/audio-accompaniment-beta。在 releases/v1.4.0 独立生成 Windows 包，保留历史版本。在线搜曲、下载及目录资源均已移除；可选音频识别仍属实验功能，原唱分离停用。发布说明使用 docs/RELEASE_NOTES_1.4.0.md，不能宣传已完成高保真模型或原唱分离验收。
 
 构建使用干净资源副本，排除本机 __pycache__。独立验证还检查不包含曲库快照、个人数据目录和模型权重。Source 包和 Windows 包均不得包含 .build、outputs 或父目录 work。
+
+## v1.5.0 发布范围
+
+分支 feat/mini-player-1.5；独立生成 releases/v1.5.0，旧包保留。应用使用普通清单和启动时的 ShellExecute runas，在 GUI 创建前请求权限；离线自检和转换不提权，不使用 requireAdministrator 清单强制所有命令请求 UAC。演奏子进程只继承现有管理员权限。
+
+发布前核对主窗最小化后的小窗显示、默认位置、暂停时间轴及 Shift 释放；实际 UAC 由用户手动确认，不自动点击。普通顶层窗不保证覆盖独占全屏，发布说明必须写明推荐无边框全屏以及独占全屏的 F7/F8 操作。离线检查不能当作游戏兼容性或权限提示的实机验收。

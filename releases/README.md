@@ -2,9 +2,9 @@
 
 本地保留基线与正式版本产物，各版本目录互不覆盖；Source 源码包为整理后的仓库内容，不含个人数据、模型或构建环境。
 
-当前版本：v1.4.0/NTE-Music-Desk-v1.4.0-Windows-x64.zip。运行 python tools/build_windows.py --output releases/v1.4.0 可重新构建，python tools/package_source.py 可生成源码包。旧版本独立保留。
+当前版本：v1.5.0/NTE-Music-Desk-v1.5.0-Windows-x64.zip。运行 python tools/build_windows.py --output releases/v1.5.0 可重新构建，python tools/package_source.py 可生成源码包。旧版本独立保留。
 
-1.4.0 移除搜曲与下载，保留本地导入、伴奏转谱和独立旋律 Beta。音频识别需可选引擎与模型条款确认，原唱自动分离暂缓开放。发布内容见 docs/RELEASE_NOTES_1.4.0.md。
+1.5.0 新增启动时提权、迷你播放器及 F7 暂停/继续，鼠标操作悬浮窗建议无边框全屏。沿用 1.4.0 的本地导入、伴奏转谱和独立旋律 Beta。音频识别需可选引擎与模型条款确认，原唱自动分离暂缓开放。发布内容见 docs/RELEASE_NOTES_1.5.0.md。
 
 1.3.0 音频转谱为可选独立引擎，需要另行安装、接受模型许可与登录；便携包不附带模型。原曲谱导入与游戏演奏无需安装 Python。
 

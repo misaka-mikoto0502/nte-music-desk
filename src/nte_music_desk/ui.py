@@ -111,7 +111,7 @@ class App:
         self.applied_instrument = selected.id
         self.range_policy = tk.StringVar(value="超出音域折回八度")
         self.speed_slider = tk.DoubleVar(value=1.0)
-        self.title, self.subtitle = tk.StringVar(value="选择一首曲子"), tk.StringVar(value="从左侧曲库开始，或导入自己的 MIDI")
+        self.title, self.subtitle = tk.StringVar(value="选择一首曲子"), tk.StringVar(value="从左侧曲目架开始，或导入本地曲谱")
         self.status = tk.StringVar(value="先选曲，再试听，最后开始游戏演奏。")
         self.notice = tk.StringVar(value="")
         self.time_text, self.progress = tk.StringVar(value="00:00 / 00:00"), tk.DoubleVar(value=0)
@@ -1114,7 +1114,7 @@ class App:
                 self.set_status("整段按键已发送完毕。", "演奏完成", "teal")
             else:
                 stopped = result.get("status") == "stopped" or message["code"] == 2
-                reason = result.get("reason") or ("权限确认已取消。" if message["code"] == 2 else f'演奏进程退出：{message["code"]}')
+                reason = result.get("reason") or ("演奏已停止。" if message["code"] == 2 else f'演奏进程退出：{message["code"]}')
                 self.set_status(reason, "已停止" if stopped else "演奏失败", "muted" if stopped else "red")
             self.active, self.stop_requested = None, False
             self.refresh_controls()

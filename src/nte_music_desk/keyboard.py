@@ -178,7 +178,7 @@ def run_playback_and_wait(script_path=None, arguments=None):
 
 
 def run_elevated_and_wait(script_path=None, arguments=None, *, visible=False, wait=True):
-    """Request normal Windows UAC consent; wait for this one playback process."""
+    """Request Windows UAC for GUI startup or a direct command-line launch."""
     shell32 = C.WinDLL("shell32", use_last_error=True)
     kernel32 = C.WinDLL("kernel32", use_last_error=True)
 

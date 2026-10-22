@@ -207,7 +207,7 @@ def main(argv=None):
     parser.add_argument("--range-policy", choices=["fold", "drop", "strict"], default="fold")
     parser.add_argument("--start", type=float, default=0)
     parser.add_argument("--end", type=float, help="片段终点（原曲秒数），留空演奏至曲末")
-    parser.add_argument("--play", metavar="JSON", help="将已转换曲谱发送到游戏（请求 UAC）")
+    parser.add_argument("--play", metavar="JSON", help="将已转换曲谱发送到游戏（需要管理员权限）")
     parser.add_argument("--countdown", type=int, default=7)
     parser.add_argument("--hold-ms", type=int, default=300)
     parser.add_argument("--cancel-file", help=argparse.SUPPRESS)

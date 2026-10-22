@@ -48,6 +48,8 @@ def run_self_test(engine, destination):
         app = App(root, engine)
         root.update_idletasks()
         assert app.score is not None
+        assert app.mini is not None and app.mini.window.attributes('-topmost')
+        assert app.mini.native.user32.GetWindowLongPtrW(app.mini.native.hwnd,-20)&0x08000000
         assert not hasattr(app, 'open_online')
         assert app.artwork._image is not None, 'Background asset could not be decoded'
         assert app.artwork._image.width > 0
@@ -86,6 +88,7 @@ def run_self_test(engine, destination):
               "arrangement_memory": "passed", "excerpt": "passed", "recommendations": "passed",
               "multitrack_gui": "passed", "audio_setup_gui": "passed", "audio_model_inference": "not_run_requires_authorized_weights",
               "music_download_feature": "removed", "model_terms_defaults": "unchecked", "audio_worker_resources": "passed",
+              "mini_player": "passed", "interactive_uac_and_game_overlay": "not_run_requires_user_desktop_test",
               "rounded_controls": "passed", "background_asset": "passed",
               "performance_preview": "passed", "game_input_sent": False}
     destination = Path(destination).resolve()
