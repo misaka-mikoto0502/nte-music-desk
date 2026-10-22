@@ -100,7 +100,7 @@ class AudioPipeline(ProcessJob):
         request.write_text(json.dumps({**config,'operation':operation,'response':str(response)},ensure_ascii=False),encoding='utf-8')
         self.run([str(python_engine(executable)),str(asset_dir()/'audio_worker.py'),str(request)],
                  directory/'engine.log',notify,timeout=7200 if operation=='separate' else 120,
-                 failure={'prepare':'音频解码或选段失败。','separate':'伴奏分离失败，请检查依赖、模型下载与设备。','diagnose':'环境检查失败，请检查 Python 与依赖。'}[operation],
+                 failure={'prepare':'音频解码或选段失败。','separate':'伴奏分离失败，请检查依赖、模型下载与设备。','diagnose':'环境检查失败，请检查 Python 与依赖。','model_access':'模型访问检查失败。'}[operation],
                  environment={'CUDA_VISIBLE_DEVICES':'-1'} if config.get('device')=='cpu' else None)
         if not response.is_file() or response.stat().st_size > 128*1024:
             raise ValueError('音频引擎未返回有效结果。')
@@ -113,6 +113,12 @@ class AudioPipeline(ProcessJob):
         target = Path(directory)/'audio-checks'/uuid.uuid4().hex
         target.mkdir(parents=True)
         return self.worker(executable,'diagnose',target,{'model':model},notify)
+
+    def verify_model_access(self, executable, directory, model='medium', notify=None, *, accepted_terms=False):
+        if accepted_terms is not True:raise ValueError('请先阅读并确认 MuScriptor 模型条款。')
+        if model not in ('small','medium','large'):raise ValueError('模型无效。')
+        target=Path(directory)/'audio-checks'/uuid.uuid4().hex;target.mkdir(parents=True)
+        return self.worker(executable,'model_access',target,{'model':model},notify)
 
     def install(self, python, directory, notify=None, device='cpu', melody_only=False, separation_only=False):
         python = python_engine(python)

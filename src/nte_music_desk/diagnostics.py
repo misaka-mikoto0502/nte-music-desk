@@ -73,10 +73,17 @@ def run_self_test(engine, destination):
         assert app.audio_dialog.window.winfo_exists()
         assert not app.audio_dialog.muscriptor_terms.get()
         assert not app.audio_dialog.game_terms.get()
-        for resource in ('audio_worker.py', 'audio_runtime.py', 'melody_worker.py', 'COPYRIGHT_AND_MODELS.md'):
+        for resource in ('audio_worker.py', 'audio_runtime.py', 'separation_runtime.py', 'melody_worker.py', 'COPYRIGHT_AND_MODELS.md'):
             assert (engine.ASSETS / resource).is_file(), resource
         app.audio_dialog.help()
         app.audio_dialog.close()
+        from .audio_audition import WaveComparison
+        engine.render_song_preview(song,preview,seconds=1)
+        comparison=WaveComparison()
+        try:
+            comparison.switch(preview);comparison.seek(500,playing=False)
+            assert abs(comparison.position()-500)<=1 and not comparison.playing
+        finally:comparison.close();preview.unlink(missing_ok=True)
     finally:
         App.show_error = original_error
         if app is not None:
@@ -88,6 +95,7 @@ def run_self_test(engine, destination):
               "arrangement_memory": "passed", "excerpt": "passed", "recommendations": "passed",
               "multitrack_gui": "passed", "audio_setup_gui": "passed", "audio_model_inference": "not_run_requires_authorized_weights",
               "music_download_feature": "removed", "model_terms_defaults": "unchecked", "audio_worker_resources": "passed",
+              "separation_backend":"umxhq", "audio_comparison":"passed_silent_open_and_seek",
               "mini_player": "passed", "interactive_uac_and_game_overlay": "not_run_requires_user_desktop_test",
               "rounded_controls": "passed", "background_asset": "passed",
               "performance_preview": "passed", "game_input_sent": False}

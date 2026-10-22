@@ -13,6 +13,13 @@ import test_audio_pipeline as fixtures
 
 
 class SeparationChecks(unittest.TestCase):
+    def test_model_access_check_requires_terms_before_starting_worker(self):
+        job=AudioPipeline()
+        with patch.object(job,'worker') as worker:
+            with self.assertRaisesRegex(ValueError,'模型条款'):
+                job.verify_model_access(sys.executable,Path('unused'),accepted_terms=False)
+            worker.assert_not_called()
+
     def test_separation_does_not_require_transcription_login_and_keeps_both_stems(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);source,_=fixtures.AudioPipelineChecks().fixture(root)

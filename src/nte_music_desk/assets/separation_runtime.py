@@ -6,6 +6,7 @@ Source/license: https://zenodo.org/records/3370489 (metadata: mit-license).
 import hashlib
 from pathlib import Path
 import urllib.request
+import uuid
 
 WEIGHTS = {
     'vocals': ('vocals-b62c91ce.pth', 'd918985fad0fedf6d9ce89e279aa7218'),
@@ -32,7 +33,7 @@ def weight_files(directory):
     for target, (name, checksum) in WEIGHTS.items():
         path = directory / name
         if not valid_weight(path, checksum):
-            temporary = path.with_suffix('.partial')
+            temporary = path.with_name(path.name+'.'+uuid.uuid4().hex+'.partial')
             try:
                 print('获取官方 UMX-HQ 权重：' + target, flush=True)
                 request = urllib.request.Request(MODEL_URL + '/files/' + name, headers={'User-Agent': 'NTE-Music-Desk'})

@@ -15,6 +15,41 @@ ROOT=Path(__file__).resolve().parents[1]
 
 @unittest.skipUnless(sys.platform=="win32","Desktop integration requires Windows")
 class ApplicationChecks(unittest.TestCase):
+    def test_separation_combined_modes_and_changing_input_clear_previous_results(self):
+        import tkinter as tk
+        from nte_music_desk import cli
+        from nte_music_desk.ui import App
+        from nte_music_desk.paths import asset_dir
+        from nte_music_desk.audio_ui import FLOWS,KINDS
+        from nte_music_desk.audio_pipeline import AudioResult
+        from nte_music_desk.rights import SOURCE_BASES
+        with tempfile.TemporaryDirectory() as d:
+            folder=Path(d);root=tk.Tk();root.withdraw()
+            app=App(root,SimpleNamespace(ROOT=folder,ASSETS=asset_dir(),key_schedule=cli.key_schedule))
+            try:
+                app.open_audio();dialog=app.audio_dialog
+                source=folder/'own.wav';source.write_bytes(b'fixture')
+                dialog.source.set(str(source));dialog.executable.set(sys.executable)
+                dialog.rights_basis.set(SOURCE_BASES['original']);dialog.rights_reference.set('own recording')
+                dialog.flow.set(FLOWS['separate']);dialog.flow_changed()
+                self.assertEqual(dialog.source_kind.get(),KINDS['original'])
+                with patch.object(dialog,'begin') as begin:
+                    dialog.transcribe();begin.assert_called_once()
+                self.assertFalse(dialog.muscriptor_terms.get())
+                dialog.set_results(AudioResult(folder,None,source,folder/'backing.wav',vocals_audio=folder/'voice.wav'))
+                self.assertEqual(set(dialog.stem_paths),{'原音频','伴奏','人声'})
+                self.assertEqual(dialog.result_choice.get(),'')
+                dialog.flow.set(FLOWS['combined']);dialog.flow_changed()
+                dialog.muscriptor_terms.set(True)
+                with patch.object(dialog,'begin') as begin:
+                    dialog.transcribe();begin.assert_not_called()
+                self.assertIn('GAME',dialog.state.get())
+                dialog.source.set(str(folder/'another.wav'))
+                self.assertIsNone(dialog.result)
+                self.assertEqual(dialog.result_paths,{})
+                self.assertEqual(str(dialog.original_button.cget('state')),'disabled')
+            finally:app.close()
+
     def test_audio_dialog_configuration_help_and_close_without_engine(self):
         import tkinter as tk
         from nte_music_desk import cli

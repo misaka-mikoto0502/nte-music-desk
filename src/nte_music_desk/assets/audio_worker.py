@@ -87,10 +87,25 @@ def diagnose(config):
     return checks
 
 
+def model_access(config):
+    """Explicit online HEAD check, without downloading weights or exposing tokens."""
+    if config.get('model') not in ('small','medium','large'):raise ValueError('模型无效。')
+    from huggingface_hub import get_hf_file_metadata,hf_hub_url
+    from huggingface_hub.errors import HfHubHTTPError
+    try:
+        metadata=get_hf_file_metadata(hf_hub_url('MuScriptor/muscriptor-'+config['model'],'model.safetensors'),timeout=20)
+    except HfHubHTTPError as error:
+        status=error.response.status_code if error.response is not None else None
+        if status in (401,403):raise ValueError('模型访问未获准：请在所选模型页面接受条款，并在当前引擎登录 Hugging Face。') from None
+        raise ValueError('模型访问检查失败，请检查网络或稍后重试。') from None
+    return {'model':'muscriptor-'+config['model'],'access':'verified_by_authorized_file_metadata',
+            'bytes':metadata.size,'weights_downloaded':False,'inference_tested':False}
+
+
 def main():
     request = Path(sys.argv[1])
     config = json.loads(request.read_text(encoding='utf-8'))
-    operations = {'prepare':prepare, 'separate':separate, 'diagnose':diagnose}
+    operations = {'prepare':prepare, 'separate':separate, 'diagnose':diagnose,'model_access':model_access}
     result = operations[config['operation']](config)
     Path(config['response']).write_text(json.dumps(result, ensure_ascii=False, indent=2),encoding='utf-8')
 

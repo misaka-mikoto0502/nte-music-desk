@@ -86,6 +86,7 @@ class App:
         self.directory.mkdir(parents=True, exist_ok=True)
         self.assets = getattr(engine, "ASSETS", self.directory)
         self.audio_dialog = None
+        self.audio_audition = None
         self.song, self.score, self.active = None, None, None
         self.track_ids, self.controls, self.library_buttons = [], [], []
         self.messages, self.refresh_job = queue.Queue(), None
@@ -303,6 +304,7 @@ class App:
         self.range_label.pack(anchor='w', pady=(4, 14))
         self.label(bottom, 'F7  暂停 / 继续\nF8  停止演奏', 10, C['mint'], True,justify='left').pack(anchor='w')
         self.label(bottom, 'Ctrl+O 导入本地曲谱', 8, '#A9B9A6').pack(anchor='w', pady=(8, 0))
+        self.label(bottom, '考虑音乐版权风险，不提供搜曲下载。\n请选择自己的本地曲谱或音频。', 8, '#A9B9A6',wraplength=210,justify='left').pack(anchor='w',pady=(8,0))
 
         main = tk.Frame(self.root, bg=C['bg'])
         main.pack(side='left', fill='both', expand=True)
@@ -992,6 +994,7 @@ class App:
         threading.Thread(target=worker, daemon=True).start()
 
     def stop_preview(self):
+        if self.audio_audition:self.audio_audition.close()
         self.preview_token, self.preview_started = None, None
         import winsound
         winsound.PlaySound(None, 0)
