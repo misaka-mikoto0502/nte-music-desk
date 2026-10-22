@@ -10,7 +10,7 @@ import sys
 import time
 
 
-def elevation_command(arguments):
+def elevation_command(arguments, *, desktop=False):
     """Frozen apps relaunch the EXE, source installs use their trusted bootstrap."""
     arguments = list(arguments)
     if "--elevated-child" not in arguments:
@@ -18,7 +18,8 @@ def elevation_command(arguments):
     if getattr(sys, "frozen", False):
         return sys.executable, arguments, str(Path(sys.executable).resolve().parent)
     bootstrap = Path(__file__).resolve().with_name("_bootstrap.py")
-    return sys.executable, ["-X", "utf8", "-I", "-S", str(bootstrap), *arguments], str(bootstrap.parent)
+    isolation=['-I'] if desktop else ['-I','-S']
+    return sys.executable, ['-X','utf8',*isolation,str(bootstrap),*arguments],str(bootstrap.parent)
 
 
 @dataclass(frozen=True)
@@ -194,7 +195,7 @@ def run_elevated_and_wait(script_path=None, arguments=None, *, visible=False, wa
     kernel32.GetExitCodeProcess.argtypes = [W.HANDLE, C.POINTER(W.DWORD)]
     kernel32.CloseHandle.argtypes = [W.HANDLE]
     arguments = sys.argv[1:] if arguments is None else list(arguments)
-    executable, command_args, working_directory = elevation_command(arguments)
+    executable, command_args, working_directory = elevation_command(arguments,desktop=visible)
     parameters = subprocess.list2cmdline(command_args)
     info = SHELLEXECUTEINFO()
     info.cbSize, info.fMask = C.sizeof(info), 0x40
@@ -203,7 +204,7 @@ def run_elevated_and_wait(script_path=None, arguments=None, *, visible=False, wa
     if not shell32.ShellExecuteExW(C.byref(info)):
         error = C.get_last_error()
         if error == 1223:
-            print("UAC 已取消，未演奏。")
+            print("权限请求已取消。")
             return 2
         raise C.WinError(error)
     try:

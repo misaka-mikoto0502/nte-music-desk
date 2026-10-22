@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'))
 from nte_music_desk.startup import ensure_gui_elevation
-from nte_music_desk.keyboard import run_playback_and_wait
+from nte_music_desk.keyboard import run_playback_and_wait, elevation_command
 
 
 class StartupChecks(unittest.TestCase):
@@ -31,3 +31,11 @@ class StartupChecks(unittest.TestCase):
         with patch('nte_music_desk.keyboard.is_administrator',return_value=False), patch('nte_music_desk.keyboard.subprocess.run') as run:
             with self.assertRaises(RuntimeError):run_playback_and_wait(arguments=[])
             run.assert_not_called()
+
+    def test_source_gui_keeps_installed_pillow_while_playback_remains_isolated(self):
+        with patch('sys.frozen',False,create=True):
+            desktop=elevation_command([],desktop=True)[1]
+            worker=elevation_command(['--play','score.json'])[1]
+        self.assertIn('-I',desktop)
+        self.assertNotIn('-S',desktop)
+        self.assertIn('-S',worker)
