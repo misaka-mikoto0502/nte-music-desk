@@ -84,10 +84,26 @@ class AudioPipelineChecks(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             source=Path(d)/'a.mp3';source.write_bytes(b'a')
             for settings in ({'start':float('nan')},{'start':True},{'end':0},{'end':1801},{'source_kind':'unknown'},
-                             {'device':'shell'},{'model':'unknown'},{'melody_beta':1},
+                             {'device':'shell'},{'model':'unknown'},{'model':'large'},{'melody_beta':1},
                              {'source_kind':'instrumental','melody_beta':True}):
                 with self.assertRaises(ValueError):fixture_request(source,**settings).validate()
             with self.assertRaises(ValueError):python_engine(Path(d)/'muscriptor.exe')
+
+    def test_cpu_and_auto_install_do_not_fetch_cuda_runtime(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d)
+            for device,index in (('cpu','cpu'),('auto','cpu'),('cuda','cu128')):
+                pipeline=AudioPipeline()
+                with patch.object(pipeline,'run') as run:
+                    pipeline.install(sys.executable,root/device,device=device,separation_only=True)
+                torch_install=next(call.args[0] for call in run.call_args_list if any(arg.startswith('torch==') for arg in call.args[0]))
+                self.assertIn('torch==2.8.0+'+index,torch_install)
+                self.assertEqual(torch_install[torch_install.index('--index-url')+1],
+                                 'https://download.pytorch.org/whl/'+index)
+            pipeline=AudioPipeline()
+            with patch.object(pipeline,'run') as run:
+                with self.assertRaises(ValueError):pipeline.install(sys.executable,root,device='invalid')
+                run.assert_not_called()
 
     def test_missing_model_login_is_actionable_before_separation(self):
         with tempfile.TemporaryDirectory() as d:

@@ -8,7 +8,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog
 import webbrowser
 
-from .transcription import managed_python, clean_log
+from .transcription import managed_python, clean_log, MODEL_PARAMETERS
 from .audio_pipeline import AudioPipeline, AudioRequest, python_engine
 from .appearance import RoundedPanel
 from .segments import parse_time
@@ -44,7 +44,7 @@ class AudioDialog:
         self.window.protocol('WM_DELETE_WINDOW',self.close)
         self.executable=tk.StringVar(value=settings.get('executable',str(managed_python(app.directory))))
         self.source=tk.StringVar()
-        self.model=tk.StringVar(value=settings.get('model','medium'))
+        self.model=tk.StringVar(value=settings.get('model') if settings.get('model') in MODEL_PARAMETERS else 'medium')
         self.device=tk.StringVar(value=DEVICES.get(settings.get('device'),DEVICES['auto']))
         self.flow=tk.StringVar(value=FLOWS.get(settings.get('workflow'),FLOWS['accompaniment']))
         self.source_kind=tk.StringVar(value=KINDS['instrumental'])
@@ -123,7 +123,7 @@ class AudioDialog:
         app.label(body,'支持 分:秒；终点留空为整段。试听最多 30 秒，无需模型；首次转谱建议先选 15–30 秒。',9,'#738078').pack(anchor='w',pady=(0,10))
         row=tk.Frame(body,bg='#FCFBF7');row.pack(fill='x',pady=(3,10))
         app.label(row,'伴奏识别',10,width=19,anchor='w').pack(side='left')
-        self.model_box=ttk.Combobox(row,textvariable=self.model,values=('small','medium','large'),state='readonly',width=10)
+        self.model_box=ttk.Combobox(row,textvariable=self.model,values=tuple(MODEL_PARAMETERS),state='readonly',width=10)
         self.model_box.pack(side='left',padx=(0,12));self.controls.append((self.model_box,'readonly'))
         self.device_box=ttk.Combobox(row,textvariable=self.device,values=list(DEVICES.values()),state='readonly',width=14)
         self.device_box.pack(side='left');self.controls.append((self.device_box,'readonly'))
@@ -229,7 +229,7 @@ class AudioDialog:
         if path:self.executable.set(path)
 
     def open_license(self):
-        model=self.model.get() if self.model.get() in ('small','medium','large') else 'medium'
+        model=self.model.get() if self.model.get() in MODEL_PARAMETERS else 'medium'
         webbrowser.open('https://huggingface.co/MuScriptor/muscriptor-'+model)
 
     def help(self):self.app.show_help(filename='AUDIO_TRANSCRIPTION.md')

@@ -6,8 +6,10 @@
 
 ## 准备引擎
 
+当前仅允许 small（约 0.1B）和 medium（约 0.3B），不提供 large。CPU 可选不等于已在所有无显卡电脑验收；主程序尚未包含音频运行环境。无需用户安装 Python 的可选组件包仍在设计，详见 [部署约束与交付计划](AUDIO_DEPLOYMENT.md)。
+
 1. 安装完整 Python 3.10–3.13（推荐 3.12），打开“音频转谱 → 引擎配置与检查”。便携软件自身不含开发环境或 ML 权重。
-2. 选择生成内容，再点“安装 / 更新独立引擎”，选择该 Python 的 python.exe。引擎在个人数据目录独立创建，保留原环境。仅主旋律 Beta 安装较轻依赖；伴奏需要 PyTorch 等较大组件。需 NVIDIA 版本时先选择 NVIDIA GPU 再安装；驱动不兼容时改用 CPU。
+2. 选择生成内容，再点“安装 / 更新独立引擎”，选择该 Python 的 python.exe。引擎在个人数据目录独立创建，保留原环境。仅主旋律 Beta 安装较轻依赖；伴奏需要 PyTorch 等较大组件。CPU / 自动安装采用 CPU 版 PyTorch；需 NVIDIA 版本时先显式选择 NVIDIA GPU 再安装，驱动不兼容时改用 CPU。
 3. 阅读对应模型完整条款。MuScriptor 权重为 CC BY-NC 4.0 加附加条件，GAME 权重为 CC BY-NC-SA 4.0，均有非商业限制；代码 MIT 不替代权重许可。用户自行在 MuScriptor 的 Hugging Face 页面接受条款，本工具不代为确认。
 4. MuScriptor 需要在独立引擎的终端登录一次，例如：
 

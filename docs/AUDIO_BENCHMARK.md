@@ -42,3 +42,21 @@ python tools/evaluate_transcription.py .build/piano-benchmark/reference.mid "输
 真实独唱、合唱、弦乐/鼓组 BGM、不同混音及长片段；需要具备相应使用权的素材。GAME 的真实歌声识别与合并质量继续为 Beta，本轮只用夹具验证双路合并与失败保留伴奏。此钢琴样本上分离没有提高音符匹配，因此已有伴奏优先直转，不无条件增加分离。
 
 游戏音域折回、删音、Shift 分组和最终游戏发声单独验收。对照试听的轻量合成音只辅助检查音高与节奏；模型、采样及听感的权利和质量判断不能由软件测试替代。
+
+## 追加：CPU 与轻量候选比较
+
+同一份 8.5 秒 / 20 音钢琴基准，未手工修改模型输出。开发环境、缓存和初次导入状态影响耗时，以下不是端到端安装/启动时间，也未测低配机器。
+
+| 方案 | 设备 | 匹配 / 漏音 / 额外音 | 起音/音高 F1 | 起音误差中位数 | 结束误差中位数 | 本次计时 |
+|---|---|---|---:|---:|---:|---|
+| MuScriptor medium，约 306.5M 实际参数 | CPU，4 线程，禁用 GPU | 18 / 2 / 3 | 0.8780 | 19.8 ms | 219.8 ms | 已缓存权重加载约 2.94 秒；推理约 7.71 秒 |
+| Basic Pitch 0.4.0，官方 230,444 字节 ONNX | CPU / ONNX Runtime | 20 / 0 / 12 | 0.7692 | 6.8 ms | 54.5 ms | predict 调用约 1.38 秒，含 ONNX 会话创建和音频读取 |
+| High-resolution Piano Transcription，约 42.95M 参数 | CPU，4 线程 | 20 / 0 / 5 | 0.8889 | 3.9 ms | 54.3 ms | transcribe 调用约 4.12 秒；含模型加载、音频读取约 13.63 秒 |
+
+medium 使用 PyTorch 2.8.0+cu128 的 CPU 路径，CUDA_VISIBLE_DEVICES=-1、torch.set_num_threads(4)、OMP_NUM_THREADS=4、MKL_NUM_THREADS=4；不是无 CUDA 软件包的干净机器安装验收。实际参数通过 sum(p.numel()) 计数。Basic Pitch 使用默认起音/帧阈值，没有为本样本调参，手动配置 ONNX 依赖，未安装 TensorFlow；0.4.0 的 Python 依赖声明在 3.12 上会要求 TensorFlow，正式组件不能直接照搬 pip 的默认解析。
+
+Basic Pitch 的官方代码、模型与 NOTICE 随 wheel 提供，Apache 2.0 来源见 [官方仓库](https://github.com/spotify/basic-pitch)。本样本额外音明显更多，暂不接入为默认引擎。钢琴专用候选的 [官方检查点](https://zenodo.org/records/4034264)标注 CC BY 4.0，文件 171,966,578 字节，校验发布者 MD5 后测得 SHA-256 c3fa9730725bf4a762f1c14bc80cd5986eacda01b026f5a4a2525cd607876141；但 [推理代码仓库](https://github.com/qiuqiangkong/piano_transcription_inference)缺少 LICENSE，且 [补充许可的上游问题](https://github.com/qiuqiangkong/piano_transcription_inference/issues/25)尚未解决。只作隔离研究，未复制到产品、未打包或替换默认引擎。
+
+另比较 medium 的 beam=1/2/4 与自动/钢琴乐器提示，共六种设置：均为 18 个匹配、2 个漏音、3 个额外音，没有证明加大搜索宽度能改善该样本。发现末尾和弦存在约 10 ms 的短音，结束误差中位数不能完整反映这一问题；尚未采用按曲手修或无条件延长尾音。后续需增加持续时间、尾部误差及更多测试短句，再决定通用修复。
+
+large 在用户追加 1B 上限时下载已完成，未加载推理，随后清理本轮缓存并移除调用入口。部署约束和未完成项见 AUDIO_DEPLOYMENT.md；以上 CPU 实验不等于已经交付无需 Python 的音频组件。

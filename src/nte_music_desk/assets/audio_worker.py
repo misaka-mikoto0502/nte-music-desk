@@ -89,7 +89,7 @@ def diagnose(config):
 
 def model_access(config):
     """Explicit online HEAD check, without downloading weights or exposing tokens."""
-    if config.get('model') not in ('small','medium','large'):raise ValueError('模型无效。')
+    if config.get('model') not in ('small','medium'):raise ValueError('仅支持 1B 参数以内的 small / medium 模型。')
     from huggingface_hub import get_hf_file_metadata,hf_hub_url
     from huggingface_hub.errors import HfHubHTTPError
     try:

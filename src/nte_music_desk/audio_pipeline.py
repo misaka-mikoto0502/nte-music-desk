@@ -11,7 +11,7 @@ import uuid
 from .midi import read_midi, write_midi
 from .paths import asset_dir
 from .rights import validate_use, require_separation_license, MUSCRIPTOR_TERMS, GAME_TERMS, SEPARATION_MODEL
-from .transcription import ProcessJob, TranscriptionCancelled, AUDIO_SUFFIXES, ENGINE_VERSION, managed_python, transcription_command
+from .transcription import ProcessJob, TranscriptionCancelled, AUDIO_SUFFIXES, ENGINE_VERSION, MODEL_PARAMETERS, managed_python, transcription_command
 
 DECODER_VERSION = '0.6.0'
 # A tested Windows/Python 3.12 baseline. Newest binary wheels may have different
@@ -46,8 +46,8 @@ class AudioRequest:
             raise ValueError('音频需大于 0 且不超过 512 MB。')
         if self.source_kind not in ('original', 'instrumental'):
             raise ValueError('请选择原唱或伴奏 / 纯音乐。')
-        if self.model not in ('small','medium','large') or self.device not in ('cpu','auto','cuda'):
-            raise ValueError('模型或设备无效。')
+        if self.model not in MODEL_PARAMETERS or self.device not in ('cpu','auto','cuda'):
+            raise ValueError('本版仅支持 1B 参数以内的 small / medium 模型，以及 CPU / NVIDIA 设备。')
         if type(self.melody_beta) is not bool:
             raise ValueError('旋律 Beta 选项无效。')
         if self.melody_language not in ('auto','zh','ja','en','yue'):
@@ -116,11 +116,13 @@ class AudioPipeline(ProcessJob):
 
     def verify_model_access(self, executable, directory, model='medium', notify=None, *, accepted_terms=False):
         if accepted_terms is not True:raise ValueError('请先阅读并确认 MuScriptor 模型条款。')
-        if model not in ('small','medium','large'):raise ValueError('模型无效。')
+        if model not in MODEL_PARAMETERS:raise ValueError('本版仅支持 1B 参数以内的 small / medium 模型。')
         target=Path(directory)/'audio-checks'/uuid.uuid4().hex;target.mkdir(parents=True)
         return self.worker(executable,'model_access',target,{'model':model},notify)
 
     def install(self, python, directory, notify=None, device='cpu', melody_only=False, separation_only=False):
+        if device not in ('cpu','auto','cuda'):
+            raise ValueError('请选择 CPU、自动或 NVIDIA GPU。')
         python = python_engine(python)
         directory = Path(directory)
         directory.mkdir(parents=True,exist_ok=True)
@@ -131,8 +133,14 @@ class AudioPipeline(ProcessJob):
             self.run([str(target),'-m','pip','install','--disable-pip-version-check',*MELODY_DEPENDENCIES],log,notify,failure='旋律 Beta 依赖安装失败，可重试。')
             self.diagnose(target,directory,notify=notify)
             return target
-        torch_command=[str(target),'-m','pip','install','--disable-pip-version-check',*TORCH_DEPENDENCIES]
-        if device=='cuda':torch_command+=['--index-url','https://download.pytorch.org/whl/cu128']
+        variant='cu128' if device=='cuda' else 'cpu'
+        torch_command=[str(target),'-m','pip','install','--disable-pip-version-check',
+                       *(package+'+'+variant for package in TORCH_DEPENDENCIES)]
+        # Auto uses a portable CPU baseline until a user explicitly requests
+        # CUDA. Avoid downloading the much larger NVIDIA runtime by accident.
+        # Pin local wheel tags too: a pre-existing +cu128 install otherwise
+        # satisfies ==2.8.0 and would not switch back to the CPU profile.
+        torch_command+=['--index-url','https://download.pytorch.org/whl/'+variant]
         self.run(torch_command,log,notify,failure='PyTorch 安装失败，请检查下载连接；NVIDIA 组件需要较大空间与兼容驱动。')
         if separation_only:
             self.run([str(target),'-m','pip','install','--disable-pip-version-check','openunmix==1.3.0',

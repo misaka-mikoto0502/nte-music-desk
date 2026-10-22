@@ -22,6 +22,7 @@ class TranscriptionChecks(unittest.TestCase):
         self.assertEqual(command[command.index('--batch-size') + 1], '1')
         self.assertNotIn('--instruments', command)
         with self.assertRaises(ValueError): transcription_command(sys.executable, 'a.wav', 'a.mid', model='evil')
+        with self.assertRaisesRegex(ValueError,'1B'): transcription_command(sys.executable, 'a.wav', 'a.mid', model='large')
         self.assertNotIn('hf_abcdefgh123456', clean_log('\x1b[31mhf_abcdefgh123456'))
 
     def test_real_subprocess_output_validation_and_provenance(self):

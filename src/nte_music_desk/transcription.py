@@ -18,6 +18,7 @@ import uuid
 from .midi import parse_midi
 
 ENGINE_VERSION = '0.3.0'
+MODEL_PARAMETERS = {'small': 100_000_000, 'medium': 300_000_000}
 AUDIO_SUFFIXES = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aiff', '.aif'}
 
 
@@ -46,8 +47,8 @@ def engine_command(executable):
 
 
 def transcription_command(executable, source, output, model='small', device='cpu'):
-    if model not in ('small', 'medium', 'large') or device not in ('cpu', 'auto', 'cuda'):
-        raise ValueError('模型或设备选项无效。')
+    if model not in MODEL_PARAMETERS or device not in ('cpu', 'auto', 'cuda'):
+        raise ValueError('本版仅支持 1B 参数以内的 small / medium 模型，以及 CPU / NVIDIA 设备。')
     # Keep genuine onset timing. Do not force a piano-only recognition model,
     # quantize, fill rests, or trim leading silence before the user reviews it.
     return engine_command(executable) + ['transcribe', str(source), '--output', str(output),
@@ -98,6 +99,9 @@ class ProcessJob:
             raise TranscriptionCancelled('任务已取消。')
         started, position = time.monotonic(), 0
         env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUNBUFFERED='1', HF_HUB_DISABLE_PROGRESS_BARS='1')
+        # Leave headroom for the desktop/game, while honoring user thread caps.
+        env.setdefault('OMP_NUM_THREADS', '4')
+        env.setdefault('MKL_NUM_THREADS', '4')
         if environment:
             env.update(environment)
         with Path(log).open('ab') as stream:

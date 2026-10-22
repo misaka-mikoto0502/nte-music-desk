@@ -21,7 +21,7 @@
 
 | 组件 | 代码声明 | 模型权重 / 当前处理 |
 |---|---|---|
-| MuScriptor 0.3.0 | [MIT](https://github.com/muscriptor/muscriptor/blob/main/LICENSE) | [small](https://huggingface.co/MuScriptor/muscriptor-small)、[medium](https://huggingface.co/MuScriptor/muscriptor-medium)、[large](https://huggingface.co/MuScriptor/muscriptor-large) 为 CC BY-NC 4.0，另有附加条件：输入及转谱须具备所需权利；需用户自行接受门控条款 |
+| MuScriptor 0.3.0 | [MIT](https://github.com/muscriptor/muscriptor/blob/main/LICENSE) | 当前仅开放 [small](https://huggingface.co/MuScriptor/muscriptor-small)、[medium](https://huggingface.co/MuScriptor/muscriptor-medium)，均小于 1B；权重为 CC BY-NC 4.0，另有附加条件：输入及转谱须具备所需权利；需用户自行接受门控条款。large 不在产品允许范围 |
 | GAME 1.0.3 ONNX | [MIT](https://github.com/openvpi/GAME/blob/main/LICENSE) | [1.0 系列权重](https://github.com/openvpi/GAME/releases/tag/v1.0.0)为 CC BY-NC-SA 4.0；确认条件后才下载或调用，含已缓存模型 |
 | Audio Separator | [MIT](https://github.com/nomadkaraoke/python-audio-separator/blob/main/LICENSE) | 包装程序的许可不替代其调用的每个模型的许可 |
 | Open-Unmix 1.3.0 / UMX-HQ | [MIT](https://github.com/sigsep/open-unmix-pytorch/blob/master/LICENSE) | [UMX-HQ 官方权重记录](https://zenodo.org/records/3370489)的 API metadata.license.id 为 mit-license；只获取这四份官方权重，逐份校验发布者 MD5，采用 weights_only 加载。保留来源及许可，非 UMXL 或任意镜像模型 |
