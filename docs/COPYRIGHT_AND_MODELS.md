@@ -21,6 +21,7 @@
 
 | 组件 | 代码声明 | 模型权重 / 当前处理 |
 |---|---|---|
+| 轻量 Basic Pitch 1.0.1 / TensorFlow.js 3.21.0 CPU | Apache 2.0；依赖通知随包保留 | 使用 Spotify npm 包附带的原始模型文件，不修改权重；模型和代码约 1.51 MB 随轻量资源分发，完整通知在 assets/light_audio/licenses.txt。无需门控登录，仍要求输入素材具备必要使用权 |
 | MuScriptor 0.3.0 | [MIT](https://github.com/muscriptor/muscriptor/blob/main/LICENSE) | 当前仅开放 [small](https://huggingface.co/MuScriptor/muscriptor-small)、[medium](https://huggingface.co/MuScriptor/muscriptor-medium)，均小于 1B；权重为 CC BY-NC 4.0，另有附加条件：输入及转谱须具备所需权利；需用户自行接受门控条款。large 不在产品允许范围 |
 | GAME 1.0.3 ONNX | [MIT](https://github.com/openvpi/GAME/blob/main/LICENSE) | [1.0 系列权重](https://github.com/openvpi/GAME/releases/tag/v1.0.0)为 CC BY-NC-SA 4.0；确认条件后才下载或调用，含已缓存模型 |
 | Audio Separator | [MIT](https://github.com/nomadkaraoke/python-audio-separator/blob/main/LICENSE) | 包装程序的许可不替代其调用的每个模型的许可 |

@@ -21,6 +21,8 @@
 
 ## 可选音频转谱
 
+轻量 Beta 随包提供 [Spotify Basic Pitch TypeScript 1.0.1](https://github.com/spotify/basic-pitch-ts) 的后处理和官方未修改模型，以及 [TensorFlow.js 3.21.0](https://github.com/tensorflow/tfjs) 的 core/converter/CPU JavaScript 代码，采用 Apache 2.0。其他实际打入脚本的依赖分别保留 MIT/Apache 通知。完整许可、来源和包版本位于 `_internal/nte_music_desk/assets/light_audio/licenses.txt`，逐文件 SHA-256 位于 manifest.json。它们不是本项目自有 MIT 内容。复用用户已有浏览器，不分发 Node、PyTorch 或浏览器内核；音频不上传外部服务。
+
 [MuScriptor](https://github.com/muscriptor/muscriptor) 引擎代码采用 MIT，工作台调用固定版本 0.3.0 的外部命令行，不将其代码、PyTorch 或权重打入便携包。用户选择安装时在独立虚拟环境中获取依赖；相关依赖各自保留许可。
 
 [MuScriptor 模型](https://huggingface.co/MuScriptor/muscriptor-medium) 权重另受 CC BY-NC 4.0 非商用许可及附加条件约束，尤其要求输入音乐具备转谱所需的权利。用户自行接受上游条款并完成官方认证。工作台 MIT 许可不替代权重许可，不代表识别结果可自由传播。

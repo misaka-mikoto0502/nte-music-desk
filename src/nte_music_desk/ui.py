@@ -86,6 +86,7 @@ class App:
         self.directory.mkdir(parents=True, exist_ok=True)
         self.assets = getattr(engine, "ASSETS", self.directory)
         self.audio_dialog = None
+        self.light_audio = None
         self.audio_audition = None
         self.song, self.score, self.active = None, None, None
         self.track_ids, self.controls, self.library_buttons = [], [], []
@@ -155,7 +156,8 @@ class App:
         menu = tk.Menu(self.root)
         files = tk.Menu(menu, tearoff=False)
         files.add_command(label="导入曲谱…", command=self.open_file, accelerator="Ctrl+O")
-        files.add_command(label="音频转谱…", command=self.open_audio)
+        files.add_command(label="轻量音频转谱（Beta）…", command=self.open_light_audio)
+        files.add_command(label="高级音频处理（独立引擎）…", command=self.open_audio)
         files.add_command(label="另存原曲为 MIDI…", command=self.export_midi)
         files.add_separator()
         files.add_command(label="打开数据目录", command=lambda: os.startfile(self.directory))
@@ -186,12 +188,25 @@ class App:
         self.save_preferences()
 
     def open_audio(self):
-        if self.active: return
+        if self.active or (self.light_audio and self.light_audio.busy): return
         if self.audio_dialog:
             self.audio_dialog.window.lift()
             return
         from .audio_ui import AudioDialog
         self.audio_dialog = AudioDialog(self)
+
+    def open_light_audio(self):
+        if self.active or (self.audio_dialog and self.audio_dialog.job):return
+        try:
+            import webbrowser
+            from .light_audio import LightAudioSession
+            if self.light_audio is None:
+                self.light_audio = LightAudioSession(self.directory, self.messages.put,
+                    can_start=lambda: not self.closed and not self.active and not (self.audio_dialog and self.audio_dialog.job))
+            if not webbrowser.open(self.light_audio.url, new=2):
+                raise ValueError('无法打开默认浏览器，请检查 Windows 默认浏览器设置。')
+            self.set_status('已打开本机轻量转谱。音频在浏览器内计算，无需安装引擎；生成后先试听。', '轻量转谱 Beta', 'blue')
+        except (OSError,ValueError) as error:self.show_error(error)
 
     def show_help(self, filename='USAGE.md'):
         path = self.assets / filename
@@ -269,8 +284,8 @@ class App:
         self.import_button = self.button(sidebar, "+  导入曲谱", self.open_file, "primary", 11,
             "支持 MIDI、KAR、RMI、MusicXML、XML、MXL。快捷键 Ctrl+O")
         self.import_button.pack(fill='x', pady=(0, 7))
-        self.audio_button = self.button(sidebar, "音频转谱", self.open_audio, "nav", 10,
-            "本地伴奏转多轨 MIDI，或试用歌声旋律 Beta。首次需独立引擎与模型条款确认。")
+        self.audio_button = self.button(sidebar, "音频转谱 · Beta", self.open_light_audio, "nav", 10,
+            "在已有浏览器中用本机 CPU 转谱，无需安装引擎。复杂音乐仍为 Beta；高级分离见文件菜单。")
         self.audio_button.pack(fill='x')
         nav_area = tk.Frame(sidebar, bg=C['nav'])
         nav_area.pack(fill='both', expand=True, pady=(15, 8))
@@ -910,7 +925,7 @@ class App:
         self.play_button.configure(text="演奏中…" if locked else "▶  开始演奏")
         self.enabled(self.pause_button,locked and self.active.get('phase') in ('playing','paused') and not self.stop_requested)
         self.pause_button.configure(text='▶ 继续' if locked and self.active.get('pause_requested') else 'Ⅱ 暂停')
-        if self.audio_dialog and self.audio_dialog.job:
+        if (self.audio_dialog and self.audio_dialog.job) or (self.light_audio and self.light_audio.busy):
             self.enabled(self.play_button, False)
             self.enabled(self.trial_button, False)
         if self.mini:self.mini.refresh()
@@ -1000,7 +1015,7 @@ class App:
         winsound.PlaySound(None, 0)
 
     def play(self, seconds):
-        if self.active or (self.audio_dialog and self.audio_dialog.job):
+        if self.active or (self.audio_dialog and self.audio_dialog.job) or (self.light_audio and self.light_audio.busy):
             return
         self.recommend_token = None
         self.stop_preview()
@@ -1087,7 +1102,16 @@ class App:
 
     def handle_message(self, message):
         kind = message["kind"]
-        if kind.startswith("transpose"):
+        if kind == 'light_status':
+            self.set_status(message['text'], '轻量转谱 Beta', 'blue')
+            self.refresh_controls()
+        elif kind == 'light_done':
+            if self.active:
+                self.set_status('轻量曲谱已保存到数据目录 light-transcriptions，请停止演奏后导入。', '曲谱已保存', 'blue')
+            elif self.open_path(message['path']):
+                self.set_status('已导入轻量识别曲谱。请先试听检查错漏音；原始识别 MIDI 保存在同一任务目录。', '轻量转谱 Beta', 'amber')
+            self.refresh_controls()
+        elif kind.startswith("transpose"):
             if message["token"] != self.recommend_token:
                 return
             self.recommend_token = None
@@ -1130,6 +1154,10 @@ class App:
                 self.handle_message(self.messages.get_nowait())
         except queue.Empty:
             pass
+        light_busy = bool(self.light_audio and self.light_audio.busy)
+        if getattr(self,'last_light_busy',False) != light_busy:
+            self.last_light_busy = light_busy
+            self.refresh_controls()
         self.update_progress()
         if self.mini:self.mini.refresh()
         self.poll_job = self.root.after(120, self.poll)
@@ -1235,6 +1263,7 @@ class App:
         messagebox.showerror("无法完成", str(error), parent=self.root)
 
     def close(self):
+        if self.light_audio is not None:self.light_audio.close()
         if self.audio_dialog is not None:
             self.audio_dialog.close()
         self.save_preferences()

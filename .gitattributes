@@ -1,0 +1,4 @@
+# Generated runtime resources are hashed byte-for-byte. Preserve LF/model bytes
+# even when Windows Git has core.autocrlf=true.
+# Preserve vendor license line endings and whitespace inside generated JS too.
+src/nte_music_desk/assets/light_audio/* -text -whitespace

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NTE Music Desk · 轻量转谱</title><link rel="stylesheet" href="style.css"></head>
+<body><main><header><span>NTE MUSIC DESK</span><span class="tag">轻量转谱 · BETA</span></header>
+<h1>把一段音乐，变成可演奏的曲谱。</h1>
+<p class="intro">本地 CPU 处理，无需 GPU、Python 或模型账号。适合清晰的单乐器录音；复杂原唱不保证还原质量。</p>
+<form id="form"><label class="file">选择本地音频<input id="file" type="file" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a" required></label>
+<p class="hint">源文件不超过 64 MB / 10 分钟；每次最多识别 3 分钟，建议先试 15–30 秒。格式支持取决于当前浏览器。</p>
+<div class="row"><label>起点 / 秒<input id="start" type="number" min="0" step="0.1" value="0" required></label>
+<label>终点 / 秒<input id="end" type="number" min="0" step="0.1" placeholder="留空：最多 3 分钟"></label>
+<label>识别方式<select id="profile"><option value="polyphonic">保留和弦</option><option value="melody">突出旋律（可能减少和弦）</option></select></label></div>
+<label>素材使用依据<select id="basis" required><option value="">请选择</option><option value="original">自有原创作品及录音</option><option value="permission">已获此次转谱所需的授权</option><option value="open-license">开放许可覆盖此次使用</option><option value="public-domain-recording">作品及录音均可合法用于此次处理</option></select></label>
+<label>来源 / 授权说明<textarea id="reference" maxlength="2000" rows="2" placeholder="例如原创录音说明、许可链接或授权记录" required></textarea></label>
+<div class="actions"><button id="submit" type="submit">生成曲谱并导入工作台</button><button id="cancel" type="button" disabled>取消任务</button></div></form>
+<section class="result"><progress id="progress" max="100" value="0"></progress><p id="status" role="status">选择自己的音频文件即可开始。生成后先试听，再进入游戏演奏。</p>
+<audio id="audio" controls preload="metadata"></audio><a id="download" hidden download="轻量转谱.mid">另存识别 MIDI</a></section>
+<footer>音频只在这个浏览器标签页计算；本地连接仅传曲谱与来源记录。考虑音乐版权风险，不提供搜曲下载。<br>
+Basic Pitch / TensorFlow.js · Apache 2.0 · <a href="licenses.txt" target="_blank" rel="noreferrer">开源许可与来源</a>。Beta 不承诺任意音乐达到 90–95% 准确率。</footer>
+</main><script src="main.js" defer></script></body></html>

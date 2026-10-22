@@ -129,6 +129,7 @@ class MiniPlayer:
         paused=active.get('pause_requested',False) if active else False
         caption='▶ 继续' if paused else ('Ⅱ 暂停' if active else '▶ 演奏')
         ready=bool(self.app.score) and not self.app.preview_token and not (self.app.audio_dialog and self.app.audio_dialog.job)
+        if getattr(self.app,'light_audio',None) and self.app.light_audio.busy:ready=False
         enabled=(phase in ('playing','paused') and not self.app.stop_requested) if active else ready
         state='normal' if enabled else 'disabled'
         if self.play.cget('text')!=caption or str(self.play.cget('state'))!=state:self.play.configure(text=caption,state=state)

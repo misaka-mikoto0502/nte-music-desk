@@ -84,6 +84,14 @@ def run_self_test(engine, destination):
             comparison.switch(preview);comparison.seek(500,playing=False)
             assert abs(comparison.position()-500)<=1 and not comparison.playing
         finally:comparison.close();preview.unlink(missing_ok=True)
+        from .light_audio import LightAudioSession
+        from urllib.request import urlopen
+        app.light_audio = LightAudioSession(engine.ROOT, app.messages.put, assets=engine.ASSETS/'light_audio')
+        with urlopen(app.light_audio.url+'state',timeout=3) as response:
+            assert json.load(response)['open'] is True
+        light_bytes=app.light_audio.asset_bytes
+        assert light_bytes < 4_500_000
+        app.light_audio.close()
     finally:
         App.show_error = original_error
         if app is not None:
@@ -96,6 +104,8 @@ def run_self_test(engine, destination):
               "multitrack_gui": "passed", "audio_setup_gui": "passed", "audio_model_inference": "not_run_requires_authorized_weights",
               "music_download_feature": "removed", "model_terms_defaults": "unchecked", "audio_worker_resources": "passed",
               "separation_backend":"umxhq", "audio_comparison":"passed_silent_open_and_seek",
+              "light_audio":"passed_resources_and_local_http", "light_audio_bytes":light_bytes,
+              "light_browser_inference":"not_run_by_frozen_self_test",
               "mini_player": "passed", "interactive_uac_and_game_overlay": "not_run_requires_user_desktop_test",
               "rounded_controls": "passed", "background_asset": "passed",
               "performance_preview": "passed", "game_input_sent": False}

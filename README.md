@@ -8,13 +8,15 @@ Windows 桌面曲谱演奏工具：导入本地曲谱，一键操控《异环》
 
 ## 下载与使用
 
-从 Releases 获取 Windows x64 便携包，完整解压后双击 **异环演奏工作台.exe**。曲谱导入与演奏不需要安装 Python。请保留同目录的 `_internal` 文件夹。可选音频转谱需另行配置 Python 引擎与授权模型。
+从 Releases 获取 Windows x64 便携包，完整解压后双击 **异环演奏工作台.exe**。曲谱导入与演奏不需要安装 Python。请保留同目录的 `_internal` 文件夹。当前开发版的轻量音频 Beta 在已有浏览器中用本机 CPU 运行，无需配置环境；高级分离与转谱仍需独立引擎和授权模型。
 
 选曲 → 选择乐器与片段 → 时序试听 → 游戏试奏 → 开始演奏。首次可用内置《小星星》检查功能。打开图形应用时手动确认一次 UAC，后续演奏继承权限；F7 暂停/继续，F8 停止，切出游戏自动停止。
 
 [完整使用说明](docs/USAGE.md) · [构建与发布](docs/RELEASING.md) · [项目结构](docs/ARCHITECTURE.md) · [发布检查](docs/VALIDATION.md)
 
 [音频转谱配置](docs/AUDIO_TRANSCRIPTION.md) · [本轮复查与下一轮计划](docs/NEXT_STEPS.md)
+
+[轻量音频转谱 Beta](docs/LIGHT_AUDIO.md)：新增资源约 1.51 MB，支持本地音频选段、取消、MIDI 自动导入；清晰单乐器优先，不承诺任意歌曲达到 90–95% 准确率。
 
 [音乐与模型许可边界](docs/COPYRIGHT_AND_MODELS.md)：本地文件不自动代表具备转谱或发布授权，代码与模型权重采用各自许可。
 
