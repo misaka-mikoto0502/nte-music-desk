@@ -163,7 +163,20 @@ class WindowsKeyboard:
             self.up(key)
 
 
-def run_elevated_and_wait(script_path=None, arguments=None):
+def is_administrator():
+    return sys.platform == 'win32' and bool(C.windll.shell32.IsUserAnAdmin())
+
+
+def run_playback_and_wait(script_path=None, arguments=None):
+    """Inherit the already elevated app token; never request UAC mid-session."""
+    if not is_administrator():
+        raise RuntimeError('软件未获得管理员权限，请重新打开并确认启动时的权限提示。')
+    executable, command_args, directory=elevation_command(arguments or [])
+    return subprocess.run([executable,*command_args],cwd=directory,
+                          creationflags=subprocess.CREATE_NO_WINDOW).returncode
+
+
+def run_elevated_and_wait(script_path=None, arguments=None, *, visible=False, wait=True):
     """Request normal Windows UAC consent; wait for this one playback process."""
     shell32 = C.WinDLL("shell32", use_last_error=True)
     kernel32 = C.WinDLL("kernel32", use_last_error=True)
@@ -186,7 +199,7 @@ def run_elevated_and_wait(script_path=None, arguments=None):
     info = SHELLEXECUTEINFO()
     info.cbSize, info.fMask = C.sizeof(info), 0x40
     info.lpVerb, info.lpFile, info.lpParameters = "runas", executable, parameters
-    info.lpDirectory, info.nShow = working_directory, 0
+    info.lpDirectory, info.nShow = working_directory, 1 if visible else 0
     if not shell32.ShellExecuteExW(C.byref(info)):
         error = C.get_last_error()
         if error == 1223:
@@ -194,6 +207,8 @@ def run_elevated_and_wait(script_path=None, arguments=None):
             return 2
         raise C.WinError(error)
     try:
+        if not wait:
+            return 0
         kernel32.WaitForSingleObject(info.hProcess, 0xFFFFFFFF)
         result = W.DWORD()
         if not kernel32.GetExitCodeProcess(info.hProcess, C.byref(result)):

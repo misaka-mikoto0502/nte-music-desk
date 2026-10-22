@@ -22,6 +22,7 @@ ASSETS = asset_dir()
 from .midi import convert, load_score, note_name, read_midi, save_score, validate_score
 from .keyboard import KEYS, PlaybackStopped, WindowsKeyboard, run_elevated_and_wait
 from .keyboard import PianoKey
+from .keyboard import run_playback_and_wait
 from .instruments import INSTRUMENTS, SHIFT, score_instrument
 
 
@@ -276,8 +277,12 @@ def entrypoint():
     if sys.stderr is None:
         sys.stderr = open(os.devnull, "w", encoding="utf-8")
     raw = sys.argv[1:]
-    is_task = any(flag in raw for flag in ("--play", "--convert", "--inspect", "--self-test","--to-midi"))
+    from .startup import ensure_gui_elevation, is_task as task_arguments
+    is_task = task_arguments(raw)
     try:
+        startup_result=ensure_gui_elevation(raw)
+        if startup_result is not None:
+            return startup_result
         if sys.platform == "win32":
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("NteMusicDesk.Desktop.1")
         return main()

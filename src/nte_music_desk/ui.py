@@ -982,7 +982,7 @@ class App:
             self.stop_requested = False
             self.progress.set(0)
             self.time_text.set(f"00:00 / {duration_label(length)}")
-            self.set_status(f"请确认权限，随后进入 {score_instrument(score).title} 的 36 键界面。", "等待确认", "amber")
+            self.set_status(f"请进入 {score_instrument(score).title} 的 36 键界面，保持游戏前台。", "准备演奏", "amber")
             self.refresh_controls()
             countdown, hold = int(self.countdown.get()), int(self.hold_ms.get())
 
@@ -991,7 +991,7 @@ class App:
                     arguments = ["--play", str(path), "--cancel-file", str(cancel), "--report", str(report),
                                  "--countdown", str(countdown), "--hold-ms", str(hold)]
                     arguments.extend(["--data-dir", str(self.directory)])
-                    code = self.engine.run_elevated_and_wait(None, arguments)
+                    code = self.engine.run_playback_and_wait(None, arguments)
                     result = json.loads(report.read_text(encoding="utf-8")) if report.exists() else {}
                     self.messages.put({"kind": "game_done", "code": code, "result": result})
                 except Exception as error:
