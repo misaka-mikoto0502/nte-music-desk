@@ -132,9 +132,12 @@ class WindowsKeyboard:
     def cancelled(self):
         return any(self.user32.GetAsyncKeyState(vk) & 0x8000 for vk in (0x1B, 0x77))  # Esc / F8
 
+    def cancellation_reason(self):
+        return "检测到 Esc 或 F8，已停止。"
+
     def check(self):
         if self.cancelled():
-            raise PlaybackStopped("检测到 Esc 或 F8，已停止。")
+            raise PlaybackStopped(self.cancellation_reason())
         if (not self.user32.IsWindow(self.hwnd)
                 or self.window_pid(self.hwnd) != self.pid
                 or self.user32.GetForegroundWindow() != self.hwnd):

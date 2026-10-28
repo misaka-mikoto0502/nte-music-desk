@@ -53,6 +53,11 @@ class CancellableKeyboard(WindowsKeyboard):
     def cancelled(self):
         return (self.cancel_path is not None and self.cancel_path.exists()) or super().cancelled()
 
+    def cancellation_reason(self):
+        if self.cancel_path is not None and self.cancel_path.exists():
+            return "收到工作台停止指令，已停止。"
+        return super().cancellation_reason()
+
 
 def write_progress(report_path, phase, **values):
     """Optional UI telemetry; atomic replacement keeps readers off partial JSON."""
