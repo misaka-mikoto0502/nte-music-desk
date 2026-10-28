@@ -201,7 +201,11 @@ def run_elevated_and_wait(script_path=None, arguments=None, *, visible=False, wa
     executable, command_args, working_directory = elevation_command(arguments,desktop=visible)
     parameters = subprocess.list2cmdline(command_args)
     info = SHELLEXECUTEINFO()
-    info.cbSize, info.fMask = C.sizeof(info), 0x40
+    # This bootstrap has no message loop and exits after handing off to the
+    # elevated child. NOASYNC completes Shell dispatch before that exit; it
+    # does not wait for the child's GUI session to finish.
+    # https://learn.microsoft.com/windows/win32/api/shellapi/ns-shellapi-shellexecuteinfow
+    info.cbSize, info.fMask = C.sizeof(info), 0x40 | 0x100  # NOCLOSEPROCESS | NOASYNC
     info.lpVerb, info.lpFile, info.lpParameters = "runas", executable, parameters
     info.lpDirectory, info.nShow = working_directory, 1 if visible else 0
     if not shell32.ShellExecuteExW(C.byref(info)):
@@ -210,6 +214,8 @@ def run_elevated_and_wait(script_path=None, arguments=None, *, visible=False, wa
             print("权限请求已取消。")
             return 2
         raise C.WinError(error)
+    if not info.hProcess:
+        raise RuntimeError("Windows 未返回提权进程，请重新启动软件并确认权限提示。")
     try:
         if not wait:
             return 0
