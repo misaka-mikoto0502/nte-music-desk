@@ -1,14 +1,14 @@
 {
   "schema": "nte-light-web-v1",
-  "bytes": 1507670,
+  "bytes": 1507322,
   "versions": {
     "basic-pitch": "1.0.1",
     "tensorflow.js": "3.21.0"
   },
   "files": {
-    "index.html": "3df842edcd7ed37536241acc671fb80a3868897d706968df8c3932d8a0a94908",
-    "style.css": "da63feceef84acad890e50da830834df55822cd486d39364618eab9abebe3b6e",
-    "main.js": "adb7f5d2d266ae9fe639288d0a351db19373dea596a807e577486d75bab3f6dc",
+    "index.html": "9db1308e6e1e200b8bfc3b5fc82ed4092b15140f64a34c8d0ebd58c6d63759d2",
+    "style.css": "18e4697d08ff124faa51e5a27d70d013139adc93204d6ae300a699b0169f3552",
+    "main.js": "8079b7bdf5b01addeb7a6e710784908e1e87986cf41b573f269099c99101dd3b",
     "worker.js": "58b013c54b1350d52f239d1741eb6f4e470e1b84484e2c6096d924143314d0b7",
     "model.json": "1ed1aaee3409ec1dc098c8b01f430c0911f6fe9412e7af8086750f9e8f302f68",
     "group1-shard1of1.bin": "b142a95737a52e1e412d5f92e73d8bb80dfe8d04941acc0702f11f4524fb377c",

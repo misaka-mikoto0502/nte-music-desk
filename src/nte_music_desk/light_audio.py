@@ -14,7 +14,6 @@ import uuid
 
 from .midi import MidiNote, MidiSong, write_midi
 from .paths import asset_dir
-from .rights import validate_use
 
 MAX_SECONDS = 180
 MAX_FILE_BYTES = 64 * 1024 * 1024
@@ -25,7 +24,10 @@ PROFILES = {'polyphonic', 'melody'}
 def validate_source(data):
     if not isinstance(data, dict):
         raise ValueError('转谱请求无效。')
-    use = validate_use(data.get('basis'), data.get('reference'), (), [])
+    # Local imports need no declaration form. Record the input route without
+    # claiming that a license or permission has been independently verified.
+    use = {'basis': 'local-file', 'status': 'local_file_provided',
+           'publication_rights': 'not_verified; use audio and output lawfully'}
     name = data.get('name')
     if not isinstance(name, str) or not 1 <= len(name) <= 255:
         raise ValueError('音频文件名无效。')

@@ -22,11 +22,11 @@ async function cancel() {
 }
 el('cancel').onclick = cancel;
 el('file').onchange = () => {
-  el('basis').value = ''; el('reference').value = ''; el('download').hidden = true;
+  el('download').hidden = true;
   if (audioUrl) URL.revokeObjectURL(audioUrl);
   const file = el('file').files[0];
   if (file) {audioUrl = URL.createObjectURL(file); el('audio').src = audioUrl;}
-  status('已选择本地音频，请填写使用依据后开始。');
+  status(file ? '已选择本地音频，可直接生成曲谱。' : '请选择本地音频文件。');
 };
 async function durationOf(file) {
   const audio = new Audio(); const url = URL.createObjectURL(file);
@@ -59,8 +59,7 @@ el('form').onsubmit = async event => {
     const sha256 = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', data)), b => b.toString(16).padStart(2, '0')).join('');
     const profile = el('profile').value;
     check();
-    const info = {name: file.name, bytes: file.size, duration, start, end, sha256, profile,
-      basis: el('basis').value, reference: el('reference').value};
+    const info = {name: file.name, bytes: file.size, duration, start, end, sha256, profile};
     const created = await api('begin', info);
     if (current !== generation || !running) {await api('cancel', {job_id: created.job_id}); return;}
     job = created.job_id;

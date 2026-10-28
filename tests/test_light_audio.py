@@ -12,7 +12,7 @@ from nte_music_desk.midi import read_midi
 
 def source():
     return {'name':'自己的录音.wav','bytes':12345,'duration':10,'start':2,'end':8,
-            'sha256':'a'*64,'profile':'polyphonic','basis':'original','reference':'self recorded original phrase'}
+            'sha256':'a'*64,'profile':'polyphonic'}
 
 
 def note():
@@ -20,10 +20,13 @@ def note():
 
 
 class LightAudioChecks(unittest.TestCase):
-    def test_source_rights_bounds_and_notes_are_validated(self):
-        self.assertEqual(validate_source(source())['rights']['status'],'user_statement_not_verified')
+    def test_local_source_bounds_and_notes_are_validated_without_declaration(self):
+        self.assertEqual(validate_source(source())['rights']['status'],'local_file_provided')
+        legacy = validate_source({**source(), 'basis':'permission','reference':'an old client statement'})
+        self.assertEqual(legacy['rights']['basis'],'local-file')
+        self.assertNotIn('reference',legacy['rights'])
         for field,value in [('bytes',True),('bytes',100_000_000),('duration',float('nan')),('end',200),
-                            ('start',-1),('basis',''),('reference',''),('sha256','bad'),('profile','shell')]:
+                            ('start',-1),('sha256','bad'),('profile','shell')]:
             with self.assertRaises(ValueError):validate_source({**source(),field:value})
         song=notes_to_song([note()],6,'fixture')
         self.assertEqual((song.notes[0].start,song.notes[0].end),(1.25,2))

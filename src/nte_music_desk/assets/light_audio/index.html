@@ -9,8 +9,7 @@
 <div class="row"><label>起点 / 秒<input id="start" type="number" min="0" step="0.1" value="0" required></label>
 <label>终点 / 秒<input id="end" type="number" min="0" step="0.1" placeholder="留空：最多 3 分钟"></label>
 <label>识别方式<select id="profile"><option value="polyphonic">保留和弦</option><option value="melody">突出旋律（可能减少和弦）</option></select></label></div>
-<label>素材使用依据<select id="basis" required><option value="">请选择</option><option value="original">自有原创作品及录音</option><option value="permission">已获此次转谱所需的授权</option><option value="open-license">开放许可覆盖此次使用</option><option value="public-domain-recording">作品及录音均可合法用于此次处理</option></select></label>
-<label>来源 / 授权说明<textarea id="reference" maxlength="2000" rows="2" placeholder="例如原创录音说明、许可链接或授权记录" required></textarea></label>
+<p class="usage-note" role="note">请合法、合理地使用本地音频及转换结果，尊重他人权益，勿用于违法违规用途。</p>
 <div class="actions"><button id="submit" type="submit">生成曲谱并导入工作台</button><button id="cancel" type="button" disabled>取消任务</button></div></form>
 <section class="result"><progress id="progress" max="100" value="0"></progress><p id="status" role="status">选择自己的音频文件即可开始。生成后先试听，再进入游戏演奏。</p>
 <audio id="audio" controls preload="metadata"></audio><a id="download" hidden download="轻量转谱.mid">另存识别 MIDI</a></section>
