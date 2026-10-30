@@ -68,6 +68,15 @@ function showResult(result, automatic = false) {
   download.href = new URL(result.result, base); download.download = result.filename || '轻量转谱.mid'; download.hidden = false;
   el('result-name').textContent = download.download; el('result-name').title = download.download;
   el('download-status').textContent = automatic ? '已发起自动下载。若未见文件，请点击上方按钮；工作台另有已保存副本。' : '工作台已保存副本，可再次点击下载。';
+  const stats=result.stats;
+  el('quality-stats').hidden=!stats;
+  if(stats)el('quality-stats').textContent=`${({polyphonic:'均衡',detail:'弱音实验',melody:'旋律'})[stats.preset] || '识别'} · 候选 ${stats.candidates} 音 / 当前 ${result.notes} 音 · ${stats.alignment_ms ? '对齐 '+stats.aligned_notes+' 音' : '保留原起音'}`;
+  const alternatives=el('alternate-downloads');alternatives.replaceChildren();
+  alternatives.hidden=!result.alternatives?.length;
+  for(const item of result.alternatives || []) {
+    const link=document.createElement('a');link.textContent=item.label;link.href=new URL(item.result,base);link.download=item.filename;
+    alternatives.append(link);
+  }
   if (automatic) download.click();
 }
 function cancel() {

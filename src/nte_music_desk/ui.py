@@ -1143,7 +1143,8 @@ class App:
             if self.active:
                 self.set_status('轻量曲谱已保存到数据目录 light-transcriptions，请停止演奏后导入。', '曲谱已保存', 'blue')
             elif self.open_path(message['path']):
-                self.set_status('已导入轻量识别曲谱。请先试听检查错漏音；原始识别 MIDI 保存在同一任务目录。', '轻量转谱 Beta', 'amber')
+                hint='当前演奏方案为单旋律，会减少和弦；需要和弦请切换为原曲声部。' if self.score and self.score['mode']=='melody' else '请先试听检查错漏音；候选谱与对齐前 MIDI 已分别保留。'
+                self.set_status('已导入轻量识别曲谱。'+hint, '轻量转谱 Beta', 'amber')
             self.refresh_controls()
         elif kind.startswith("transpose"):
             if message["token"] != self.recommend_token:

@@ -122,6 +122,7 @@ class LightAudioSession:
         self.run_id, self.source, self.last_seen = None, None, 0
         self.result = None
         self.results, self.latest_result, self.desktop_input = {}, None, None
+        self.download_names={}
         self.closed = False
         manifest = json.loads((self.assets / 'manifest.json').read_text(encoding='utf-8'))
         self.files = manifest['files']
@@ -183,7 +184,7 @@ class LightAudioSession:
                     self.reply(200, session.result.read_bytes(), 'audio/midi', session.result.name)
                 elif name and name.startswith('results/') and name in session.results:
                     path = session.results[name]
-                    self.reply(200, path.read_bytes(), 'audio/midi', path.name)
+                    self.reply(200, path.read_bytes(), 'audio/midi', session.download_names.get(name,path.name))
                 elif name and name.startswith('input/'):
                     try:
                         with session.lock:
@@ -268,7 +269,16 @@ class LightAudioSession:
                                 session.result = output
                                 download = 'results/' + session.run_id + '.mid'
                                 session.results[download] = output
-                                session.latest_result = {'notes': len(song.notes), 'result': download, 'filename': output.name}
+                                alternatives=[]
+                                for suffix,label,path,name in [('-raw.mid','候选谱（可能含误判）',job/'model_raw.mid',title+'_候选谱.mid'),
+                                                              ('-selected.mid','起音对齐前',job/'model_selected.mid',title+'_对齐前.mid')]:
+                                    if suffix=='-selected.mid' and not alignment['moved_notes']:continue
+                                    route='results/'+session.run_id+suffix
+                                    session.results[route]=path;session.download_names[route]=name
+                                    alternatives.append({'label':label,'result':route,'filename':name})
+                                session.latest_result = {'notes': len(song.notes), 'result': download, 'filename': output.name,
+                                    'alternatives':alternatives,'stats':{'candidates':len(raw_song.notes),'preset':session.source['profile'],
+                                        'aligned_notes':alignment['moved_notes'],'alignment_ms':alignment['window_ms']}}
                                 session.run_id = None
                                 session.notify({'kind': 'light_done', 'path': output})
                                 response = session.latest_result

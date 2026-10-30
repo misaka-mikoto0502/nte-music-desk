@@ -54,6 +54,14 @@ class LightAudioChecks(unittest.TestCase):
             record=json.loads((folder/'provenance.json').read_text(encoding='utf-8'))
             self.assertEqual(record['processing']['alignment']['moved_notes'],1)
             self.assertEqual(record['processing']['thresholds']['onset'],.55)
+            with urlopen(session.url+'state') as response:published=json.load(response)['latest_result']
+            self.assertEqual(published['stats']['aligned_notes'],1)
+            self.assertEqual(published['stats']['preset'],'detail')
+            self.assertEqual(len(published['alternatives']),2)
+            for item in published['alternatives']:
+                with urlopen(session.url+item['result']) as response:
+                    self.assertTrue(response.read().startswith(b'MThd'))
+                    self.assertIn("filename*=UTF-8''",response.headers['Content-Disposition'])
 
     def test_desktop_audio_handoff_is_limited_to_explicit_selection(self):
         with tempfile.TemporaryDirectory() as d:
