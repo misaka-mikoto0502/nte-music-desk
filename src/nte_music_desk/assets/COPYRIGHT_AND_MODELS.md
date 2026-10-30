@@ -43,3 +43,6 @@ NC 为非商业限制，SA 涉及相同方式共享等条件，具体适用以�
 此前《漫长的告白》的公开试听及曲谱研究，没有建立可向粉丝或 GitHub 分发的完整授权依据，因此不将其作为发布样本，也不继续用于模型验收。后续采用自制或许可明确的样本。旧的本地研究文件保留在仓库外，不替用户删除；不将这些文件视为已获传播授权。
 
 工作台的 MIT 许可只适用于自有内容；游戏截图等素材仍有独立权利，清除 UID 并不取得素材授权。详见 [第三方说明](../THIRD_PARTY_NOTICES.md)。
+
+
+桌面音频窗口新增 Microsoft.Web.WebView2 SDK 1.0.2903.40 的 Core/WinForms/x64 Loader，NuGet 原包 SHA-256 为 `ef128016dd1e51c59178c827ed5b8aa3322c57afa8675d930f8109505542ad74`。SDK LICENSE 为 BSD 条款，LICENSE/NOTICE 全文随 assets/audio_window 分发；本项目窗口源码仍为 MIT。系统 WebView2 Runtime 与 .NET Framework 不打包，不将其许可描述为本项目 MIT，也不自动安装。输入音乐和生成结果的使用边界不因窗口形式改变。

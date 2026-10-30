@@ -68,7 +68,7 @@ function showResult(result, automatic = false) {
   const download = el('download');
   download.href = new URL(result.result, base); download.download = result.filename || '轻量转谱.mid'; download.hidden = false;
   el('result-name').textContent = download.download; el('result-name').title = download.download;
-  el('download-status').textContent = automatic ? '已发起自动下载。若浏览器拦截，请点击上方按钮；工作台另有已保存副本。' : '工作台已保存副本，可再次点击下载。';
+  el('download-status').textContent = automatic ? '已发起自动下载。若未见文件，请点击上方按钮；工作台另有已保存副本。' : '工作台已保存副本，可再次点击下载。';
   if (automatic) download.click();
 }
 async function cancel() {

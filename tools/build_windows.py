@@ -25,6 +25,12 @@ def main():
     output, work = args.output.resolve(), args.work.resolve()
     output.mkdir(parents=True, exist_ok=True)
     work.mkdir(parents=True, exist_ok=True)
+    host_manifest=ROOT/'src/nte_music_desk/assets/audio_window/manifest.json'
+    source_hash=hashlib.sha256((ROOT/'tools/audio_window/AudioWindow.cs').read_text(encoding='utf-8').encode('utf-8')).hexdigest()
+    if not host_manifest.is_file() or json.loads(host_manifest.read_text(encoding='utf-8')).get('source_sha256')!=source_hash:
+        subprocess.run([sys.executable,str(ROOT/'tools/build_audio_window.py')],check=True,cwd=ROOT)
+    from nte_music_desk.audio_window import verify_host
+    verify_host(host_manifest.parent)
     # Never copy bytecode caches from local audio-engine checks into the app.
     # Use a fresh staging folder so removed resources cannot survive a rebuild.
     resources = work / 'resources' / uuid.uuid4().hex / 'assets'

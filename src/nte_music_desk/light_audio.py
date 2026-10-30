@@ -301,6 +301,12 @@ class LightAudioSession:
             self.desktop_input = {'id': uuid.uuid4().hex, 'path': path, 'name': path.name,
                                   'bytes': stat.st_size, 'stamp': (stat.st_size, stat.st_mtime_ns)}
 
+    def cancel_current(self):
+        with self.lock:
+            if self.run_id is None:return
+            self.run_id=None
+        self.notify({'kind':'light_status','text':'转谱窗口已关闭，未完成结果不会导入。'})
+
     def close(self):
         if self.closed:
             return

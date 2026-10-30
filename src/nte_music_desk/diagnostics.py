@@ -93,6 +93,8 @@ def run_self_test(engine, destination):
             assert json.load(response)['open'] is True
         light_bytes=app.light_audio.asset_bytes
         assert light_bytes < 4_500_000
+        from .audio_window import verify_host
+        assert verify_host(engine.ASSETS/'audio_window').is_file()
         app.light_audio.close()
     finally:
         App.show_error = original_error
@@ -108,6 +110,7 @@ def run_self_test(engine, destination):
               "separation_backend":"umxhq", "audio_comparison":"passed_silent_open_and_seek",
               "light_audio":"passed_resources_and_local_http", "light_audio_bytes":light_bytes,
               "light_browser_inference":"not_run_by_frozen_self_test",
+              "desktop_audio_window":"passed_host_resource_hashes; runtime_inference_checked_separately",
               "desktop_file_drop":"passed_native_widget_registration; physical_drag_not_run",
               "mini_player": "passed", "interactive_uac_and_game_overlay": "not_run_requires_user_desktop_test",
               "rounded_controls": "passed", "background_asset": "passed",

@@ -38,3 +38,8 @@
 许可核对日期为 2026-10-22；详见 docs/COPYRIGHT_AND_MODELS.md 与 docs/AUDIO_TRANSCRIPTION.md。仅核对公开声明，未对上游训练数据作完整权利审计。
 
 MusicXML 导入器依据 [W3C MusicXML 4.0 格式](https://www.w3.org/2021/06/musicxml40/) 编写。内置 twinkle.musicxml 由本项目根据同一传统旋律自行编码，不包含外部曲谱原件。
+
+
+## 桌面音频窗口
+
+Microsoft.Web.WebView2 SDK 1.0.2903.40（Core/WinForms/x64 Loader）采用其 NuGet 包中的 BSD 许可；完整 LICENSE.txt、NOTICE.txt 与资源哈希在 `_internal/nte_music_desk/assets/audio_window/`。本项目窗口宿主源码为 MIT。系统 WebView2 Evergreen Runtime 与 .NET Framework 是系统组件，不随本包分发，遵循其各自许可。

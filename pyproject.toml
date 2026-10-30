@@ -25,4 +25,4 @@ nte-music-desk = "nte_music_desk.cli:entrypoint"
 where = ["src"]
 
 [tool.setuptools.package-data]
-nte_music_desk = ["assets/*", "assets/scores/*.mid", "assets/scores/*.musicxml", "assets/light_audio/*"]
+nte_music_desk = ["assets/*", "assets/scores/*.mid", "assets/scores/*.musicxml", "assets/light_audio/*", "assets/audio_window/*"]

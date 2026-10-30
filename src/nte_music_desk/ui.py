@@ -89,6 +89,7 @@ class App:
         self.audio_dialog = None
         self.file_drop = None
         self.light_audio = None
+        self.light_window = None
         self.audio_audition = None
         self.song, self.score, self.active = None, None, None
         self.track_ids, self.controls, self.library_buttons = [], [], []
@@ -164,6 +165,7 @@ class App:
         files = tk.Menu(menu, tearoff=False)
         files.add_command(label="导入曲谱…", command=self.open_file, accelerator="Ctrl+O")
         files.add_command(label="轻量音频转谱（Beta）…", command=self.open_light_audio)
+        files.add_command(label="轻量转谱（浏览器兼容）…", command=lambda:self.open_light_audio(browser=True))
         files.add_command(label="高级音频处理（独立引擎）…", command=self.open_audio)
         files.add_command(label="另存原曲为 MIDI…", command=self.export_midi)
         files.add_separator()
@@ -202,18 +204,24 @@ class App:
         from .audio_ui import AudioDialog
         self.audio_dialog = AudioDialog(self)
 
-    def open_light_audio(self, source=None):
+    def open_light_audio(self, source=None, *, browser=False):
         if self.active or (self.audio_dialog and self.audio_dialog.job):return
         try:
-            import webbrowser
             from .light_audio import LightAudioSession
             if self.light_audio is None:
                 self.light_audio = LightAudioSession(self.directory, self.messages.put,
                     can_start=lambda: not self.closed and not self.active and not (self.audio_dialog and self.audio_dialog.job))
             if source is not None:self.light_audio.select_desktop_audio(source)
-            if not webbrowser.open(self.light_audio.url, new=2):
-                raise ValueError('无法打开默认浏览器，请检查 Windows 默认浏览器设置。')
-            self.set_status('已打开本机轻量转谱。音频在浏览器内计算，无需安装引擎；生成后先试听。', '轻量转谱 Beta', 'blue')
+            if browser:
+                import webbrowser
+                if not webbrowser.open(self.light_audio.url, new=2):
+                    raise ValueError('无法打开默认浏览器，请检查 Windows 默认浏览器设置。')
+            else:
+                from .audio_window import DesktopAudioWindow
+                if self.light_window is None or not self.light_window.show():
+                    if self.light_window is not None:self.light_audio.cancel_current()
+                    self.light_window=DesktopAudioWindow(self.light_audio,self.assets,self.directory,self.messages.put)
+            self.set_status('已打开本机轻量转谱。使用 CPU 计算，生成后自动保存并导入；请先试听。', '轻量转谱 Beta', 'blue')
         except (OSError,ValueError) as error:self.show_error(error)
 
     def show_help(self, filename='USAGE.md'):
@@ -293,12 +301,12 @@ class App:
             "支持 MIDI、KAR、RMI、MusicXML、XML、MXL。快捷键 Ctrl+O")
         self.import_button.pack(fill='x', pady=(0, 7))
         self.audio_button = self.button(sidebar, "音频转谱 · Beta", self.open_light_audio, "nav", 10,
-            "在已有浏览器中用本机 CPU 转谱，无需安装引擎。复杂音乐仍为 Beta；高级分离见文件菜单。")
+            "在独立窗口中用本机 CPU 转谱。复用系统 WebView2，无需安装音频引擎；高级分离见文件菜单。")
         self.audio_button.pack(fill='x')
         self.drop_zone=tk.Label(sidebar,text='拖入音频 / 曲谱',bg='#344E43',fg='#E1E8D8',font=(FONT,9),pady=14,highlightbackground='#657B64',highlightthickness=1,cursor='hand2')
         self.drop_zone.pack(fill='x',pady=(9,0))
         self.drop_zone.bind('<Button-1>',lambda _:self.choose_import())
-        Tooltip(self.drop_zone,'拖入一个 MIDI、MusicXML 或本地音频。音频会自动送到浏览器转谱页。')
+        Tooltip(self.drop_zone,'拖入一个 MIDI、MusicXML 或本地音频。音频会自动送到桌面转谱窗口。')
         nav_area = tk.Frame(sidebar, bg=C['nav'])
         nav_area.pack(fill='both', expand=True, pady=(15, 8))
         self.nav_canvas = tk.Canvas(nav_area, bg=C['nav'], highlightthickness=0, width=170)
@@ -1115,6 +1123,11 @@ class App:
             self.import_local_file(message['path'])
         elif kind == 'drop_error':
             self.set_status(message['text'],'拖入文件','amber')
+        elif kind == 'light_window_closed':
+            if message['window'] is self.light_window:
+                self.light_window=None
+                if self.light_audio:self.light_audio.cancel_current()
+                self.refresh_controls()
         elif kind == 'light_status':
             self.set_status(message['text'], '轻量转谱 Beta', 'blue')
             self.refresh_controls()
@@ -1277,6 +1290,7 @@ class App:
 
     def close(self):
         if self.file_drop is not None:self.file_drop.close()
+        if self.light_window is not None:self.light_window.close()
         if self.light_audio is not None:self.light_audio.close()
         if self.audio_dialog is not None:
             self.audio_dialog.close()
