@@ -90,6 +90,7 @@ class App:
         self.file_drop = None
         self.light_audio = None
         self.light_window = None
+        self.task_lock=threading.RLock()
         self.audio_audition = None
         self.song, self.score, self.active = None, None, None
         self.track_ids, self.controls, self.library_buttons = [], [], []
@@ -210,7 +211,7 @@ class App:
             from .light_audio import LightAudioSession
             if self.light_audio is None:
                 self.light_audio = LightAudioSession(self.directory, self.messages.put,
-                    can_start=lambda: not self.closed and not self.active and not (self.audio_dialog and self.audio_dialog.job))
+                    can_start=lambda: not self.closed and not self.active and not (self.audio_dialog and self.audio_dialog.job),gate=self.task_lock)
             if source is not None:self.light_audio.select_desktop_audio(source)
             if browser:
                 import webbrowser
@@ -607,7 +608,8 @@ class App:
             pass  # A read-only folder must not prevent playing a selected score.
 
     def open_file(self):
-        if self.active:
+        if self.active or (self.light_audio and self.light_audio.busy) or (self.audio_dialog and self.audio_dialog.job):
+            self.set_status('请先完成或取消当前任务，再导入另一份曲谱。','任务进行中','amber')
             return
         path = filedialog.askopenfilename(parent=self.root, title="导入曲谱", filetypes=[("支持的曲谱", "*.mid *.midi *.kar *.rmi *.musicxml *.xml *.mxl"),
                     ("MIDI / Karaoke", "*.mid *.midi *.kar *.rmi"),("MusicXML", "*.musicxml *.xml *.mxl")])
@@ -927,8 +929,10 @@ class App:
         ready, locked = self.score is not None, self.active is not None
         for widget, normal in self.controls:
             self.enabled(widget, not locked, normal)
-        for button in [self.import_button, self.audio_button, *[b for b, _ in self.library_buttons]]:
-            self.enabled(button, not locked)
+        audio_busy=bool((self.light_audio and self.light_audio.busy) or (self.audio_dialog and self.audio_dialog.job))
+        for button in [self.import_button, *[b for b, _ in self.library_buttons]]:
+            self.enabled(button, not locked and not audio_busy)
+        self.enabled(self.audio_button,not locked and not (self.audio_dialog and self.audio_dialog.job))
         for button in [self.play_button, self.trial_button, self.export_button, self.details_button, self.notes_button, self.report_button]:
             self.enabled(button, ready and not locked)
         self.enabled(self.preview_button, ready and not locked and not self.preview_token)
@@ -1032,8 +1036,12 @@ class App:
         winsound.PlaySound(None, 0)
 
     def play(self, seconds):
+        with self.task_lock:return self._play_locked(seconds)
+
+    def _play_locked(self, seconds):
         if self.active or (self.audio_dialog and self.audio_dialog.job) or (self.light_audio and self.light_audio.busy):
             return
+        if self.light_audio:self.light_audio.cancel_current()
         self.recommend_token = None
         self.stop_preview()
         score = self.update_score()

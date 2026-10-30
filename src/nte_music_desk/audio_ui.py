@@ -240,9 +240,13 @@ class AudioDialog:
             'source_kind':selected(KINDS,self.source_kind.get()),'language':selected(LANGUAGES,self.language.get())},ensure_ascii=False,indent=2),encoding='utf-8')
 
     def begin(self,operation,caption):
-        if self.job or self.app.active:return
+        with self.app.task_lock:
+            if self.job or self.app.active:return
+            if self.app.light_audio and self.app.light_audio.busy:
+                self.state.set('轻量转谱正在处理，请完成或取消后再执行高级处理。');return
+            if self.app.light_audio:self.app.light_audio.cancel_current()
+            self.job=AudioPipeline();job=self.job
         self.app.stop_preview()
-        self.job=AudioPipeline();job=self.job
         for widget,_ in self.controls:widget.configure(state='disabled')
         for button in (self.import_button,self.original_button,self.folder_button,self.compare_button):button.configure(state='disabled')
         self.stem_selector.configure(state='disabled')

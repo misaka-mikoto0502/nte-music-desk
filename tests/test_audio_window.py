@@ -1,4 +1,4 @@
-import json,tempfile,unittest
+import json,tempfile,unittest,threading
 from pathlib import Path
 from unittest.mock import MagicMock,patch
 from nte_music_desk.audio_window import verify_host
@@ -16,6 +16,7 @@ class AudioWindowChecks(unittest.TestCase):
     def test_import_uses_desktop_reuses_window_and_keeps_browser_opt_in(self):
         app=App.__new__(App);app.active=app.audio_dialog=app.light_audio=app.light_window=None
         app.closed=False;app.messages=MagicMock();app.assets=Path('assets');app.directory=Path('data')
+        app.task_lock=threading.RLock()
         app.set_status=MagicMock();app.show_error=MagicMock()
         session=MagicMock();host=MagicMock();host.show.return_value=True
         with patch('nte_music_desk.light_audio.LightAudioSession',return_value=session),patch('nte_music_desk.audio_window.DesktopAudioWindow',return_value=host) as factory,patch('webbrowser.open',return_value=True) as browser:

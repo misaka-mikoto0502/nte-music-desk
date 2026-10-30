@@ -114,11 +114,11 @@ def notes_to_song(events, seconds, title):
 
 class LightAudioSession:
     """One capability URL per app; callbacks only enqueue work for the Tk thread."""
-    def __init__(self, directory, notify, *, assets=None, can_start=lambda: True):
+    def __init__(self, directory, notify, *, assets=None, can_start=lambda: True, gate=None):
         self.directory, self.notify = Path(directory), notify
         self.assets = Path(assets) if assets is not None else asset_dir() / 'light_audio'
         self.token = secrets.token_urlsafe(24)
-        self.lock = threading.Lock()
+        self.lock = gate if gate is not None else threading.RLock()
         self.run_id, self.source, self.last_seen = None, None, 0
         self.result = None
         self.results, self.latest_result, self.desktop_input = {}, None, None
@@ -224,15 +224,15 @@ class LightAudioSession:
                     if not isinstance(data, dict):
                         raise ValueError('请求格式无效。')
                     if route == 'begin':
-                        if not can_start():
-                            raise ValueError('请先停止游戏演奏或其他音频任务。')
                         source = validate_source(data)
                         with session.lock:
+                            if not can_start():
+                                raise ValueError('请先停止游戏演奏或其他音频任务。')
                             if session.busy:
                                 raise ValueError('已有转谱任务正在运行，请先取消。')
                             session.run_id, session.source = uuid.uuid4().hex, source
                             session.last_seen = time.monotonic()
-                        session.notify({'kind': 'light_status', 'text': '轻量转谱正在浏览器本机运行…'})
+                        session.notify({'kind': 'light_status', 'text': '轻量转谱正在本机运行…'})
                         response = {'job_id': session.run_id}
                     else:
                         with session.lock:
@@ -305,7 +305,7 @@ class LightAudioSession:
         with self.lock:
             if self.run_id is None:return
             self.run_id=None
-        self.notify({'kind':'light_status','text':'转谱窗口已关闭，未完成结果不会导入。'})
+        self.notify({'kind':'light_status','text':'未完成的轻量转谱已取消，已保存的结果不受影响。'})
 
     def close(self):
         if self.closed:
