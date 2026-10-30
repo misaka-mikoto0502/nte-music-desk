@@ -16,7 +16,7 @@ Windows 桌面曲谱演奏工具：导入本地曲谱，一键操控《异环》
 
 [音频转谱配置](docs/AUDIO_TRANSCRIPTION.md) · [本轮复查与下一轮计划](docs/NEXT_STEPS.md)
 
-[轻量音频转谱 Beta](docs/LIGHT_AUDIO.md)：新增资源约 1.51 MB，支持本地音频选段、取消、MIDI 自动导入；清晰单乐器优先，不承诺任意歌曲达到 90–95% 准确率。
+[轻量音频转谱 Beta](docs/LIGHT_AUDIO.md)：新增资源约 2.33 MB，本机 CPU 加速、动态剩余时间，支持拖入音频、MIDI 自动下载和导入；可选弱音识别与和弦起音对齐；清晰单乐器优先，不承诺任意歌曲达到 90–95% 准确率。
 
 [音乐与模型许可边界](docs/COPYRIGHT_AND_MODELS.md)：本地文件不自动代表具备转谱或发布授权，代码与模型权重采用各自许可。
 
