@@ -58,3 +58,5 @@ Actions 在 pull_request、手动触发或推送 v* 标签时运行自包含测�
 分支 feat/mini-player-1.5；独立生成 releases/v1.5.0，旧包保留。应用使用普通清单和启动时的 ShellExecute runas，在 GUI 创建前请求权限；离线自检和转换不提权，不使用 requireAdministrator 清单强制所有命令请求 UAC。演奏子进程只继承现有管理员权限。
 
 发布前核对主窗最小化后的小窗显示、默认位置、暂停时间轴及 Shift 释放；实际 UAC 由用户手动确认，不自动点击。普通顶层窗不保证覆盖独占全屏，发布说明必须写明推荐无边框全屏以及独占全屏的 F7/F8 操作。离线检查不能当作游戏兼容性或权限提示的实机验收。
+
+开发整合检查点可用 `python tools/package_source.py --output .build/dev-integrated-1.5/NTE-Music-Desk-1.5-dev-integrated-Source.zip`。已有输出默认拒绝覆盖；正式明确替换时才使用 --overwrite。源码包需保留 .gitattributes、C# 宿主源码、指定 SDK 文件及完整许可，不能捎带 node_modules 或个人运行数据。

@@ -2,7 +2,16 @@
 
 这是开发检查点，不是最终 1.5 发布。原 v1.5.0 包与标签继续保留，不自动推送 GitHub。
 
-2026-10-30 最新桌面转谱开发包：`.build/dev-desktop-audio-1.5/NTE-Music-Desk-1.5-dev-desktop-audio-Windows-x64.zip`。
+2026-10-30 当前整合包：`.build/dev-integrated-1.5/NTE-Music-Desk-1.5-dev-integrated-Windows-x64.zip`。
+
+- 这是同一分支上的完整整合包，包含加高拖入区、简化曲目架、桌面转谱窗口、CPU 加速/回退、ETA、自动保存/下载、弱音预设、起音对齐、结果对照与任务协调。
+- 桌面、浏览器兼容与验证工具调用同一个 pipeline.js。真实共用流程已覆盖保存/下载一致、缺失 WASM 回退、取消无半成品、预设/对齐落盘及最终三种结果页尺寸。
+- 91 项 Python 回归与 JS ETA/回退/参数校验通过；整合包的独立冻结自检和实际 WebView2 完整流程（加速、CPU 回退）通过。三种尺寸未通过隐藏溢出来规避问题。
+- ZIP 24,256,526 字节，解压 52,683,983 字节，SHA-256 `33d4ccf5242192db40aa675cc5c16523b157a4121c10d3c33a18ef0b82f6f324`。源码 ZIP 使用同目录的 NTE-Music-Desk-1.5-dev-integrated-Source.zip，保留字节规则与必要宿主资源，剔除开发缓存和个人数据。
+- 使用者已准备游戏，但 Windows 返回新包 UAC 请求取消；当前仍是旧包悬浮窗，本轮实机动作尚未执行。独立数据目录已准备钢琴＋小星星，手动入口为 `.build/整合验收.lnk`，不会自动发送按键。
+- 本轮未更改默认识别阈值，也未声称解决任意歌曲漏音。轻量模型边界、Shift 分组和仍需实听的范围见 [INTEGRATION_1.5.md](INTEGRATION_1.5.md)。旧包、原标签和发布目录保持，未推送 GitHub。
+
+2026-10-30 上一份桌面转谱开发包：`.build/dev-desktop-audio-1.5/NTE-Music-Desk-1.5-dev-desktop-audio-Windows-x64.zip`。
 
 - 普通音频拖入与左侧转谱按钮默认打开独立桌面窗口，复用系统 WebView2/.NET Framework；文件菜单保留“浏览器兼容”作为手动入口。并非启动高级大模型引擎。
 - 窗口宿主和 SDK 约 850,196 字节；不分发浏览器内核。与轻量转谱资源合计约 3.18 MB。本机已具备 WebView2 Runtime。
