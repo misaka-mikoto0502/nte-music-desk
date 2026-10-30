@@ -95,15 +95,16 @@ class AudioWindow : Form {
                     operation.StateChanged+=(x,y)=> {
                         if(operation.State==CoreWebView2DownloadState.Completed) {
                             if(diagnostic){State(new {state="diagnostic",data=diagnosticData,download=target,layout=layoutChecks});Close();}
-                            else if(core.Source==home.AbsoluteUri)core.ExecuteScriptAsync("document.getElementById('download-status').textContent='MIDI 已保存到系统下载文件夹，工作台另有副本。';");
+                            else DownloadStatus("MIDI 已保存到系统下载文件夹，工作台另有副本。");
                         } else if(operation.State==CoreWebView2DownloadState.Interrupted) {
                             if(diagnostic){State(new {state="error",error="MIDI download interrupted"});Close();}
-                            else if(core.Source==home.AbsoluteUri)core.ExecuteScriptAsync("document.getElementById('download-status').textContent='下载未完成，可再次点击下载；工作台副本已保留。';");
+                            else DownloadStatus("下载未完成，可再次点击下载；工作台副本已保留。");
                         }
                     };
                     } catch(Exception error) {
                         b.Cancel=true;State(new {state="download_error",error=error.Message});
                         if(diagnostic)Close();
+                        else DownloadStatus("自动下载失败，可再次点击下载；工作台副本已保留。");
                     }
                 };
                 core.NavigationCompleted+=async (a,b)=> {
@@ -162,6 +163,11 @@ class AudioWindow : Form {
     bool Local(string address) {
         Uri uri;return Uri.TryCreate(address,UriKind.Absolute,out uri) && uri.Scheme==home.Scheme &&
             uri.Host==home.Host && uri.Port==home.Port && uri.AbsolutePath.StartsWith(home.AbsolutePath,StringComparison.Ordinal) && uri.UserInfo.Length==0;
+    }
+    void DownloadStatus(string text) {
+        try {if(!IsDisposed && view!=null && view.CoreWebView2.Source==home.AbsoluteUri)
+            view.CoreWebView2.ExecuteScriptAsync("document.getElementById('download-status').textContent="+json.Serialize(text)+";");
+        }catch(ObjectDisposedException){}catch(InvalidOperationException){}
     }
     void State(object data) {try {Directory.CreateDirectory(Path.GetDirectoryName(report));File.WriteAllText(report,json.Serialize(data));}catch {}}
 }
