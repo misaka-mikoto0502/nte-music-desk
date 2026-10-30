@@ -1,6 +1,6 @@
 import {RemainingTime, timeLabel} from './eta.js';
 const el = id => document.getElementById(id), base = new URL('.', location.href);
-let worker, job, audioUrl, selectedFile, lastResult, lastDesktopId, closed = false, running = false;
+let task, job, audioUrl, selectedFile, lastResult, lastDesktopId, closed = false, running = false;
 let pulseFailures = 0, pulsing = false, generation = 0, selectionVersion = 0, startedAt = 0, phase = 'idle';
 const eta = new RemainingTime(), now = () => performance.now() / 1000;
 const status = text => {el('status').textContent = text;};
@@ -38,8 +38,7 @@ function timing() {
 }
 function setFile(file) {
   if (running || closed) return;
-  if (!file || !file.size || file.size > 64 * 1024 * 1024) throw new Error('请选择不超过 64 MB 的本地音频。');
-  if (!/\.(wav|mp3|flac|ogg|m4a|aac|wma|opus|webm)$/i.test(file.name) && !file.type.startsWith('audio/')) throw new Error('请拖入 WAV、MP3、FLAC 等音频文件。');
+  NteAudio.validateFile(file);
   selectionVersion++; selectedFile = file;
   if (audioUrl) URL.revokeObjectURL(audioUrl);
   audioUrl = URL.createObjectURL(file); el('audio').src = audioUrl;
@@ -71,76 +70,48 @@ function showResult(result, automatic = false) {
   el('download-status').textContent = automatic ? '已发起自动下载。若未见文件，请点击上方按钮；工作台另有已保存副本。' : '工作台已保存副本，可再次点击下载。';
   if (automatic) download.click();
 }
-async function cancel() {
-  generation++;
-  if (worker) worker.terminate(); worker = null;
-  const oldJob = job; job = null;
-  if (oldJob) await api('cancel', {job_id:oldJob}).catch(() => {});
-  controls(false); setPhase('cancelled', '已取消'); el('eta').textContent = '任务已取消';
-  status('已取消本次计算，未完成的结果不会导入。之前保存的 MIDI 仍可下载。');
+function cancel() {
+  if (!task || !running || phase === 'saving') return;
+  task.controller.abort();
+  setPhase('cancelling','正在取消'); el('cancel').disabled = true;
+  status('正在取消本次计算，之前保存的 MIDI 不受影响。');
 }
 el('cancel').onclick = cancel;
-async function durationOf(file) {
-  const audio = new Audio(), url = URL.createObjectURL(file);
-  try {
-    return await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('读取时长超时，请换用 WAV 或 MP3。')), 10000);
-      audio.onloadedmetadata = () => {clearTimeout(timer); resolve(audio.duration);};
-      audio.onerror = () => {clearTimeout(timer); reject(new Error('浏览器无法解码此格式，请换用 WAV 或 MP3。'));};
-      audio.preload = 'metadata'; audio.src = url;
-    });
-  } finally {audio.removeAttribute('src'); audio.load(); URL.revokeObjectURL(url);}
-}
 el('form').onsubmit = async event => {
   event.preventDefault(); if (running || closed) return;
-  const current = ++generation, file = selectedFile;
-  const check = () => {if (current !== generation || !running) throw new Error('任务已取消。');};
-  controls(true); startedAt = now(); progress(0); setPhase('preparing', '读取音频'); panel(true); timing();
+  const current = ++generation, active = {controller:new AbortController()}; task = active;
+  controls(true); startedAt = now(); progress(0); panel(true); timing();
+  const onEvent = data => {
+    if (current !== generation || closed) return;
+    if (data.phase === 'preparing') {setPhase('preparing','读取音频'); status('正在本机读取音频…');}
+    else if (data.phase === 'loading') {setPhase('loading','加载模型'); status('正在加载本机计算组件，首次测速后会显示剩余时间。');}
+    else if (data.phase === 'inference') {
+      if (phase !== 'inference') eta.reset(now());
+      setPhase('inference', data.backend === 'wasm' ? 'CPU 加速识别' : 'CPU 识别');
+      eta.update(data.progress,now()); progress(2+data.progress*94);
+      status('正在识别旋律与和弦。可以先处理其他事情，请保持工作台和转谱窗口打开。');
+      if (!pulsing) heartbeat();
+    } else if (data.phase === 'postprocess') {setPhase('postprocess','整理音符'); progress(97); status('识别完成，正在整理音符与和弦。');}
+    else if (data.phase === 'fallback') {setPhase('loading','兼容模式'); status('加速组件不可用，已自动改用兼容 CPU 模式。');}
+    else if (data.phase === 'saving') {setPhase('saving','保存 MIDI'); progress(99); el('cancel').disabled=true; status('正在保存 MIDI，保存完成后可继续选择下一首。');}
+    timing();
+  };
   try {
-    if (!file) throw new Error('请先选择或拖入一个本地音频。');
-    status('正在本机读取音频…');
-    const duration = await durationOf(file); check();
-    if (!Number.isFinite(duration) || duration <= 0 || duration > 600) throw new Error('源文件支持 10 分钟以内，请先裁短；每次转谱最多 3 分钟。');
-    const start = Number(el('start').value), end = el('end').value.trim() ? Number(el('end').value) : Math.min(duration, start + 180);
-    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end > duration + .02 || end - start > 180) throw new Error('请选择有效起止秒数，每次最多 3 分钟。');
-    const data = await file.arrayBuffer(); check();
-    const sha256 = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', data)), b => b.toString(16).padStart(2,'0')).join(''); check();
-    const created = await api('begin', {name:file.name,bytes:file.size,duration,start,end,sha256,profile:el('profile').value,align_ms:el('align').checked ? 24 : 0});
-    if (current !== generation || !running) {await api('cancel', {job_id:created.job_id}); return;}
-    job = created.job_id;
-    const context = new AudioContext(); let decoded;
-    try {decoded = await context.decodeAudioData(data);} finally {await context.close();}
-    const offline = new OfflineAudioContext(1, Math.ceil((end-start)*22050),22050);
-    const source = offline.createBufferSource(); source.buffer = decoded; source.connect(offline.destination); source.start(0,start,end-start);
-    const samples = (await offline.startRendering()).getChannelData(0).slice(); check();
-    status('正在加载本机计算组件，首次测速后会显示剩余时间。'); setPhase('loading','加载模型');
-    worker = new Worker(new URL('worker.js',base));
-    worker.onmessage = async ({data}) => {
-      if (!job || !running || current !== generation) return;
-      if (data.error) {await cancel(); status('转谱失败：'+data.error); return;}
-      if (data.phase === 'inference') {
-        if (phase !== 'inference') eta.reset(now());
-        setPhase('inference', data.backend === 'wasm' ? 'CPU 加速识别' : 'CPU 识别');
-        eta.update(data.progress,now()); progress(2+data.progress*94);
-        status('正在识别旋律与和弦。可以先处理其他事情，请保留工作台和此页面。');
-        if (!pulsing) heartbeat();
-      } else if (data.phase === 'postprocess') {setPhase('postprocess','整理音符'); progress(97); status('识别完成，正在整理音符与和弦。');}
-      else if (data.phase === 'fallback') {setPhase('loading','兼容模式'); status('加速组件不可用，已自动改用兼容 CPU 模式。');}
-      timing();
-      if (data.result) {
-        worker = null; setPhase('saving','保存 MIDI'); progress(99); timing();
-        try {
-          const result = await api('complete',{job_id:job,...data.result});
-          if (current !== generation) return;
-          job = null; controls(false); progress(100); setPhase('complete','已保存');
-          el('elapsed').textContent = '总用时 '+timeLabel(now()-startedAt); el('eta').textContent = '已完成';
-          showResult(result,true); status(`已生成 ${result.notes} 个音符并送回工作台。请先试听检查错漏音。`);
-        } catch (error) {if (current === generation) {await cancel(); status(error.message);}}
-      }
-    };
-    worker.onerror = async error => {if (current === generation) {await cancel(); status('计算组件启动失败：'+error.message);}};
-    worker.postMessage({samples,model:new URL('model.json',base).href,profile:el('profile').value},[samples.buffer]);
-  } catch (error) {if (current === generation) {await cancel(); status(error.message || String(error));}}
+    const result = await NteAudio.convertFile(selectedFile,{
+      start:el('start').value,end:el('end').value,profile:el('profile').value,align_ms:el('align').checked ? 24 : 0
+    },{base,signal:active.controller.signal,onEvent,onJob:value=>{if(current===generation)job=value;}});
+    if (current !== generation || closed) return;
+    controls(false); progress(100); setPhase('complete','已保存');
+    el('elapsed').textContent='总用时 '+timeLabel(now()-startedAt); el('eta').textContent='已完成';
+    showResult(result,true); status(`已生成 ${result.notes} 个音符并送回工作台。请先试听检查错漏音。`);
+  } catch (error) {
+    if (current !== generation || closed) return;
+    controls(false);
+    if (error.name === 'AbortError') {
+      setPhase('cancelled','已取消'); el('eta').textContent='任务已取消';
+      status('已取消本次计算，未完成的结果不会导入。之前保存的 MIDI 仍可下载。');
+    } else {setPhase('error','未完成'); el('eta').textContent='请检查后重试'; status(error.message || String(error));}
+  } finally {if(task===active)task=null;}
 };
 async function heartbeat() {
   if (pulsing || closed) return;
@@ -167,7 +138,7 @@ async function heartbeat() {
   } catch (_) {
     if (currentJob && currentJob !== job) return;
     if (++pulseFailures >= 3) {
-      if (worker) worker.terminate(); worker = null; job = null; closed = true; controls(false); el('submit').disabled = true;
+      task?.controller.abort(); job = null; closed = true; controls(false); el('submit').disabled = true;
       setPhase('closed','工作台已关闭'); el('eta').textContent = '连接已断开';
       status('请回到工作台重新打开转谱页面。已生成的文件仍保存在工作台数据目录。');
     }
@@ -176,7 +147,7 @@ async function heartbeat() {
 setInterval(heartbeat,1500); setInterval(timing,500); heartbeat();
 document.addEventListener('visibilitychange',()=>{if (!document.hidden) heartbeat();});
 window.addEventListener('pagehide',()=>{
-  if (worker) worker.terminate();
+  task?.controller.abort();
   if (job) fetch(new URL('cancel',base),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({job_id:job}),keepalive:true}).catch(()=>{});
   if (audioUrl) URL.revokeObjectURL(audioUrl);
 });

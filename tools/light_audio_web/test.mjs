@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {RemainingTime,timeLabel} from './eta.js';
 import {withCpuFallback} from './runtime.js';
+import {validateFile,settingsFor} from './pipeline.js';
 const eta=new RemainingTime();eta.reset(0);
 assert.equal(eta.remaining(3),null);
 eta.update(.25,10);assert.equal(eta.remaining(10),30);
@@ -26,3 +27,10 @@ assert.deepEqual(calls,['wasm','cpu']);assert.equal(warnings,1);
 await assert.rejects(withCpuFallback(async()=>false,async()=>{throw new Error('cpu failed');},()=>{}),/cpu failed/);
 assert.equal(await withCpuFallback(async()=>true,async backend=>backend,()=>{throw Error('unexpected fallback');}),'wasm');
 console.log('Missing/failed WASM, runtime retry, CPU failure and accelerated success passed');
+assert.doesNotThrow(()=>validateFile({name:'自己的歌曲.MP3',size:100,type:''}));
+for(const file of [null,{name:'bad.exe',size:100},{name:'x.wav',size:0},{name:'x.wav',size:65*1024*1024}])assert.throws(()=>validateFile(file));
+assert.deepEqual(settingsFor(200,{start:'30',end:'',profile:'detail',align_ms:24}),{start:30,end:200,profile:'detail',align_ms:24});
+for(const duration of [0,601,NaN,Infinity])assert.throws(()=>settingsFor(duration));
+for(const values of [{start:-1},{end:11},{start:10},{profile:'bad'},{align_ms:true}])assert.throws(()=>settingsFor(10,values));
+assert.deepEqual(settingsFor(300),{start:0,end:180,profile:'polyphonic',align_ms:0});
+console.log('Shared file bounds, clip defaults, presets and alignment validation passed');

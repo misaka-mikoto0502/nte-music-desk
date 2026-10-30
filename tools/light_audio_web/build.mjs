@@ -19,10 +19,10 @@ if (process.argv[2] === '--benchmark') {
 const target = path.resolve(here, '../../src/nte_music_desk/assets/light_audio');
 fs.mkdirSync(target, {recursive: true});
 const included = new Set();
-for (const name of ['worker', 'main']) {
+for (const name of ['worker', 'pipeline', 'main']) {
   const result = await esbuild.build({entryPoints: [path.join(here, name + '.js')], outfile: path.join(target, name + '.js'),
     bundle: true, minify: true, platform: 'browser', target: ['es2020'], legalComments: 'eof',
-    nodePaths: [modules], metafile: true});
+    nodePaths: [modules], metafile: true, ...(name === 'pipeline' ? {globalName:'NteAudio'} : {})});
   for (const input of Object.keys(result.metafile.inputs)) {
     let folder = path.dirname(path.resolve(input));
     while (folder.includes('node_modules')) {
@@ -63,7 +63,7 @@ notices += '\n' + fs.readFileSync(path.join(here,'wasm-notices.txt'),'utf8');
 fs.writeFileSync(path.join(target, 'licenses.txt'), notices);
 const files = {};
 let total = 0;
-for (const file of ['index.html', 'style.css', 'main.js', 'worker.js', 'model.json', 'group1-shard1of1.bin', 'licenses.txt', 'tfjs-backend-wasm.wasm', 'tfjs-backend-wasm-simd.wasm']) {
+for (const file of ['index.html', 'style.css', 'main.js', 'pipeline.js', 'worker.js', 'model.json', 'group1-shard1of1.bin', 'licenses.txt', 'tfjs-backend-wasm.wasm', 'tfjs-backend-wasm-simd.wasm']) {
   const data = fs.readFileSync(path.join(target, file)); total += data.length;
   files[file] = crypto.createHash('sha256').update(data).digest('hex');
 }

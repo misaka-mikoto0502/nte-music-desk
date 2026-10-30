@@ -1,13 +1,13 @@
 {
   "sdk": "1.0.2903.40",
   "sdk_sha256": "ef128016dd1e51c59178c827ed5b8aa3322c57afa8675d930f8109505542ad74",
-  "source_sha256": "ba4d6ad322547f4d7044cbf9250e94087fa4322a43a1a827ab90f20dfdeac349",
+  "source_sha256": "1c1a25d96dae4b11d94fc73f5dc3a8d38608656632ce7be400cf9b883175ea89",
   "files": {
     "LICENSE.txt": "0af8f1b807512aae39c2ac1aa4d0cae65cabecb6fd554b8439a5162a0d6eca55",
     "Microsoft.Web.WebView2.Core.dll": "88a3b62f45225a811cdb85df6dfd95c2bff9a0e43e3b04f813b125eaca56cc9f",
     "Microsoft.Web.WebView2.WinForms.dll": "29fc954c3fde1749817d158f3dd5ebe9efd3b3ce9708d86092fb1e9f023a1cb0",
     "NOTICE.txt": "106423785c5b7eba0a8e61d1837f2132e9c828e20ad530f565d981c1df60dd90",
-    "NteAudioWindow.exe": "1658a2cab260a2e2a8572161fa6080d893f929cbf779397c7ddc387e98cdd28e",
+    "NteAudioWindow.exe": "992de1b010ee7da7760fd3e47d6a010e3051fbea4456183291592d274e3e9d9f",
     "WebView2Loader.dll": "462b36fd1be6ca9f7563466a89e57c41ef4a4def3e0a84fa885d203aea4a3aaf"
   }
 }
