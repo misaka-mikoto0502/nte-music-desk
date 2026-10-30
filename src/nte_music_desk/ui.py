@@ -295,7 +295,7 @@ class App:
         self.audio_button = self.button(sidebar, "音频转谱 · Beta", self.open_light_audio, "nav", 10,
             "在已有浏览器中用本机 CPU 转谱，无需安装引擎。复杂音乐仍为 Beta；高级分离见文件菜单。")
         self.audio_button.pack(fill='x')
-        self.drop_zone=tk.Label(sidebar,text='拖入音频 / 曲谱',bg='#344E43',fg='#E1E8D8',font=(FONT,9),pady=5,highlightbackground='#657B64',highlightthickness=1,cursor='hand2')
+        self.drop_zone=tk.Label(sidebar,text='拖入音频 / 曲谱',bg='#344E43',fg='#E1E8D8',font=(FONT,9),pady=14,highlightbackground='#657B64',highlightthickness=1,cursor='hand2')
         self.drop_zone.pack(fill='x',pady=(9,0))
         self.drop_zone.bind('<Button-1>',lambda _:self.choose_import())
         Tooltip(self.drop_zone,'拖入一个 MIDI、MusicXML 或本地音频。音频会自动送到浏览器转谱页。')
@@ -318,10 +318,6 @@ class App:
             button.configure(pady=7, padx=10)
             button.pack(fill='x', pady=(0, 5))
             self.library_buttons.append((button, path))
-        self.label(self.nav_content, '最近打开', 9, '#A9B9A6').pack(anchor='w', pady=(17, 8))
-        self.recent_frame = tk.Frame(self.nav_content, bg=C['nav'])
-        self.recent_frame.pack(fill='x')
-        self.render_recents()
         bottom = tk.Frame(sidebar, bg=C['nav'])
         bottom.pack(side='bottom', fill='x', before=nav_area, pady=(10, 0))
         tk.Frame(bottom, bg='#4B5C4E', height=1).pack(fill='x', pady=(0, 14))
@@ -602,24 +598,6 @@ class App:
         except (OSError, AttributeError):
             pass  # A read-only folder must not prevent playing a selected score.
 
-    def render_recents(self):
-        for child in self.recent_frame.winfo_children():
-            child.destroy()
-        self.recent_buttons = []
-        recent = self.preferences.get("recent", [])
-        if not isinstance(recent, list):
-            recent = []
-        paths = [Path(p) for p in recent if isinstance(p, str) and Path(p).is_file()][:3]
-        if not paths:
-            self.label(self.recent_frame, "导入自己的曲谱后\n会显示在这里", 9, "#90A6BF", justify="left").pack(anchor="w")
-        for path in paths:
-            title = local_title(path, self.directory) or path.stem
-            title = title if len(title) < 17 else title[:15] + "…"
-            button = self.button(self.recent_frame, title, lambda p=path: self.open_path(p), "nav", 9, str(path), anchor="w")
-            button.configure(pady=7, padx=9)
-            button.pack(fill="x", pady=(0, 4))
-            self.recent_buttons.append(button)
-
     def open_file(self):
         if self.active:
             return
@@ -677,11 +655,6 @@ class App:
                 selected = path == preset
                 button.palette = (C["nav_active"] if selected else C["nav_hover"], "white", "#2A425D")
                 button.configure(highlightbackground=C["mint"] if selected else C["nav"], bg=button.palette[0])
-            if path not in examples:
-                recent = self.preferences.get("recent", [])
-                recent = recent if isinstance(recent, list) else []
-                self.preferences["recent"] = [str(path), *[p for p in recent if isinstance(p, str) and p != str(path)]][:5]
-                self.render_recents()
             self.update_score(quiet=True)
             self.save_preferences()
             return True
@@ -946,7 +919,7 @@ class App:
         ready, locked = self.score is not None, self.active is not None
         for widget, normal in self.controls:
             self.enabled(widget, not locked, normal)
-        for button in [self.import_button, self.audio_button, *self.recent_buttons, *[b for b, _ in self.library_buttons]]:
+        for button in [self.import_button, self.audio_button, *[b for b, _ in self.library_buttons]]:
             self.enabled(button, not locked)
         for button in [self.play_button, self.trial_button, self.export_button, self.details_button, self.notes_button, self.report_button]:
             self.enabled(button, ready and not locked)
