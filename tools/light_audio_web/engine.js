@@ -36,8 +36,9 @@ export async function transcribe(samples, modelOrUrl, profile, progress = () => 
       await new Promise(resolve => setTimeout(resolve, 0));
     }
     progress(1, {phase: 'postprocess', backend});
-    const raw = noteFramesToTime(outputToNotesPoly(frames, onsets, .5, .3, 11, true, null, null, true));
-    const notes = noteFramesToTime(outputToNotesPoly(frames, onsets, .7, .4, 11, true, null, null, false))
+    const detailed = profile === 'detail';
+    const raw = noteFramesToTime(outputToNotesPoly(frames, onsets, .5, .3, detailed ? 7 : 11, true, null, null, true));
+    const notes = noteFramesToTime(outputToNotesPoly(frames, onsets, detailed ? .55 : .7, detailed ? .3 : .4, detailed ? 7 : 11, true, null, null, false))
       .filter(note => profile !== 'melody' || note.amplitude >= .55);
     const seconds = samples.length / 22050;
     const clip = list => list.map(n => ({...n, startTimeSeconds: Math.max(0, n.startTimeSeconds),

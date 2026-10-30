@@ -9,13 +9,13 @@
 <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="选择或拖入本地音频"><strong>把音频拖到这里</strong><span>或点击选择本地文件</span><span id="file-name" class="file-name">WAV · MP3 · FLAC · M4A 等</span><input id="file" type="file" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aac,.opus,.webm" aria-label="本地音频文件"></div>
 <p class="hint">源文件最多 64 MB / 10 分钟；每次最多转 3 分钟，建议先试 15–30 秒。</p>
 <div class="row"><label>起点 / 秒<input id="start" type="number" min="0" step="0.1" value="0" required></label><label>终点 / 秒<input id="end" type="number" min="0" step="0.1" placeholder="留空：最多 3 分钟"></label>
-<label>识别方式<select id="profile"><option value="polyphonic">保留和弦</option><option value="melody">突出旋律（可能减少和弦）</option></select></label></div>
-<p class="usage-note" role="note">请合法、合理地使用本地音频及转换结果，尊重他人权益，勿用于违法违规用途。</p>
+<label>识别方式<select id="profile"><option value="polyphonic">均衡保留和弦</option><option value="detail">多保留弱音（可能增加杂音）</option><option value="melody">突出旋律（可能减少和弦）</option></select></label></div>
+<label class="alignment"><input id="align" type="checkbox">轻微对齐和弦起音<span title="最多提前 24 毫秒；分解和弦请保持关闭。重复同音保持原起音。">24 ms · 分解和弦建议关闭</span></label>
 <div class="actions"><button id="submit" type="submit">开始转谱并导入工作台</button><button id="cancel" type="button" disabled>取消</button></div></form>
 <section class="panel result" aria-label="转谱进度与结果"><div class="panel-heading"><span class="section-number">02</span><h2>进度与结果</h2><span id="phase" class="phase">等待音频</span></div>
 <div class="progress-heading"><div class="progress-summary"><strong id="percent">0%</strong><span id="elapsed">已用时 0 秒</span></div><span id="eta">预计剩余：开始后测速</span></div><progress id="progress" max="100" value="0" aria-label="转换进度"></progress>
 <p id="status" role="status">选择或拖入本地音频后，即可开始。</p>
 <div class="download-area"><a id="download" hidden download="轻量转谱.mid">↓ 下载 MIDI</a><span id="result-name" class="result-name"></span><p id="download-status">完成后自动下载，并在工作台保留一份副本。</p></div>
 <div class="audition"><label for="audio">原音频试听</label><audio id="audio" controls preload="metadata"></audio></div></section></div>
-<footer><span>本机处理 · 可切换窗口，请保持工作台和页面打开</span><span>Basic Pitch / TensorFlow.js · Apache 2.0 · <a href="licenses.txt" target="_blank" rel="noreferrer">开源许可</a></span></footer>
+<footer><span>请保持工作台和页面打开。<br>请合法、合理使用音频与转换结果，尊重他人权益，勿用于违法违规用途。</span><span>Basic Pitch / TensorFlow.js<br>Apache 2.0 · <a href="licenses.txt" target="_blank" rel="noreferrer">开源许可</a></span></footer>
 </main><script src="main.js" defer></script></body></html>

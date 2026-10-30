@@ -105,7 +105,7 @@ el('form').onsubmit = async event => {
     if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || end > duration + .02 || end - start > 180) throw new Error('请选择有效起止秒数，每次最多 3 分钟。');
     const data = await file.arrayBuffer(); check();
     const sha256 = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', data)), b => b.toString(16).padStart(2,'0')).join(''); check();
-    const created = await api('begin', {name:file.name,bytes:file.size,duration,start,end,sha256,profile:el('profile').value});
+    const created = await api('begin', {name:file.name,bytes:file.size,duration,start,end,sha256,profile:el('profile').value,align_ms:el('align').checked ? 24 : 0});
     if (current !== generation || !running) {await api('cancel', {job_id:created.job_id}); return;}
     job = created.job_id;
     const context = new AudioContext(); let decoded;

@@ -48,6 +48,8 @@ def run_self_test(engine, destination):
         app = App(root, engine)
         root.update_idletasks()
         assert app.score is not None
+        assert app.file_drop is not None, 'Native file-drop target was not registered'
+        assert app.file_drop.user32.GetWindowLongPtrW(app.file_drop.hwnd,-20)&0x10
         assert app.mini is not None and app.mini.window.attributes('-topmost')
         assert app.mini.native.user32.GetWindowLongPtrW(app.mini.native.hwnd,-20)&0x08000000
         assert not hasattr(app, 'open_online')
@@ -106,6 +108,7 @@ def run_self_test(engine, destination):
               "separation_backend":"umxhq", "audio_comparison":"passed_silent_open_and_seek",
               "light_audio":"passed_resources_and_local_http", "light_audio_bytes":light_bytes,
               "light_browser_inference":"not_run_by_frozen_self_test",
+              "desktop_file_drop":"passed_native_widget_registration; physical_drag_not_run",
               "mini_player": "passed", "interactive_uac_and_game_overlay": "not_run_requires_user_desktop_test",
               "rounded_controls": "passed", "background_asset": "passed",
               "performance_preview": "passed", "game_input_sent": False}

@@ -7,7 +7,7 @@ import time
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
-from nte_music_desk.light_audio import LightAudioSession, notes_to_song, validate_source
+from nte_music_desk.light_audio import LightAudioSession, notes_to_song, validate_source, align_chords
 from nte_music_desk.midi import read_midi
 
 
@@ -21,6 +21,40 @@ def note():
 
 
 class LightAudioChecks(unittest.TestCase):
+    def test_optional_alignment_is_bounded_preserves_repeats_releases_and_original(self):
+        events=[{**note(),'pitchMidi':p,'startTimeSeconds':t,'durationSeconds':.2}
+                for p,t in [(60,1),(64,1.012),(67,1.023),(72,1.045),
+                            (60,2),(60,2.01),(64,2.02),(67,3),(72,3.04)]]
+        song=notes_to_song(events,6,'fixture')
+        unchanged,off=align_chords(song,0)
+        self.assertIs(unchanged,song);self.assertEqual(off['moved_notes'],0)
+        aligned,report=align_chords(song,24)
+        self.assertEqual(len(aligned.notes),len(song.notes))
+        self.assertEqual([n.start for n in aligned.notes[:4]],[1,1,1,1.045])
+        self.assertEqual(aligned.notes[4:],song.notes[4:])
+        self.assertEqual([n.end for n in aligned.notes],[n.end for n in song.notes])
+        self.assertEqual(song.notes[1].start,1.012)
+        self.assertEqual(report['moved_notes'],2);self.assertLessEqual(report['max_shift_ms'],24)
+        for value in (True,-1,25,'24'):
+            with self.assertRaises(ValueError):validate_source({**source(),'align_ms':value})
+        self.assertEqual(validate_source({**source(),'profile':'detail','align_ms':24})['align_ms'],24)
+
+    def test_alignment_http_keeps_selected_midi_and_records_settings(self):
+        with tempfile.TemporaryDirectory() as d:
+            session=LightAudioSession(d,lambda m:None);self.addCleanup(session.close)
+            def post(route,data):
+                with urlopen(Request(session.url+route,json.dumps(data).encode(),
+                    {'Content-Type':'application/json','Origin':session.origin})) as response:return json.load(response)
+            job=post('begin',{**source(),'profile':'detail','align_ms':24})['job_id']
+            post('complete',{'job_id':job,'notes':[note(),{**note(),'pitchMidi':64,'startTimeSeconds':1.273}]})
+            folder=Path(d)/'light-transcriptions'/job
+            selected=read_midi(folder/'model_selected.mid');final=read_midi(next(folder.glob('*Beta.mid')))
+            self.assertGreater(selected.notes[1].start,selected.notes[0].start)
+            self.assertEqual(final.notes[1].start,final.notes[0].start)
+            record=json.loads((folder/'provenance.json').read_text(encoding='utf-8'))
+            self.assertEqual(record['processing']['alignment']['moved_notes'],1)
+            self.assertEqual(record['processing']['thresholds']['onset'],.55)
+
     def test_desktop_audio_handoff_is_limited_to_explicit_selection(self):
         with tempfile.TemporaryDirectory() as d:
             folder=Path(d); audio=folder/'自己的 音频.wav';audio.write_bytes(b'local audio')

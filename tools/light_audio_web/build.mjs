@@ -12,7 +12,8 @@ if (process.argv[2] === '--benchmark') {
   const runner = path.join(work,'light-audio-benchmark.cjs');
   await esbuild.build({entryPoints:[path.join(here,'benchmark_runner.js')],outfile:runner,
     bundle:true,platform:'node',format:'cjs',mainFields:['module','main'],nodePaths:[modules]});
-  const run=spawnSync(process.execPath,[runner,path.resolve(process.argv[3]),path.join(modules,'@spotify/basic-pitch/model')],{stdio:'inherit'});
+  const run=spawnSync(process.execPath,[runner,path.resolve(process.argv[3]),path.join(modules,'@spotify/basic-pitch/model'),
+    process.argv[4] || 'cpu', process.argv[5] || 'polyphonic', path.join(modules,'@tensorflow/tfjs-backend-wasm/dist')],{stdio:'inherit'});
   process.exit(run.status ?? 1);
 }
 const target = path.resolve(here, '../../src/nte_music_desk/assets/light_audio');

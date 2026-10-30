@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import math
@@ -19,7 +20,7 @@ from .paths import asset_dir
 MAX_SECONDS = 180
 MAX_FILE_BYTES = 64 * 1024 * 1024
 MAX_RESPONSE = 4 * 1024 * 1024
-PROFILES = {'polyphonic', 'melody'}
+PROFILES = {'polyphonic', 'melody', 'detail'}
 JOB_LEASE_SECONDS = 120
 AUDIO_EXTENSIONS = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac', '.wma', '.opus', '.webm'}
 
@@ -47,9 +48,45 @@ def validate_source(data):
         raise ValueError('音频散列无效。')
     if data.get('profile') not in PROFILES:
         raise ValueError('请选择保留和弦或突出旋律。')
+    align_ms = data.get('align_ms', 0)
+    if type(align_ms) is not int or align_ms not in (0, 24):
+        raise ValueError('和弦对齐只支持关闭或 24 毫秒。')
     title = PureWindowsPath(name).stem[:100] or '本地音频'
     return {**{key: data[key] for key in ('bytes','duration','start','end','sha256','profile')},
-            'name': PureWindowsPath(name).name, 'title': title, 'rights': use}
+            'name': PureWindowsPath(name).name, 'title': title, 'rights': use, 'align_ms': align_ms}
+
+
+def align_chords(song, milliseconds):
+    """Optional bounded onset grouping; no grid quantization or deleted voices."""
+    report = {'window_ms': milliseconds, 'moved_notes': 0, 'groups': 0, 'max_shift_ms': 0}
+    if not milliseconds:
+        return song, report
+    groups = []
+    for note in sorted(song.notes, key=lambda n: (n.start, n.pitch)):
+        if not groups or note.start - groups[-1][0].start > milliseconds / 1000 + 1e-9:
+            groups.append([note])
+        else:
+            groups[-1].append(note)
+    result, previous_end = [], {}
+    for group in groups:
+        at = group[0].start
+        pitches = [n.pitch for n in group]
+        # Repeated pitches and retriggered sustained notes must keep their attacks.
+        eligible = (len(group) > 1 and len(set(pitches)) == len(pitches)
+                    and all(previous_end.get(n.pitch, 0) <= at + 1e-9 for n in group))
+        moved = False
+        for note in group:
+            shift = note.start - at if eligible else 0
+            if shift > 1e-9:
+                report['moved_notes'] += 1
+                report['max_shift_ms'] = max(report['max_shift_ms'], shift * 1000)
+                note = replace(note, start=at)  # Keep original release and velocity.
+                moved = True
+            result.append(note)
+            previous_end[note.pitch] = max(previous_end.get(note.pitch, 0), note.end)
+        report['groups'] += moved
+    report['max_shift_ms'] = round(report['max_shift_ms'], 3)
+    return replace(song, notes=result), report
 
 
 def notes_to_song(events, seconds, title):
@@ -215,11 +252,15 @@ class LightAudioSession:
                                 raw_song = notes_to_song(data.get('raw_notes', data.get('notes')),
                                                          session.source['end'] - session.source['start'], session.source['title'])
                                 write_midi(raw_song, job / 'model_raw.mid')
+                                write_midi(song, job / 'model_selected.mid')
+                                song, alignment = align_chords(song, session.source['align_ms'])
                                 write_midi(song, staging)
                                 record = {'schema': 'nte-light-audio-v1', 'engine': 'Spotify Basic Pitch 1.0.1 / TensorFlow.js CPU',
                                           'license': 'Apache-2.0', 'source': session.source,
                                           'source_hash_status': 'browser_reported; no_audio_in_http_post',
                                           'note_count': len(song.notes), 'raw_note_count': len(raw_song.notes),
+                                          'processing': {'preset': session.source['profile'], 'alignment': alignment,
+                                              'thresholds': {'onset': .55, 'frame': .3, 'min_frames': 7} if session.source['profile'] == 'detail' else {'onset': .7, 'frame': .4, 'min_frames': 11}},
                                           'midi_sha256': hashlib.sha256(staging.read_bytes()).hexdigest(),
                                           'quality': 'experimental; not a verified 90-95 percent accuracy guarantee'}
                                 (job / 'provenance.json').write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
