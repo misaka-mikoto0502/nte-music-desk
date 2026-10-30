@@ -12,6 +12,7 @@ import uuid
 import logging
 import os
 import re
+import sys
 
 from .midi import convert, note_name, save_score, validate_score, write_midi
 from .notation import read_score
@@ -86,6 +87,7 @@ class App:
         self.directory.mkdir(parents=True, exist_ok=True)
         self.assets = getattr(engine, "ASSETS", self.directory)
         self.audio_dialog = None
+        self.file_drop = None
         self.light_audio = None
         self.audio_audition = None
         self.song, self.score, self.active = None, None, None
@@ -130,6 +132,11 @@ class App:
         root.option_add("*Font", (FONT, 10))
         self.configure_styles()
         self.build_layout()
+        if sys.platform == 'win32':
+            from .file_drop import FileDropTarget
+            root.update_idletasks()
+            try:self.file_drop=FileDropTarget(self.drop_zone,self.messages.put)
+            except OSError as error:logging.getLogger(__name__).warning('File drop unavailable: %s',error)
         self.build_menu()
         for variable in (self.speed, self.transpose, self.start, self.end, self.mode, self.max_polyphony, self.range_policy, self.countdown, self.hold_ms, self.instrument):
             variable.trace_add("write", self.queue_refresh)
@@ -195,7 +202,7 @@ class App:
         from .audio_ui import AudioDialog
         self.audio_dialog = AudioDialog(self)
 
-    def open_light_audio(self):
+    def open_light_audio(self, source=None):
         if self.active or (self.audio_dialog and self.audio_dialog.job):return
         try:
             import webbrowser
@@ -203,6 +210,7 @@ class App:
             if self.light_audio is None:
                 self.light_audio = LightAudioSession(self.directory, self.messages.put,
                     can_start=lambda: not self.closed and not self.active and not (self.audio_dialog and self.audio_dialog.job))
+            if source is not None:self.light_audio.select_desktop_audio(source)
             if not webbrowser.open(self.light_audio.url, new=2):
                 raise ValueError('无法打开默认浏览器，请检查 Windows 默认浏览器设置。')
             self.set_status('已打开本机轻量转谱。音频在浏览器内计算，无需安装引擎；生成后先试听。', '轻量转谱 Beta', 'blue')
@@ -287,6 +295,10 @@ class App:
         self.audio_button = self.button(sidebar, "音频转谱 · Beta", self.open_light_audio, "nav", 10,
             "在已有浏览器中用本机 CPU 转谱，无需安装引擎。复杂音乐仍为 Beta；高级分离见文件菜单。")
         self.audio_button.pack(fill='x')
+        self.drop_zone=tk.Label(sidebar,text='拖入音频 / 曲谱',bg='#344E43',fg='#E1E8D8',font=(FONT,9),pady=5,highlightbackground='#657B64',highlightthickness=1,cursor='hand2')
+        self.drop_zone.pack(fill='x',pady=(9,0))
+        self.drop_zone.bind('<Button-1>',lambda _:self.choose_import())
+        Tooltip(self.drop_zone,'拖入一个 MIDI、MusicXML 或本地音频。音频会自动送到浏览器转谱页。')
         nav_area = tk.Frame(sidebar, bg=C['nav'])
         nav_area.pack(fill='both', expand=True, pady=(15, 8))
         self.nav_canvas = tk.Canvas(nav_area, bg=C['nav'], highlightthickness=0, width=170)
@@ -615,6 +627,30 @@ class App:
                     ("MIDI / Karaoke", "*.mid *.midi *.kar *.rmi"),("MusicXML", "*.musicxml *.xml *.mxl")])
         if path:
             self.open_path(path)
+
+    def choose_import(self):
+        if self.active:return
+        path=filedialog.askopenfilename(parent=self.root,title='选择音频或曲谱',filetypes=[
+            ('音频或曲谱','*.mid *.midi *.kar *.rmi *.musicxml *.xml *.mxl *.wav *.mp3 *.flac *.ogg *.m4a *.aac *.wma *.opus *.webm'),
+            ('所有文件','*.*')])
+        if path:self.import_local_file(path)
+
+    def import_local_file(self,path):
+        from .file_drop import SCORE_EXTENSIONS
+        from .light_audio import AUDIO_EXTENSIONS
+        if self.active or self.preview_token or (self.audio_dialog and self.audio_dialog.job) or (self.light_audio and self.light_audio.busy):
+            self.set_status('请先停止演奏、试听或当前转谱任务，再导入文件。','暂时无法导入','amber')
+            return False
+        path=Path(path)
+        if not path.is_file():
+            self.set_status('请拖入一个本地文件，文件夹暂不支持。','文件无效','amber')
+            return False
+        if path.suffix.lower() in SCORE_EXTENSIONS:return self.open_path(path)
+        if path.suffix.lower() in AUDIO_EXTENSIONS:
+            self.open_light_audio(path)
+            return True
+        self.set_status('支持 MIDI、MusicXML 及 WAV、MP3、FLAC 等本地音频。','格式不支持','amber')
+        return False
 
     def open_path(self, path):
         if self.active:
@@ -1102,7 +1138,11 @@ class App:
 
     def handle_message(self, message):
         kind = message["kind"]
-        if kind == 'light_status':
+        if kind == 'dropped_file':
+            self.import_local_file(message['path'])
+        elif kind == 'drop_error':
+            self.set_status(message['text'],'拖入文件','amber')
+        elif kind == 'light_status':
             self.set_status(message['text'], '轻量转谱 Beta', 'blue')
             self.refresh_controls()
         elif kind == 'light_done':
@@ -1263,6 +1303,7 @@ class App:
         messagebox.showerror("无法完成", str(error), parent=self.root)
 
     def close(self):
+        if self.file_drop is not None:self.file_drop.close()
         if self.light_audio is not None:self.light_audio.close()
         if self.audio_dialog is not None:
             self.audio_dialog.close()

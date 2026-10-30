@@ -33,7 +33,10 @@ for (const name of ['worker', 'main']) {
 const pitch = path.join(modules, '@spotify/basic-pitch');
 for (const file of ['model.json', 'group1-shard1of1.bin']) fs.copyFileSync(path.join(pitch, 'model', file), path.join(target, file));
 for (const file of ['index.html', 'style.css']) fs.copyFileSync(path.join(here, file), path.join(target, file));
-let notices = 'NTE Music Desk lightweight transcription\nCPU in an existing browser; no Python, Node, WASM or GPU runtime redistributed.\n\n';
+for (const file of ['tfjs-backend-wasm.wasm', 'tfjs-backend-wasm-simd.wasm']) {
+  fs.copyFileSync(path.join(modules, '@tensorflow/tfjs-backend-wasm/dist', file), path.join(target, file));
+}
+let notices = 'NTE Music Desk lightweight transcription\nCPU in an existing browser, single-thread WebAssembly with plain JS fallback.\nNo Python, Node, GPU runtime or browser engine redistributed.\n\n';
 for (const folder of [...included].sort()) {
   const pkg = JSON.parse(fs.readFileSync(path.join(folder, 'package.json')));
   if (!['Apache-2.0', 'MIT', 'ISC', 'BSD-3-Clause', 'BSD-2-Clause'].includes(pkg.license)) throw new Error(`Unreviewed license: ${pkg.name} ${pkg.license}`);
@@ -55,10 +58,11 @@ for (const folder of [...included].sort()) {
   else if (!found) throw new Error(`Missing license text: ${pkg.name}`);
 }
 notices += '\nModel: @spotify/basic-pitch 1.0.1/model, unchanged Spotify files under Apache-2.0.\nSource: https://github.com/spotify/basic-pitch-ts\nCopyright 2022 Spotify AB.\nTensorFlow.js source: https://github.com/tensorflow/tfjs\nGoogle LLC and TensorFlow.js contributors.\n';
+notices += '\n' + fs.readFileSync(path.join(here,'wasm-notices.txt'),'utf8');
 fs.writeFileSync(path.join(target, 'licenses.txt'), notices);
 const files = {};
 let total = 0;
-for (const file of ['index.html', 'style.css', 'main.js', 'worker.js', 'model.json', 'group1-shard1of1.bin', 'licenses.txt']) {
+for (const file of ['index.html', 'style.css', 'main.js', 'worker.js', 'model.json', 'group1-shard1of1.bin', 'licenses.txt', 'tfjs-backend-wasm.wasm', 'tfjs-backend-wasm-simd.wasm']) {
   const data = fs.readFileSync(path.join(target, file)); total += data.length;
   files[file] = crypto.createHash('sha256').update(data).digest('hex');
 }

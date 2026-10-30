@@ -1,17 +1,19 @@
 {
   "schema": "nte-light-web-v1",
-  "bytes": 1507322,
+  "bytes": 2329239,
   "versions": {
     "basic-pitch": "1.0.1",
     "tensorflow.js": "3.21.0"
   },
   "files": {
-    "index.html": "9db1308e6e1e200b8bfc3b5fc82ed4092b15140f64a34c8d0ebd58c6d63759d2",
-    "style.css": "18e4697d08ff124faa51e5a27d70d013139adc93204d6ae300a699b0169f3552",
-    "main.js": "8079b7bdf5b01addeb7a6e710784908e1e87986cf41b573f269099c99101dd3b",
-    "worker.js": "58b013c54b1350d52f239d1741eb6f4e470e1b84484e2c6096d924143314d0b7",
+    "index.html": "818ea710f3dd5881f4f7de264b9830507912a2f52d0f980a59ed0f40c204e001",
+    "style.css": "44630d30d2127a02e036587cee54766df846bcab419bf80dc60f9b02faff352f",
+    "main.js": "a76f6a154a3ade7c2a3b7d2540857ed3077e0f7f7cd8a9b1a027ecb3821aa46d",
+    "worker.js": "15ff182bc06d020d4dacd6efd883a7f1e4fa8a772159544015b44c5598e6fb1a",
     "model.json": "1ed1aaee3409ec1dc098c8b01f430c0911f6fe9412e7af8086750f9e8f302f68",
     "group1-shard1of1.bin": "b142a95737a52e1e412d5f92e73d8bb80dfe8d04941acc0702f11f4524fb377c",
-    "licenses.txt": "491fa462c2a49a6f4214c9d2d3e51ac1ec2f150c3b8b997107611168afd6f7e2"
+    "licenses.txt": "81f46a766f1752956baaa7c18be5c27168d675af326a3bdf36e273daa857ebf5",
+    "tfjs-backend-wasm.wasm": "3fdde0b7f76782146ed7a5212bca394d1e59e1bfb8768531c72480d6f10aee1f",
+    "tfjs-backend-wasm-simd.wasm": "918e97b89039305394e9987088249bacee5ef09111ae9f9384c06bec564e2d7b"
   }
 }

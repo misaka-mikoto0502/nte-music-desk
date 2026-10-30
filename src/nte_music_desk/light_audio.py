@@ -11,6 +11,7 @@ import secrets
 import threading
 import time
 import uuid
+from urllib.parse import quote
 
 from .midi import MidiNote, MidiSong, write_midi
 from .paths import asset_dir
@@ -19,6 +20,8 @@ MAX_SECONDS = 180
 MAX_FILE_BYTES = 64 * 1024 * 1024
 MAX_RESPONSE = 4 * 1024 * 1024
 PROFILES = {'polyphonic', 'melody'}
+JOB_LEASE_SECONDS = 120
+AUDIO_EXTENSIONS = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac', '.wma', '.opus', '.webm'}
 
 
 def validate_source(data):
@@ -81,6 +84,7 @@ class LightAudioSession:
         self.lock = threading.Lock()
         self.run_id, self.source, self.last_seen = None, None, 0
         self.result = None
+        self.results, self.latest_result, self.desktop_input = {}, None, None
         self.closed = False
         manifest = json.loads((self.assets / 'manifest.json').read_text(encoding='utf-8'))
         self.files = manifest['files']
@@ -107,7 +111,7 @@ class LightAudioSession:
                 super().setup()
                 self.connection.settimeout(15)
 
-            def reply(self, code, data, content='application/json; charset=utf-8'):
+            def reply(self, code, data, content='application/json; charset=utf-8', filename=None):
                 raw = data if isinstance(data, bytes) else json.dumps(data, ensure_ascii=False).encode('utf-8')
                 self.send_response(code)
                 self.send_header('Content-Type', content)
@@ -115,7 +119,9 @@ class LightAudioSession:
                 self.send_header('Cache-Control', 'no-store')
                 self.send_header('X-Content-Type-Options', 'nosniff')
                 self.send_header('Referrer-Policy', 'no-referrer')
-                self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; worker-src 'self'; connect-src 'self'; img-src 'self' data:; media-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'")
+                if filename:
+                    self.send_header('Content-Disposition', "attachment; filename*=UTF-8''" + quote(filename, safe=''))
+                self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; worker-src 'self'; connect-src 'self'; img-src 'self' data:; media-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'")
                 self.end_headers()
                 try:
                     self.wfile.write(raw)
@@ -131,16 +137,40 @@ class LightAudioSession:
             def do_GET(self):
                 name = self.route()
                 if name == 'state':
-                    self.reply(200, {'open': True})
+                    with session.lock:
+                        source = session.desktop_input
+                        selected = {k: source[k] for k in ('id', 'name', 'bytes')} if source else None
+                        state = {'open': True, 'desktop_file': selected, 'latest_result': session.latest_result}
+                    self.reply(200, state)
                 elif name == 'result.mid' and session.result:
-                    self.reply(200, session.result.read_bytes(), 'audio/midi')
+                    self.reply(200, session.result.read_bytes(), 'audio/midi', session.result.name)
+                elif name and name.startswith('results/') and name in session.results:
+                    path = session.results[name]
+                    self.reply(200, path.read_bytes(), 'audio/midi', path.name)
+                elif name and name.startswith('input/'):
+                    try:
+                        with session.lock:
+                            source = session.desktop_input
+                            if not source or name != 'input/' + source['id']:
+                                self.reply(404, {'error': '本地音频选择已过期。'}); return
+                            path, expected = source['path'], source['stamp']
+                        stat = path.stat()
+                        if (stat.st_size, stat.st_mtime_ns) != expected:
+                            raise ValueError('本地文件已更改，请重新拖入。')
+                        with path.open('rb') as audio:
+                            raw = audio.read(MAX_FILE_BYTES + 1)
+                        if len(raw) != expected[0] or len(raw) > MAX_FILE_BYTES:
+                            raise ValueError('本地文件大小已更改，请重新拖入。')
+                        self.reply(200, raw, 'application/octet-stream')
+                    except (OSError, ValueError) as error:
+                        self.reply(400, {'error': str(error)[:300]})
                 else:
                     name = 'index.html' if name == '' else name
                     if name not in session.files:
                         self.reply(404, {'error': '资源不存在。'}); return
                     content = {'html': 'text/html; charset=utf-8', 'js': 'text/javascript; charset=utf-8',
                                'css': 'text/css; charset=utf-8', 'json': 'application/json', 'bin': 'application/octet-stream',
-                               'txt': 'text/plain; charset=utf-8'}.get(name.rsplit('.', 1)[-1], 'application/octet-stream')
+                               'txt': 'text/plain; charset=utf-8', 'wasm': 'application/wasm'}.get(name.rsplit('.', 1)[-1], 'application/octet-stream')
                     self.reply(200, (session.assets / name).read_bytes(), content)
 
             def do_POST(self):
@@ -188,16 +218,19 @@ class LightAudioSession:
                                 write_midi(song, staging)
                                 record = {'schema': 'nte-light-audio-v1', 'engine': 'Spotify Basic Pitch 1.0.1 / TensorFlow.js CPU',
                                           'license': 'Apache-2.0', 'source': session.source,
-                                          'source_hash_status': 'browser_reported; audio_not_sent_to_desktop',
+                                          'source_hash_status': 'browser_reported; no_audio_in_http_post',
                                           'note_count': len(song.notes), 'raw_note_count': len(raw_song.notes),
                                           'midi_sha256': hashlib.sha256(staging.read_bytes()).hexdigest(),
                                           'quality': 'experimental; not a verified 90-95 percent accuracy guarantee'}
                                 (job / 'provenance.json').write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
                                 staging.replace(output)
                                 session.result = output
+                                download = 'results/' + session.run_id + '.mid'
+                                session.results[download] = output
+                                session.latest_result = {'notes': len(song.notes), 'result': download, 'filename': output.name}
                                 session.run_id = None
                                 session.notify({'kind': 'light_done', 'path': output})
-                                response = {'notes': len(song.notes), 'result': 'result.mid'}
+                                response = session.latest_result
                     self.reply(200, response)
                 except (ValueError, OSError, TypeError, KeyError) as error:
                     self.reply(400, {'error': str(error)[:300]})
@@ -212,7 +245,20 @@ class LightAudioSession:
 
     @property
     def busy(self):
-        return self.run_id is not None and time.monotonic() - self.last_seen < 8
+        return self.run_id is not None and time.monotonic() - self.last_seen < JOB_LEASE_SECONDS
+
+    def select_desktop_audio(self, path):
+        path = Path(path).expanduser().resolve()
+        if path.suffix.lower() not in AUDIO_EXTENSIONS or not path.is_file():
+            raise ValueError('请拖入 WAV、MP3、FLAC 等本地音频文件。')
+        stat = path.stat()
+        if not 0 < stat.st_size <= MAX_FILE_BYTES:
+            raise ValueError('轻量转谱单个音频须为 1 字节至 64 MB。')
+        with self.lock:
+            if self.closed or self.busy:
+                raise ValueError('请先等待当前转谱完成，或取消后再拖入音频。')
+            self.desktop_input = {'id': uuid.uuid4().hex, 'path': path, 'name': path.name,
+                                  'bytes': stat.st_size, 'stamp': (stat.st_size, stat.st_mtime_ns)}
 
     def close(self):
         if self.closed:

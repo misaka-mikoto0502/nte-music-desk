@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import time
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
@@ -20,6 +21,43 @@ def note():
 
 
 class LightAudioChecks(unittest.TestCase):
+    def test_desktop_audio_handoff_is_limited_to_explicit_selection(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder=Path(d); audio=folder/'自己的 音频.wav';audio.write_bytes(b'local audio')
+            session=LightAudioSession(folder,lambda m:None);self.addCleanup(session.close)
+            session.select_desktop_audio(audio)
+            with urlopen(session.url+'state') as response: state=json.load(response)
+            selected=state['desktop_file'];self.assertEqual(selected['name'],audio.name)
+            self.assertNotIn('path',selected)
+            url=session.url+'input/'+selected['id']
+            with urlopen(url) as response:self.assertEqual(response.read(),b'local audio')
+            with self.assertRaises(HTTPError):urlopen(session.url+'input/unknown')
+            audio.write_bytes(b'changed')
+            with self.assertRaises(HTTPError):urlopen(url)
+            session.run_id='busy';session.last_seen=time.monotonic()-15
+            self.assertTrue(session.busy)  # Background tabs can delay timer heartbeats.
+            with self.assertRaises(ValueError):session.select_desktop_audio(audio)
+            session.run_id=None;session.select_desktop_audio(audio)
+            with self.assertRaises(HTTPError):urlopen(url)
+
+    def test_downloads_keep_their_original_result_and_restore_after_reload(self):
+        with tempfile.TemporaryDirectory() as d:
+            session=LightAudioSession(d,lambda m:None);self.addCleanup(session.close)
+            def post(route,data):
+                with urlopen(Request(session.url+route,json.dumps(data).encode(),
+                    {'Content-Type':'application/json','Origin':session.origin})) as response:return json.load(response)
+            first=post('begin',source())['job_id']
+            a=post('complete',{'job_id':first,'notes':[note()]})
+            with urlopen(session.url+a['result']) as response:
+                original=response.read();self.assertIn('attachment;',response.headers['Content-Disposition'])
+                self.assertIn("filename*=UTF-8''",response.headers['Content-Disposition'])
+            second=post('begin',source())['job_id']
+            b=post('complete',{'job_id':second,'notes':[{**note(),'pitchMidi':64}]})
+            self.assertNotEqual(a['result'],b['result'])
+            with urlopen(session.url+a['result']) as response:self.assertEqual(response.read(),original)
+            with urlopen(session.url+'state') as response:self.assertEqual(json.load(response)['latest_result'],b)
+            self.assertEqual(len(list(Path(d).rglob('provenance.json'))),2)
+
     def test_local_source_bounds_and_notes_are_validated_without_declaration(self):
         self.assertEqual(validate_source(source())['rights']['status'],'local_file_provided')
         legacy = validate_source({**source(), 'basis':'permission','reference':'an old client statement'})

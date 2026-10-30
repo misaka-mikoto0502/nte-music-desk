@@ -1,18 +1,21 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>NTE Music Desk · 轻量转谱</title><link rel="stylesheet" href="style.css"></head>
-<body><main><header><span>NTE MUSIC DESK</span><span class="tag">轻量转谱 · BETA</span></header>
-<h1>把一段音乐，变成可演奏的曲谱。</h1>
-<p class="intro">本地 CPU 处理，无需 GPU、Python 或模型账号。适合清晰的单乐器录音；复杂原唱不保证还原质量。</p>
-<form id="form"><label class="file">选择本地音频<input id="file" type="file" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a" required></label>
-<p class="hint">源文件不超过 64 MB / 10 分钟；每次最多识别 3 分钟，建议先试 15–30 秒。格式支持取决于当前浏览器。</p>
-<div class="row"><label>起点 / 秒<input id="start" type="number" min="0" step="0.1" value="0" required></label>
-<label>终点 / 秒<input id="end" type="number" min="0" step="0.1" placeholder="留空：最多 3 分钟"></label>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NTE Music Desk · 轻量转谱</title><link rel="stylesheet" href="style.css"></head>
+<body><main>
+<header><div><span class="brand">NTE MUSIC DESK</span><h1>把音乐，变成可演奏的曲谱。</h1></div><span class="tag">本机 CPU · BETA</span></header>
+<p class="intro">无需 GPU 或 Python。清晰的单乐器录音效果更好，复杂混音可能出现错漏音。</p>
+<nav class="compact-tabs" aria-label="转谱面板"><button type="button" id="tab-settings" aria-pressed="true">音频与设置</button><button type="button" id="tab-result" aria-pressed="false">进度与结果</button></nav>
+<div class="workspace"><form id="form" class="panel settings">
+<div class="panel-heading"><span class="section-number">01</span><h2>选择音频</h2></div>
+<div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="选择或拖入本地音频"><strong>把音频拖到这里</strong><span>或点击选择本地文件</span><span id="file-name" class="file-name">WAV · MP3 · FLAC · M4A 等</span><input id="file" type="file" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aac,.opus,.webm" aria-label="本地音频文件"></div>
+<p class="hint">源文件最多 64 MB / 10 分钟；每次最多转 3 分钟，建议先试 15–30 秒。</p>
+<div class="row"><label>起点 / 秒<input id="start" type="number" min="0" step="0.1" value="0" required></label><label>终点 / 秒<input id="end" type="number" min="0" step="0.1" placeholder="留空：最多 3 分钟"></label>
 <label>识别方式<select id="profile"><option value="polyphonic">保留和弦</option><option value="melody">突出旋律（可能减少和弦）</option></select></label></div>
 <p class="usage-note" role="note">请合法、合理地使用本地音频及转换结果，尊重他人权益，勿用于违法违规用途。</p>
-<div class="actions"><button id="submit" type="submit">生成曲谱并导入工作台</button><button id="cancel" type="button" disabled>取消任务</button></div></form>
-<section class="result"><progress id="progress" max="100" value="0"></progress><p id="status" role="status">选择自己的音频文件即可开始。生成后先试听，再进入游戏演奏。</p>
-<audio id="audio" controls preload="metadata"></audio><a id="download" hidden download="轻量转谱.mid">另存识别 MIDI</a></section>
-<footer>音频只在这个浏览器标签页计算；本地连接仅传曲谱与来源记录。考虑音乐版权风险，不提供搜曲下载。<br>
-Basic Pitch / TensorFlow.js · Apache 2.0 · <a href="licenses.txt" target="_blank" rel="noreferrer">开源许可与来源</a>。Beta 不承诺任意音乐达到 90–95% 准确率。</footer>
+<div class="actions"><button id="submit" type="submit">开始转谱并导入工作台</button><button id="cancel" type="button" disabled>取消</button></div></form>
+<section class="panel result" aria-label="转谱进度与结果"><div class="panel-heading"><span class="section-number">02</span><h2>进度与结果</h2><span id="phase" class="phase">等待音频</span></div>
+<div class="progress-heading"><div class="progress-summary"><strong id="percent">0%</strong><span id="elapsed">已用时 0 秒</span></div><span id="eta">预计剩余：开始后测速</span></div><progress id="progress" max="100" value="0" aria-label="转换进度"></progress>
+<p id="status" role="status">选择或拖入本地音频后，即可开始。</p>
+<div class="download-area"><a id="download" hidden download="轻量转谱.mid">↓ 下载 MIDI</a><span id="result-name" class="result-name"></span><p id="download-status">完成后自动下载，并在工作台保留一份副本。</p></div>
+<div class="audition"><label for="audio">原音频试听</label><audio id="audio" controls preload="metadata"></audio></div></section></div>
+<footer><span>本机处理 · 可切换窗口，请保持工作台和页面打开</span><span>Basic Pitch / TensorFlow.js · Apache 2.0 · <a href="licenses.txt" target="_blank" rel="noreferrer">开源许可</a></span></footer>
 </main><script src="main.js" defer></script></body></html>

@@ -6,13 +6,14 @@ import {loadGraphModel} from '@tensorflow/tfjs-converter';
 import '@tensorflow/tfjs-backend-cpu';
 import {noteFramesToTime, outputToNotesPoly} from '@spotify/basic-pitch/esm/toMidi.js';
 
-export async function transcribe(samples, modelOrUrl, profile, progress = () => {}) {
-  await tf.setBackend('cpu');
+export async function transcribe(samples, modelOrUrl, profile, progress = () => {}, backend = 'cpu') {
+  await tf.setBackend(backend);
   await tf.ready();
   const model = typeof modelOrUrl === 'string' ? await loadGraphModel(modelOrUrl) : modelOrUrl;
   const windowSize = 43844, overlap = 7680, hop = windowSize - overlap;
   const frames = [], onsets = [];
   const frameLimit = Math.floor(samples.length * 86 / 22050);
+  progress(0, {phase: 'inference', backend});
   try {
     for (let offset = 0; offset < samples.length + overlap / 2 && frames.length < frameLimit; offset += hop) {
       const window = new Float32Array(windowSize);
@@ -31,9 +32,10 @@ export async function transcribe(samples, modelOrUrl, profile, progress = () => 
           onsets.push(Array.from(output[1].subarray(i * 88, (i + 1) * 88)));
         }
       } finally { tf.dispose(values); }
-      progress(Math.min(1, frames.length / frameLimit));
+      progress(Math.min(1, frames.length / frameLimit), {phase: 'inference', backend});
       await new Promise(resolve => setTimeout(resolve, 0));
     }
+    progress(1, {phase: 'postprocess', backend});
     const raw = noteFramesToTime(outputToNotesPoly(frames, onsets, .5, .3, 11, true, null, null, true));
     const notes = noteFramesToTime(outputToNotesPoly(frames, onsets, .7, .4, 11, true, null, null, false))
       .filter(note => profile !== 'melody' || note.amplitude >= .55);
