@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from .midi import validate_score, note_name
 from .keyboard import KEYS, PianoKey
 from .instruments import SHIFT, score_instrument
@@ -26,12 +27,47 @@ class PerformancePlan:
     mixed_groups: int
     timing_adjusted_notes: int = 0
     max_timing_adjustment_ms: float = 0
+    aligned_notes: int = 0
+    max_alignment_ms: float = 0
 
 
 def _record(notes, event, at, release):
     if notes is not None:
         notes.append(PlannedNote(at, release - at, event["midi"], event.get("source_midi", event["midi"]),
                                  event.get("source_at", event["at"]), event.get("source_track", -1), event.get('velocity', 80)))
+
+
+def _align_score(score,timing):
+    """Opt-in chord onset alignment on a copy, bounded from each group's first onset.
+
+    Do not chain nearby events into a long group or cross a piano Shift state.
+    Original source timestamps stay available for reports and resume positions.
+    """
+    milliseconds=score.get('settings',{}).get('chord_alignment_ms',0)
+    if type(milliseconds) is not int or milliseconds not in (0,24):raise ValueError('起音对齐只支持关闭或 24 毫秒。')
+    if not milliseconds or score['mode']=='melody':return score
+    speed=score.get('settings',{}).get('speed',1)
+    if type(speed) not in (int,float) or not math.isfinite(speed) or speed<=0:raise ValueError('曲谱速度无效。')
+    groups=[]
+    for event in score['events']:
+        if not groups or event['at']-groups[-1][0]['at']>milliseconds/1000/speed+1e-9:groups.append([event])
+        else:groups[-1].append(event)
+    result,previous_end=[],{}
+    limit=score.get('settings',{}).get('max_polyphony',6)
+    profile=score_instrument(score)
+    for group in groups:
+        at=group[0]['at'];pitches=[event['midi'] for event in group]
+        eligible=(1<len(group)<=limit and len(set(pitches))==len(pitches)
+            and (profile.id!='piano' or len({profile.keys[note_name(pitch)].shifted for pitch in pitches})==1)
+            and all(previous_end.get(event['midi'],0)<=at+1e-9 and event['duration']+event['at']-at<=120 for event in group))
+        for event in group:
+            shift=event['at']-at if eligible else 0
+            previous_end[event['midi']]=max(previous_end.get(event['midi'],0),event['at']+event['duration'])
+            if shift>1e-9:
+                event={**event,'at':at,'duration':event['duration']+shift}
+                timing['aligned_notes']+=1;timing['max_alignment_ms']=max(timing['max_alignment_ms'],shift*1000)
+            result.append(event)
+    return {**score,'events':sorted(result,key=lambda event:(event['at'],event['midi']))}
 
 
 def _compile_keys(score, hold_ms=300, notes=None, timing=None):
@@ -191,7 +227,9 @@ def piano_chord_schedule(score, hold_ms, notes=None, timing=None):
 
 def performance_plan(score, hold_ms=300):
     notes = []
-    timing={'adjusted_notes':0,'max_delay_ms':0}
+    validate_score(score)
+    timing={'adjusted_notes':0,'max_delay_ms':0,'aligned_notes':0,'max_alignment_ms':0}
+    score=_align_score(score,timing)
     keys = _compile_keys(score, hold_ms, notes, timing)
     if not notes:
         raise ValueError("曲谱没有可执行的音符。")
@@ -206,7 +244,7 @@ def performance_plan(score, hold_ms=300):
     mixed = sum(len({profile.keys[note_name(e["midi"])].shifted for e in group}) > 1 for group in groups) if profile.id == "piano" else 0
     duration = max(score.get("summary", {}).get("seconds", 0), keys[-1][0],
                    max(n.at + n.duration for n in notes))
-    return PerformancePlan(tuple(keys), tuple(notes), duration, mixed,timing['adjusted_notes'],round(timing['max_delay_ms'],3))
+    return PerformancePlan(tuple(keys), tuple(notes), duration, mixed,timing['adjusted_notes'],round(timing['max_delay_ms'],3),timing['aligned_notes'],round(timing['max_alignment_ms'],3))
 
 
 def key_schedule(score, hold_ms=300):

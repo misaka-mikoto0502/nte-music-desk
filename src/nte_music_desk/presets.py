@@ -9,7 +9,7 @@ from pathlib import Path
 from .instruments import INSTRUMENTS
 
 DEFAULTS = {"tracks": [], "mode": "melody", "speed": 1.0, "transpose": 0,
-            "range_policy": "fold", "start": 0.0, "end": None, "countdown": 3, "hold_ms": 300, "roles": {}, "max_polyphony": 12}
+            "range_policy": "fold", "start": 0.0, "end": None, "countdown": 3, "hold_ms": 300, "roles": {}, "max_polyphony": 12,"chord_alignment_ms":0}
 
 
 def fingerprint(path):
@@ -24,6 +24,7 @@ def validate_settings(value):
     if not isinstance(tracks, list) or not tracks or len(tracks) > 2048 or any(type(t) is not int or not 0 <= t < 2048 for t in tracks):
         raise ValueError("演奏方案的音轨无效。")
     result["tracks"] = sorted(set(tracks))
+    if type(result['chord_alignment_ms']) is not int or result['chord_alignment_ms'] not in (0,24):raise ValueError('起音对齐设置无效。')
     roles = result['roles']
     if not isinstance(roles, dict) or len(roles) > 2048 or any(not isinstance(k, str) or not k.isdigit() or int(k) >= 2048 or v not in ('melody', 'bass', 'harmony') for k, v in roles.items()):
         raise ValueError('演奏方案的声部角色无效。')

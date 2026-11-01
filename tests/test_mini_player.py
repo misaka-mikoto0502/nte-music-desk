@@ -79,6 +79,21 @@ class MiniPlayerChecks(unittest.TestCase):
                 self.assertAlmostEqual(app.playback_offset(),position,places=4)
             finally:app.close()
 
+    def test_alignment_choice_is_saved_per_instrument(self):
+        with tempfile.TemporaryDirectory() as d:
+            app=self.create(d)
+            try:
+                app.chord_align.set(True);app.update_score(quiet=True)
+                self.assertEqual(app.score['settings']['chord_alignment_ms'],24)
+                app.instrument.set('钢琴 · Shift 黑键');app.update_score(quiet=True)
+                self.assertFalse(app.chord_align.get())
+                app.instrument.set('吉他 · 钢琴模式');app.update_score(quiet=True)
+                self.assertTrue(app.chord_align.get())
+            finally:app.close()
+            app=self.create(d)
+            try:self.assertTrue(app.chord_align.get())
+            finally:app.close()
+
     def test_seek_preserves_pause_and_ignores_old_progress_until_acknowledged(self):
         with tempfile.TemporaryDirectory() as d:
             app=self.create(d);folder=Path(d)

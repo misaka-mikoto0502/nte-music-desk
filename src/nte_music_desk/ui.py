@@ -116,6 +116,7 @@ class App:
         self.end = tk.StringVar(value="")
         self.mode = tk.StringVar(value=MODES['faithful'])
         self.max_polyphony = tk.StringVar(value="12")
+        self.chord_align=tk.BooleanVar(value=False)
         selected = INSTRUMENTS.get(self.preferences.get("instrument"), INSTRUMENTS["guitar"])
         self.instrument = tk.StringVar(value=selected.title)
         self.applied_instrument = selected.id
@@ -144,7 +145,7 @@ class App:
             try:self.file_drop=FileDropTarget(self.drop_zone,self.messages.put)
             except OSError as error:logging.getLogger(__name__).warning('File drop unavailable: %s',error)
         self.build_menu()
-        for variable in (self.speed, self.transpose, self.start, self.end, self.mode, self.max_polyphony, self.range_policy, self.countdown, self.hold_ms, self.instrument):
+        for variable in (self.speed, self.transpose, self.start, self.end, self.mode, self.max_polyphony, self.range_policy, self.countdown, self.hold_ms, self.instrument,self.chord_align):
             variable.trace_add("write", self.queue_refresh)
         self.tracks.bind("<<ListboxSelect>>", self.queue_refresh)
         root.bind("<Control-o>", lambda _: self.open_file())
@@ -537,6 +538,10 @@ class App:
         range_box.pack(fill="x", pady=(12, 0))
         self.controls.append((range_box, "readonly"))
         Tooltip(range_box, "折回八度会保留音名，但可能改变旋律的上下走势。\n原音域已适配的曲目不会被改动。")
+        alignment=tk.Checkbutton(self.advanced,text='近同时起音对齐（原曲 24ms）',variable=self.chord_align,
+            bg=C['paper'],activebackground=C['paper'],fg=C['ink'],font=(FONT,9),anchor='w')
+        alignment.pack(fill='x',pady=(9,0));self.controls.append((alignment,'normal'))
+        Tooltip(alignment,'把识别后稍错开的和弦起音对齐；分解和弦请保持关闭。\n钢琴只对齐相同 Shift 状态，黑白混合仍需分组。重复同音不合并，单旋律模式不启用。\n只影响演奏和时序试听，不改原 MIDI；变速时按原曲 24ms 等比例缩放。')
 
         self.notes_card = self.card(content)
         row = tk.Frame(self.notes_card, bg=C["paper"])
@@ -665,6 +670,8 @@ class App:
         self.stop_preview()
         paused=self.active.get('pause_requested',False) if self.active else False
         self.seek_drag={'canvas':event.widget,'paused':paused,'frame':self.position_frame(),'song':self.song_fingerprint}
+        try:event.widget.grab_set()
+        except tk.TclError:pass
         if self.active and not paused:self.request_pause(True)
         self.move_seek(event)
 
@@ -679,6 +686,8 @@ class App:
     def end_seek(self,event):
         if not self.seek_drag:return
         self.move_seek(event);drag,self.seek_drag=self.seek_drag,None
+        try:drag['canvas'].grab_release()
+        except tk.TclError:pass
         if drag['song']!=self.song_fingerprint:return
         old_origin,old_speed,old_length=drag['frame'];origin,speed,length=self.position_frame()
         raw=old_origin+drag.get('fraction',0)*old_length*old_speed
@@ -819,7 +828,8 @@ class App:
                 "speed": float(self.speed.get()), "transpose": int(self.transpose.get()),
                 "range_policy": {"超出音域折回八度": "fold", "丢弃超出音域的音": "drop", "超出音域时报错": "strict"}[self.range_policy.get()],
                 "start": parse_time(self.start.get()), "end": parse_time(self.end.get()) if self.end.get().strip() else None,
-                "countdown": int(self.countdown.get()), "hold_ms": int(self.hold_ms.get()), "roles": dict(self.tracks.roles)}
+                "countdown": int(self.countdown.get()), "hold_ms": int(self.hold_ms.get()), "roles": dict(self.tracks.roles),
+                'chord_alignment_ms':24 if self.chord_align.get() else 0}
 
     def save_arrangement(self):
         if not self.song_fingerprint or self.syncing_settings or self.song is None or (self.song_fingerprint, self.applied_instrument) in self.invalid_presets:
@@ -828,6 +838,7 @@ class App:
             settings = self.arrangement_settings()
             score = convert(self.song, settings["tracks"], settings["mode"], settings["speed"], settings["transpose"],
                             settings["range_policy"], settings["start"], self.applied_instrument, settings["end"], settings["max_polyphony"], settings["roles"])
+            score['settings']['chord_alignment_ms']=settings['chord_alignment_ms']
             performance_plan(score, settings["hold_ms"])
             self.preset_store.save(self.song_fingerprint, self.applied_instrument, settings)
         except (OSError, ValueError, KeyError, tk.TclError):
@@ -854,6 +865,7 @@ class App:
                 getattr(self, name).set(str(settings[name]))
             self.end.set("" if settings["end"] is None else str(settings["end"]))
             self.mode.set(MODES[settings["mode"]])
+            self.chord_align.set(settings.get('chord_alignment_ms',0)==24)
             self.range_policy.set({"fold": "超出音域折回八度", "drop": "丢弃超出音域的音", "strict": "超出音域时报错"}[settings["range_policy"]])
             self.tracks.set_enabled_tracks(settings['tracks'])
             self.tracks.roles = {str(p['index']): p['role'] for p in self.tracks.rows}
@@ -874,10 +886,13 @@ class App:
         score = convert(self.song, tracks, mode_key(self.mode.get()),
                         float(self.speed.get()), int(self.transpose.get()), policies[self.range_policy.get()], parse_time(self.start.get()), self.current_instrument().id,
                         parse_time(self.end.get()) if self.end.get().strip() else None, int(self.max_polyphony.get()), dict(self.tracks.roles))
+        score['settings']['chord_alignment_ms']=24 if self.chord_align.get() else 0
         plan=performance_plan(score,hold)
         self.ready_duration=plan.duration
         if plan.timing_adjusted_notes:
             score['warnings'].append(f'钢琴短间距校正 {plan.timing_adjusted_notes} 音，最多另延后 {plan.max_timing_adjustment_ms:g} 毫秒；该校正未删音，详见适配报告。')
+        if plan.aligned_notes:
+            score['warnings'].append(f'近同时起音已对齐 {plan.aligned_notes} 音，当前速度最多提前 {plan.max_alignment_ms:g} 毫秒；分解和弦建议关闭此选项。')
         return validate_score(score)
 
     def current_instrument(self):
@@ -1016,7 +1031,7 @@ class App:
         for variable, value in [(self.speed, "1.0"), (self.transpose, "0"), (self.start, "0"),
                                 (self.end, ""),
                                 (self.mode, MODES['faithful']), (self.max_polyphony, "12"), (self.range_policy, "超出音域折回八度"),
-                                (self.countdown, str(DEFAULTS['countdown'])), (self.hold_ms, "300")]:
+                                (self.countdown, str(DEFAULTS['countdown'])), (self.hold_ms, "300"),(self.chord_align,False)]:
             variable.set(value)
         if self.song:
             self.tracks.set_enabled_tracks([p['index'] for p in self.tracks.rows if not p['drums']])
@@ -1121,7 +1136,7 @@ class App:
             self.show_error(ValueError('鼓组不能直接作为钢琴音高试听。'))
             return
         try:
-            options = {"tracks": [self.track_ids[index]], "start": parse_time(self.start.get()),
+            options = {"tracks": [self.track_ids[index]], "start": self.source_preview_start(),
                        "end": parse_time(self.end.get()) if self.end.get().strip() else None,
                        "speed": float(self.speed.get()), "transpose": int(self.transpose.get())}
             self.start_preview(source=self.song, options=options, caption=f"音轨 {self.track_ids[index]} 原声部")
@@ -1133,11 +1148,20 @@ class App:
             return
         try:
             options = {"tracks": [self.track_ids[int(i)] for i in self.tracks.curselection()],
-                       "start": parse_time(self.start.get()), "end": parse_time(self.end.get()) if self.end.get().strip() else None,
+                       "start": self.source_preview_start(), "end": parse_time(self.end.get()) if self.end.get().strip() else None,
                        "speed": float(self.speed.get()), "transpose": int(self.transpose.get())}
             self.start_preview(source=self.song, options=options, caption="原谱声部")
         except ValueError as error:
             self.show_error(error)
+
+    def source_preview_start(self):
+        start=parse_time(self.start.get())
+        if self.score:
+            origin,speed,_=self.position_frame()
+            position=origin+self.playback_offset()*speed
+            end=parse_time(self.end.get()) if self.end.get().strip() else self.song.seconds
+            if position<end:start=max(start,position)
+        return start
 
     def start_preview(self, score=None, source=None, options=None, caption="按键时序"):
         hold_ms = int(self.hold_ms.get()) if source is None else 300

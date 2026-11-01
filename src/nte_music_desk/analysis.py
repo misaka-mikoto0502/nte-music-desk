@@ -31,13 +31,14 @@ def adaptation_metrics(score):
 
 def recommend_transpositions(song, *, tracks=None, mode="melody", speed=1, transpose=0,
                              range_policy="fold", start=0, end=None, instrument="guitar", hold_ms=300,
-                             planner=None, limit=3, cancel=None, roles=None, max_polyphony=12):
+                             planner=None, limit=3, cancel=None, roles=None, max_polyphony=12,chord_alignment_ms=0):
     candidates = []
     for shift in sorted(set(range(-12, 13)) | {-36, -24, 24, 36, transpose}):
         if cancel is not None and cancel():
             raise ValueError("移调分析已取消。")
         try:
             score = convert(song, tracks, mode, speed, shift, range_policy, start, instrument, end, max_polyphony, roles)
+            score['settings']['chord_alignment_ms']=chord_alignment_ms
             if planner is not None:
                 planner(score, hold_ms)
             metrics = adaptation_metrics(score)
@@ -67,6 +68,7 @@ def adaptation_report(score, plan=None):
         from dataclasses import asdict
         result["performance"] = {"seconds": plan.duration, "planned_notes": len(plan.notes),
                                  'timing_adjusted_notes':plan.timing_adjusted_notes,'max_timing_adjustment_ms':plan.max_timing_adjustment_ms,
+                                 'aligned_notes':plan.aligned_notes,'max_alignment_ms':plan.max_alignment_ms,
                                  "mixed_groups": plan.mixed_groups,
                                  "notes": [asdict(n) for n in plan.notes[:2000]], "truncated": len(plan.notes) > 2000}
         held, peak = set(), 0

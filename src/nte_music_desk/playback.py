@@ -143,7 +143,16 @@ def execute_plan(plan,backend,*,clock=time.perf_counter,sleep=time.sleep,control
             if timeline.paused_at is None and restore_pending:
                 # Restore the global modifier before any still-sustained notes.
                 for key in sorted(wanted,key=lambda k:(k.virtual_key!=0xA0,k.scan_code)):
-                    if wanted[key]>timeline.elapsed()+1e-9:backend.down(key)
+                    if wanted[key]>timeline.elapsed()+1e-9:
+                        backend.down(key)
+                        if key.virtual_key==0xA0:
+                            # Keep the musical clock still while Shift settles.
+                            timeline.pause()
+                            try:
+                                deadline=clock()+.015
+                                while deadline-clock()>1e-9:
+                                    backend.check();sleep(min(.005,deadline-clock()))
+                            finally:timeline.resume()
                 restore_pending=False
             publish(changed)
             if timeline.paused_at is not None:

@@ -56,7 +56,9 @@ class PlaybackChecks(unittest.TestCase):
         clock=Clock();keyboard=Keyboard(clock)
         execute_plan(plan,keyboard,clock=clock.read,sleep=clock.sleep,start_at=.2)
         self.assertEqual([k for _,down,k in keyboard.events if down],[SHIFT,a,b])
-        self.assertAlmostEqual(clock.now,.8,delta=.001);self.assertFalse(keyboard.held)
+        self.assertAlmostEqual(clock.now,.815,delta=.001);self.assertFalse(keyboard.held)
+        downs=[at for at,down,_ in keyboard.events if down]
+        self.assertGreaterEqual(downs[1]-downs[0],.015-1e-9)
 
     def test_forward_and_backward_seek_reconstruct_the_new_key_state(self):
         a,b=KEYS['E3'],KEYS['F3']
