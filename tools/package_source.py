@@ -6,8 +6,10 @@ import sys
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT))
 sys.path.insert(0,str(ROOT/"src"))
 from nte_music_desk import __version__
+from tools.check_release import check_release
 
 
 TOP_FILES=("README.md","LICENSE","THIRD_PARTY_NOTICES.md","CHANGELOG.md","pyproject.toml","requirements-build.txt",".gitignore",".gitattributes")
@@ -31,10 +33,11 @@ def collect_files(root=ROOT):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output',type=Path,default=ROOT/"releases"/f"NTE-Music-Desk-v{__version__}-Source.zip")
+    parser.add_argument('--output',type=Path,default=ROOT/"releases"/f"v{__version__}"/f"NTE-Music-Desk-v{__version__}-Source.zip")
     parser.add_argument('--overwrite',action='store_true')
     args=parser.parse_args();output=args.output.resolve()
     if output.exists() and not args.overwrite:raise FileExistsError('Source archive already exists; choose a new --output or explicitly use --overwrite')
+    check_release(ROOT)
     files=collect_files()
     output.parent.mkdir(parents=True,exist_ok=True)
     with zipfile.ZipFile(output,"w",zipfile.ZIP_DEFLATED,compresslevel=9) as archive:

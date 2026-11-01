@@ -4,11 +4,11 @@ Windows 桌面曲谱演奏工具：导入本地曲谱，一键操控《异环》
 
 <img src="src/nte_music_desk/assets/icon.png" alt="异环演奏工作台应用图标" width="160" height="160">
 
-1.5 仍在开发，已有 v1.5.0 包和标签仅作检查点。本轮新增启动时提权、置顶迷你播放器、F7 暂停/继续，并继续完善本地音频处理：UMX-HQ 人声/伴奏分离、MuScriptor 多轨转谱、可选主旋律 Beta 和同位置对照试听。考虑音乐版权风险，不提供搜曲与下载，请选择你有权处理的本地文件。原 ViperX 权重继续停用，音频识别仍为实验功能。
+2.0 整合了本地音频转谱桌面窗口、CPU 加速与剩余时间、拖入导入、自动保存 MIDI，以及启动时提权和置顶迷你播放器。日常曲谱导入与轻量转谱无需配置 Python 或 GPU。考虑音乐版权风险，不提供搜曲与下载，请使用自己的本地文件，并合法合理使用输入和转换结果。音频识别继续标为 Beta；高级分离与转谱需独立配置。
 
 ## 下载与使用
 
-从 Releases 获取 Windows x64 便携包，完整解压后双击 **异环演奏工作台.exe**。曲谱导入与演奏不需要安装 Python。请保留同目录的 `_internal` 文件夹。当前开发版的轻量音频 Beta 在独立桌面窗口中用本机 CPU 运行，复用系统 WebView2，无需配置环境；高级分离与转谱仍需独立引擎和授权模型。
+从 Releases 获取 Windows x64 便携包，完整解压后双击 **异环演奏工作台.exe**。曲谱导入与演奏不需要安装 Python。请保留同目录的 `_internal` 文件夹。轻量音频 Beta 在独立桌面窗口中用本机 CPU 运行，依赖系统已有的 WebView2 Runtime 与 .NET Framework 4.6.2+；缺少组件时可手动使用文件菜单中的浏览器兼容入口。高级分离与转谱仍需独立引擎和授权模型。
 
 选曲 → 选择乐器与片段 → 时序试听 → 游戏试奏 → 开始演奏。首次可用内置《小星星》检查功能。打开图形应用时手动确认一次 UAC，后续演奏继承权限；F7 暂停/继续，F8 停止，切出游戏自动停止。
 
@@ -20,7 +20,7 @@ Windows 桌面曲谱演奏工具：导入本地曲谱，一键操控《异环》
 
 [音乐与模型许可边界](docs/COPYRIGHT_AND_MODELS.md)：本地文件不自动代表具备转谱或发布授权，代码与模型权重采用各自许可。
 
-[1.5 检查点说明（非最终版）](docs/RELEASE_NOTES_1.5.0.md) · [音频实测记录](docs/AUDIO_BENCHMARK.md)
+[2.0 更新说明](docs/RELEASE_NOTES_2.0.0.md) · [2.0 发布验证与待验收项](docs/VALIDATION_2.0.md) · [音频实测记录](docs/AUDIO_BENCHMARK.md)
 
 1.3.1 提供暖灰/墨绿界面、圆角面板与按钮，城市吉他背景可在“外观”菜单关闭或调节浓度。[界面设计记录](docs/APPEARANCE.md)
 
@@ -70,10 +70,13 @@ python src/nte_music_desk/_bootstrap.py --to-midi my-score.mxl --output converte
 ```powershell
 python -m unittest discover -s tests -v
 python -m pip install -r requirements-build.txt
+python tools/check_release.py
 python tools/build_windows.py
+python tools/verify_release.py
+python tools/package_source.py
 ```
 
-构建产物在 `releases/`，不会进入 Git。GitHub Actions 在手动触发或推送版本标签时运行测试、构建并上传下载产物，不会自动公开创建 Release。
+构建产物在 `releases/v2.0.0/`，不会进入 Git。已有同名包默认拒绝覆盖；明确重建时使用 `--overwrite`。GitHub Actions 在手动触发或推送版本标签时运行测试、构建并上传下载产物，不会自动公开创建 Release。
 
 ## 限制与验证
 
@@ -81,7 +84,7 @@ python tools/build_windows.py
 
 MusicXML 支持 partwise、普通反复与编号房子、声部/和弦/连音及显式时值。小节内反复、嵌套反复或不一致的小节结构会提示先展开；D.C./D.S./Coda/Fine 和装饰记号不展开并显示警告。音频经可选引擎识别后导入，不保证识别准确率；PDF 和图片需要先用外部 OMR 校对导出。详见使用说明中的格式表。
 
-先前脚本版的钢琴与和弦已由使用者实机确认。本轮软件回归与授权后的真实 MuScriptor/UMX-HQ 短样本推理分别记录在发布检查和音频实测中；这不代表完整歌曲、真实歌声或新增游戏输入已验收。每组音数不是游戏实际多音上限。时序试听使用合成音色，不等于游戏原音色或实际发声确认。
+使用者已确认钢琴发声及 F7 暂停/继续、F8 停止正常，先前也确认吉他钢琴《小星星》正常；这些反馈不等于 2.0 新包的全部实机验收。悬浮窗按钮、游戏实际多音数和钢琴绝对音高仍需实听，详见 2.0 发布验证。时序试听使用合成音色，不等于游戏原音色或实际发声确认。
 
 ## 资源与许可
 

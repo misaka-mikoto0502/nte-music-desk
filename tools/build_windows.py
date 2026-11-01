@@ -11,18 +11,25 @@ import json
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 from nte_music_desk import __version__
+from tools.check_release import check_release
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", type=Path, default=ROOT / "releases")
+    parser.add_argument("--output", type=Path, default=ROOT / f"releases/v{__version__}")
     parser.add_argument("--work", type=Path, default=ROOT / ".build")
+    parser.add_argument("--overwrite", action="store_true", help="Explicitly replace an existing same-version archive")
     args = parser.parse_args()
     if sys.platform != "win32":
         parser.error("Windows packages must be built on Windows.")
     output, work = args.output.resolve(), args.work.resolve()
+    check_release(ROOT)
+    archive = output / f"NTE-Music-Desk-v{__version__}-Windows-x64.zip"
+    if archive.exists() and not args.overwrite:
+        parser.error("Archive already exists; choose a new --output or explicitly use --overwrite.")
     output.mkdir(parents=True, exist_ok=True)
     work.mkdir(parents=True, exist_ok=True)
     host_manifest=ROOT/'src/nte_music_desk/assets/audio_window/manifest.json'
@@ -85,7 +92,6 @@ def main():
         "打开应用时手动确认一次 UAC；后续演奏继承权限。F7 暂停/继续，F8 停止。\n"
         "迷你播放器适合无边框全屏；独占全屏请用 F7/F8。切出游戏自动停止。\n"
         "个人数据在 %LOCALAPPDATA%\\NteMusicDesk；可从“文件 → 打开数据目录”查看。\n", encoding="utf-8")
-    archive = output / f"NTE-Music-Desk-v{__version__}-Windows-x64.zip"
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as bundle:
         for path in sorted(app.rglob("*")):
             if path.is_file():

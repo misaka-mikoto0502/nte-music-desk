@@ -1,5 +1,7 @@
 # 1.5 轻量转谱开发测试包
 
+以下包为历史检查点。当前按 2.0.0 整理，见 [更新说明](RELEASE_NOTES_2.0.0.md) 和 [发布验证](VALIDATION_2.0.md)，旧包不覆盖。
+
 这是开发检查点，不是最终 1.5 发布。原 v1.5.0 包与标签继续保留，不自动推送 GitHub。
 
 2026-10-30 当前整合包：`.build/dev-integrated-1.5/NTE-Music-Desk-1.5-dev-integrated-Windows-x64.zip`。

@@ -1,6 +1,6 @@
 # 轻量转谱开发构建
 
-在此目录执行 npm ci、npm run build。只打包 core/converter/CPU 和 Basic Pitch 后处理，不打入 tfjs-layers、GPU、WASM、Node 或 Python。目标 assets/light_audio 包含固定版本官方模型、浏览器脚本及许可；每次生成 SHA-256 清单，总预算 4.5 MB。
+在此目录执行 npm ci、npm run build。打包 core/converter/CPU、单线程 WASM/SIMD 和 Basic Pitch 后处理，不打入 tfjs-layers、GPU、Node 或 Python。目标 assets/light_audio 包含固定版本官方模型、页面脚本及完整许可；每次生成 SHA-256 清单，总预算 4.5 MB。桌面窗口和浏览器兼容入口共用 pipeline.js，不分别维护识别流程。
 
 开发环境的依赖目录不在此处时，可设置 NTE_LIGHT_NODE_MODULES 为绝对 node_modules 路径。运行时资源无需联网获取。模型与第三方代码保持各自许可证，详见生成的 licenses.txt。
 

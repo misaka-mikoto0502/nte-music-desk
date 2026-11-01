@@ -7,18 +7,22 @@
 ```powershell
 python -m venv .venv
 .venv/Scripts/python.exe -m pip install -r requirements-build.txt
+.venv/Scripts/python.exe -m pip install -e .
 .venv/Scripts/python.exe -m unittest discover -s tests -v
+.venv/Scripts/python.exe tools/check_release.py
 .venv/Scripts/python.exe tools/build_windows.py
+.venv/Scripts/python.exe tools/verify_release.py
+.venv/Scripts/python.exe tools/package_source.py
 ```
 
-releases 中会生成“异环演奏工作台”目录、Windows x64 ZIP 及 SHA-256 文件。完整解压即可运行 EXE。发布时上传整个 ZIP，不能只复制 EXE 而丢掉 _internal。
+releases/v2.0.0 中会生成“异环演奏工作台”目录、Windows x64 ZIP、Source ZIP 及各自 SHA-256 文件。完整解压即可运行 EXE。发布时上传整个 ZIP，不能只复制 EXE 而丢掉 _internal。已有同名 ZIP 默认拒绝覆盖；确认重建才传 --overwrite。源码与应用版本、Windows 属性和随包帮助先由 check_release.py 校验。
 
 使用目录便携版以便启动提权后的界面与演奏进程共享安装资源，不使用自解压单文件管理员程序。构建方式见 [PyInstaller 目录打包说明](https://pyinstaller.org/en/stable/operating-mode.html#bundling-to-one-folder)。
 
 安全离线自检（不会提权、联网下载或发送游戏按键）：
 
 ```powershell
-& './releases/异环演奏工作台/异环演奏工作台.exe' --data-dir './test-data' --self-test './self-test.json'
+& './releases/v2.0.0/异环演奏工作台/异环演奏工作台.exe' --data-dir './test-data' --self-test './self-test.json'
 ```
 
 报告应为 status=passed、frozen=true、game_input_sent=false。该检查覆盖内置资源、两种乐器与四种模式、试听、圆角控件、背景解码和隐藏 GUI 初始化；不替代真实游戏试听。
@@ -34,6 +38,18 @@ Actions 在 pull_request、手动触发或推送 v* 标签时运行自包含测�
 ## 升级版本
 
 同步修改 src/nte_music_desk/__init__.py、pyproject.toml、tools/version_info.txt 和 CHANGELOG.md。再次测试、构建，校验 ZIP 与 SHA-256。检查第三方曲谱没有被复制进资源目录。
+
+更新 docs 中的当前使用说明后，将对应六份帮助同步到 src/nte_music_desk/assets；过期副本会阻止打包。执行 `node tools/light_audio_web/test.mjs` 检查 ETA、回退与共享参数。修改轻量页面/算法时，在 tools/light_audio_web 内 npm ci、npm run build 并提交生成资源与清单；未改页面时直接复用已校验资源，不需要把 Node 放进便携包。
+
+## v2.0.0 发布准备
+
+当前分支 release/2.0.0，整合之前 1.5 开发期间的全部变更。更新说明用 docs/RELEASE_NOTES_2.0.0.md，软件证据与人工待验收项用 docs/VALIDATION_2.0.md。旧分支、v1.5.0 标签和历史包保留，不挪动、不覆盖。
+
+GitHub Release 附件上传 releases/v2.0.0 下 Windows x64 ZIP、Source ZIP 和两个 SHA-256 文件。源码按正常 Git 流程提交/合并到准备发布的分支，再在该提交建立 v2.0.0 标签；不要把整个 releases 或 .build 放进源码。当前仅本地准备，不代上传或创建标签，待使用者决定发布时间。
+
+Actions 会执行 Python/JavaScript 回归、元数据校验、Windows 构建、独立解压验证和源码打包，保存 ZIP 与校验文件；不发布公开 Release。自动检查不代表 UAC/游戏鼠标操作、独占全屏覆盖或音乐准确率已由用户验收。
+
+以下版本记录为历史，不能用其路径和描述代替 2.0 更新说明。
 
 每个功能验证完成后单独创建本地 commit，再同步版本与发布说明。1.3.0 在 feat/multitrack-1.3 分支开发；本地提交与标签不会自动上传 GitHub。
 
