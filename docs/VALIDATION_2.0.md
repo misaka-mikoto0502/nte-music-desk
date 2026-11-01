@@ -2,6 +2,18 @@
 
 本次按 2.0.0 整理本地发布候选，不自动推送 GitHub、创建公开 Release 或移动旧标签。当前分支 release/2.0.0，完整保留原 1.5 开发提交。
 
+## 追加修订：另存为与曲目架自动交接
+
+- 转换完成后的自动下载继续使用无提示的原路径；手动点击当前 MIDI、候选谱或对齐前谱时使用独立的另存请求。桌面实现为有父窗口的系统 SaveFileDialog，可改目录/文件名，保留覆盖确认，取消不影响工作台副本。浏览器有文件选择 API 时使用它，不支持时明确提示按浏览器下载设置保存。
+- 结果自动显示在曲目架并载入，不依赖下载。已保存的最终转谱文件在重启时恢复到曲目架，候选/原始诊断和半成品不加入；正在演奏时先加入曲目架，结束后自动载入。页面接收工作台“已载入/等待载入/失败”的回执，不只显示“已送回”。
+- **96 项 Python 测试通过**。新增后台 HTTP 完成 → 隐藏工作台实际事件循环 → 曲目架与当前曲目 → 重启恢复的检查，以及忙碌时排队、结束后自动载入的检查；后者使用进程消息测试，不向游戏发送按键。
+- JS 检查覆盖自动下载与手动另存路径分开、桌面路由、浏览器自定义命名、取消不下载、写入失败中止；这部分文件选择器使用受控替身，不冒充实际系统弹窗验收。
+- 使用本次打包的宿主/页面真实执行 Basic Pitch：20 音结果自动载入实际隐藏工作台、下载与副本一致、重启曲目架保留；triads 真正缺失 WASM 回退生成 16 音；首次推理后取消无半成品；三个页面尺寸检查继续通过。独立解压冻结自检、资源与源码一致、资源只读和片段转换通过。
+- **实际系统另存框的点选尚未验收**：computer-use 两次激活隔离测试窗口均返回 `failed to activate captured window`，未继续界面输入。普通保存、改名、取消与覆盖提示的真实鼠标操作留待使用者方便时确认；不将编译通过或替身测试记为这项通过。
+- 未替换使用者正在运行的旧工作台。新版本需关闭旧窗口后，从更新的 ZIP 解压到新目录启动；当前运行中的旧解压目录仍是先前构建。旧附件备份在本地 .build/before-saveas-2.0-5fc2098f，不进入发布包。
+
+新增本地证据：.build/saveas-handoff-final-tests.log、saveas-real-handoff/summary.json、saveas-frozen-fallback/、saveas-frozen-cancel/ 和 verify-saveas-2.0.log。下方保留首次检查的 94 项、初次转谱与质量数据，当前发布附件信息已更新为追加修订的构建。
+
 ## 软件检查
 
 所有检查使用自制样本和隔离数据目录，不向游戏发送输入，不操作 UAC，不运行个人歌曲。
@@ -36,9 +48,9 @@
 
 ### 发布附件与复现
 
-Windows 包：`releases/v2.0.0/NTE-Music-Desk-v2.0.0-Windows-x64.zip`，24,260,097 字节，解压应用 52,690,988 字节。
+Windows 包：`releases/v2.0.0/NTE-Music-Desk-v2.0.0-Windows-x64.zip`，24,264,006 字节，解压应用 52,699,294 字节。
 
-SHA-256：`121e4c974a9e1c69306fdce5c37d66d9122f1adde6925c523bbe490cc16854ee`。Source ZIP 和两份校验文件放在同一版本目录，最终源码包包含本检查说明；不把源码包自身散列写进包内文档。
+SHA-256：`e38957a94b65ef51275c93dd59d277066ce1de42d40aaeca9db41c1bb4322d06`。Source ZIP 和两份校验文件放在同一版本目录，最终源码包包含本检查说明；不把源码包自身散列写进包内文档。
 
 复现入口：`python -m unittest discover -s tests -v`、`node tools/light_audio_web/test.mjs`、`python tools/check_release.py`、`python tools/verify_release.py`。`tools/check_audio_window.py` 可对权利明确的短音频运行真实转谱流程，支持 --without-wasm、--profile、--align、--cancel；需要系统 WebView2。
 
