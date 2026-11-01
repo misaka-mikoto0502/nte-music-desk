@@ -9,7 +9,7 @@
 <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="选择或拖入本地音频"><strong>把音频拖到这里</strong><span>或点击选择本地文件</span><span id="file-name" class="file-name">WAV · MP3 · FLAC · M4A 等</span><input id="file" type="file" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aac,.opus,.webm" aria-label="本地音频文件"></div>
 <p class="hint">源文件最多 64 MB / 10 分钟；每次最多转 3 分钟，建议先试 15–30 秒。</p>
 <div class="row"><label>起点 / 秒<input id="start" type="number" min="0" step="0.1" value="0" required></label><label>终点 / 秒<input id="end" type="number" min="0" step="0.1" placeholder="留空：最多 3 分钟"></label>
-<label>识别方式<select id="profile"><option value="polyphonic">均衡保留和弦</option><option value="detail">多保留弱音（可能增加杂音）</option><option value="melody">突出旋律（可能减少和弦）</option></select></label></div>
+<label>识别方式<select id="profile" title="同一次计算保留均衡版和弱音版，完成后可免重算切换；门槛是识别置信度，并非音量。"><option value="polyphonic">均衡保留和弦</option><option value="detail">多保留弱音（可能增加杂音）</option><option value="melody">突出旋律（可能减少和弦）</option></select></label></div>
 <label class="alignment"><input id="align" type="checkbox">轻微对齐和弦起音<span title="最多提前 24 毫秒；分解和弦请保持关闭。重复同音保持原起音。">24 ms · 分解和弦建议关闭</span></label>
 <div class="actions"><button id="submit" type="submit">开始转谱并导入工作台</button><button id="cancel" type="button" disabled>取消</button></div></form>
 <section class="panel result" aria-label="转谱进度与结果"><div class="panel-heading"><span class="section-number">02</span><h2>进度与结果</h2><span id="phase" class="phase">等待音频</span></div>

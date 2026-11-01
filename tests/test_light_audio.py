@@ -6,6 +6,7 @@ import unittest
 import time
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
+from unittest.mock import patch
 
 from nte_music_desk.light_audio import LightAudioSession, notes_to_song, validate_source, align_chords
 from nte_music_desk.midi import read_midi
@@ -21,6 +22,73 @@ def note():
 
 
 class LightAudioChecks(unittest.TestCase):
+    def test_confidence_is_not_interpreted_as_recording_loudness(self):
+        song=notes_to_song([{**note(),'amplitude':.15},{**note(),'startTimeSeconds':3,'amplitude':.95}],6,'fixture')
+        self.assertEqual([n.velocity for n in song.notes],[96,96])
+
+    def test_version_save_failure_does_not_publish_half_result_or_replace_old_download(self):
+        with tempfile.TemporaryDirectory() as d:
+            session=LightAudioSession(d,lambda m:None);self.addCleanup(session.close)
+            def post(route,data):
+                with urlopen(Request(session.url+route,json.dumps(data).encode(),
+                    {'Content-Type':'application/json','Origin':session.origin})) as response:return json.load(response)
+            job=post('begin',source())['job_id']
+            original=post('complete',{'job_id':job,'notes':[note()]})
+            before=dict(session.results)
+            job=post('begin',source())['job_id']
+            write_text=Path.write_text
+            def fail_record(path,*args,**kwargs):
+                if path.name=='provenance.json':raise OSError('simulated record save failure')
+                return write_text(path,*args,**kwargs)
+            with patch.object(Path,'write_text',autospec=True,side_effect=fail_record):
+                with self.assertRaises(HTTPError):post('complete',{'job_id':job,'notes':[note()],'alternate_notes':[note()]})
+            self.assertEqual(session.results,before)
+            self.assertEqual(session.latest_result['result'],original['result'])
+            self.assertFalse(list((Path(d)/'light-transcriptions'/job).glob('*_轻量Beta.mid')))
+            post('cancel',{'job_id':job})
+
+    def test_saved_versions_switch_without_inference_and_respect_task_lock(self):
+        with tempfile.TemporaryDirectory() as d:
+            messages=[];allowed=[True]
+            session=LightAudioSession(d,messages.append,can_start=lambda:allowed[0]);self.addCleanup(session.close)
+            def post(route,data):
+                with urlopen(Request(session.url+route,json.dumps(data).encode(),
+                    {'Content-Type':'application/json','Origin':session.origin})) as response:return json.load(response)
+            job=post('begin',source())['job_id']
+            original=post('complete',{'job_id':job,'notes':[note()],
+                'alternate_notes':[note(),{**note(),'startTimeSeconds':2.5,'amplitude':.3}]})
+            alternate=original['versions'][1]['result']
+            original_bytes=(Path(d)/'light-transcriptions'/job/original['filename']).read_bytes()
+            changed=post('activate',{'result':alternate})
+            self.assertEqual((changed['notes'],changed['stats']['preset']),(2,'detail'))
+            self.assertEqual(session.result.name,changed['filename'])
+            self.assertEqual(messages[-1],{'kind':'light_done','path':session.result})
+            session.acknowledge_import(session.result,'loaded','loaded')
+            with urlopen(session.url+'state') as response:self.assertEqual(json.load(response)['latest_result']['workbench']['state'],'loaded')
+            with urlopen(session.url+alternate+'?save=1') as response:self.assertEqual(response.read(),session.result.read_bytes())
+            self.assertEqual(len(read_midi(session.result).notes),2)
+            for invalid in ('../outside.mid',original['alternatives'][0]['result'],False):
+                with self.assertRaises(HTTPError):post('activate',{'result':invalid})
+            allowed[0]=False
+            with self.assertRaises(HTTPError):post('activate',{'result':original['result']})
+            allowed[0]=True
+            second=post('begin',source())['job_id']
+            with self.assertRaises(HTTPError):post('activate',{'result':original['result']})
+            post('cancel',{'job_id':second})
+            restored=post('activate',{'result':original['result']})
+            self.assertEqual(restored['stats']['preset'],'polyphonic')
+            self.assertEqual(session.result.read_bytes(),original_bytes)
+            record=json.loads((Path(d)/'light-transcriptions'/job/'provenance.json').read_text(encoding='utf-8'))
+            self.assertTrue(record['alternate']['same_inference'])
+            self.assertEqual(record['alternate']['thresholds']['onset'],.55)
+            self.assertEqual(record['processing']['dynamics']['policy'],'uniform_not_estimated')
+            detail_job=post('begin',{**source(),'profile':'detail'})['job_id']
+            detail=post('complete',{'job_id':detail_job,'notes':[note()],
+                'alternate_notes':[{**note(),'pitchMidi':64}]})
+            balanced=post('activate',{'result':detail['versions'][1]['result']})
+            self.assertEqual(balanced['stats']['preset'],'polyphonic')
+            with urlopen(session.url+original['result']) as response:self.assertEqual(response.read(),original_bytes)
+
     def test_optional_alignment_is_bounded_preserves_repeats_releases_and_original(self):
         events=[{**note(),'pitchMidi':p,'startTimeSeconds':t,'durationSeconds':.2}
                 for p,t in [(60,1),(64,1.012),(67,1.023),(72,1.045),

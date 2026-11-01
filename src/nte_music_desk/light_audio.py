@@ -21,6 +21,8 @@ MAX_SECONDS = 180
 MAX_FILE_BYTES = 64 * 1024 * 1024
 MAX_RESPONSE = 4 * 1024 * 1024
 PROFILES = {'polyphonic', 'melody', 'detail'}
+PROFILE_LABELS = {'polyphonic': '均衡版', 'detail': '弱音版', 'melody': '旋律版'}
+TRANSCRIBED_VELOCITY = 96
 JOB_LEASE_SECONDS = 120
 AUDIO_EXTENSIONS = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac', '.wma', '.opus', '.webm'}
 
@@ -107,7 +109,9 @@ def notes_to_song(events, seconds, title):
         end = min(seconds, start + duration)
         start = max(0, start)
         if end > start:
-            notes.append(MidiNote(0, 0, pitch, max(1, min(127, round(amplitude * 127))), start, end, 0))
+            # Basic Pitch's amplitude is mean frame activation, not measured
+            # recording loudness. Do not turn uncertain notes into softer notes.
+            notes.append(MidiNote(0, 0, pitch, TRANSCRIBED_VELOCITY, start, end, 0))
     if not notes:
         raise ValueError('片段内没有可用音符。')
     notes.sort(key=lambda n: (n.start, n.pitch))
@@ -124,6 +128,7 @@ class LightAudioSession:
         self.run_id, self.source, self.last_seen = None, None, 0
         self.result = None
         self.results, self.latest_result, self.desktop_input = {}, None, None
+        self.publications = {}
         self.download_names={}
         self.closed = False
         manifest = json.loads((self.assets / 'manifest.json').read_text(encoding='utf-8'))
@@ -218,7 +223,7 @@ class LightAudioSession:
 
             def do_POST(self):
                 route = self.route()
-                if route not in ('begin', 'complete', 'cancel', 'pulse') or self.headers.get('Origin') != session.origin:
+                if route not in ('begin', 'complete', 'cancel', 'pulse', 'activate') or self.headers.get('Origin') != session.origin:
                     self.reply(403, {'error': '本地会话来源无效。'}); return
                 try:
                     if self.headers.get('Content-Type') != 'application/json' or self.headers.get('Transfer-Encoding'):
@@ -229,7 +234,21 @@ class LightAudioSession:
                     data = json.loads(self.rfile.read(length))
                     if not isinstance(data, dict):
                         raise ValueError('请求格式无效。')
-                    if route == 'begin':
+                    if route == 'activate':
+                        with session.lock:
+                            if session.busy or not can_start():
+                                raise ValueError('请先停止演奏或等待当前转谱任务结束，再切换识别版本。')
+                            selected=data.get('result')
+                            if not isinstance(selected,str) or selected not in session.publications:
+                                raise ValueError('该识别版本不属于当前会话。')
+                            path=session.results[selected]
+                            if not path.is_file():raise ValueError('识别文件已移动，请重新导入。')
+                            session.result=path
+                            session.latest_result={**session.publications[selected],
+                                'workbench':{'state':'pending','message':'正在切换演奏工作台的识别版本…'}}
+                            session.notify({'kind':'light_done','path':path})
+                            response=session.latest_result
+                    elif route == 'begin':
                         source = validate_source(data)
                         with session.lock:
                             if not can_start():
@@ -255,6 +274,9 @@ class LightAudioSession:
                                 session.notify({'kind': 'light_status', 'text': '轻量转谱已取消，未导入未完成的曲谱。'})
                             else:
                                 song = notes_to_song(data.get('notes'), session.source['end'] - session.source['start'], session.source['title'])
+                                alternate_profile='polyphonic' if session.source['profile']=='detail' else 'detail'
+                                alternate_song=(notes_to_song(data['alternate_notes'],session.source['end']-session.source['start'],session.source['title'])
+                                    if data.get('alternate_notes') else None)
                                 job = session.directory / 'light-transcriptions' / session.run_id
                                 job.mkdir(parents=True, exist_ok=False)
                                 title = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', session.source['title']).strip(' .') or '本地音频'
@@ -270,25 +292,61 @@ class LightAudioSession:
                                           'source_hash_status': 'browser_reported; no_audio_in_http_post',
                                           'note_count': len(song.notes), 'raw_note_count': len(raw_song.notes),
                                           'processing': {'preset': session.source['profile'], 'alignment': alignment,
+                                              'dynamics':{'policy':'uniform_not_estimated','velocity':TRANSCRIBED_VELOCITY,
+                                                  'reason':'model amplitude is activation confidence, not source loudness'},
                                               'thresholds': {'onset': .55, 'frame': .3, 'min_frames': 7} if session.source['profile'] == 'detail' else {'onset': .7, 'frame': .4, 'min_frames': 11}},
                                           'midi_sha256': hashlib.sha256(staging.read_bytes()).hexdigest(),
                                           'quality': 'experimental; not a verified 90-95 percent accuracy guarantee'}
-                                (job / 'provenance.json').write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
-                                staging.replace(output)
-                                session.result = output
                                 download = 'results/' + session.run_id + '.mid'
-                                session.results[download] = output
+                                published_paths={download:output};published_names={};publications={}
                                 alternatives=[]
                                 for suffix,label,path,name in [('-raw.mid','候选谱（可能含误判）',job/'model_raw.mid',title+'_候选谱.mid'),
                                                               ('-selected.mid','起音对齐前',job/'model_selected.mid',title+'_对齐前.mid')]:
                                     if suffix=='-selected.mid' and not alignment['moved_notes']:continue
                                     route='results/'+session.run_id+suffix
-                                    session.results[route]=path;session.download_names[route]=name
+                                    published_paths[route]=path;published_names[route]=name
                                     alternatives.append({'label':label,'result':route,'filename':name})
-                                session.latest_result = {'notes': len(song.notes), 'result': download, 'filename': output.name,
+                                latest_result = {'notes': len(song.notes), 'result': download, 'filename': output.name,
                                     'workbench':{'state':'pending','message':'正在自动添加到演奏工作台…'},
                                     'alternatives':alternatives,'stats':{'candidates':len(raw_song.notes),'preset':session.source['profile'],
                                         'aligned_notes':alignment['moved_notes'],'alignment_ms':alignment['window_ms']}}
+                                if alternate_song is not None:
+                                    before_alternate=alternate_song
+                                    alternate_song,alternate_alignment=align_chords(alternate_song,session.source['align_ms'])
+                                    alternate_path=job/(PROFILE_LABELS[alternate_profile]+'_'+title+'.mid')
+                                    write_midi(alternate_song,alternate_path)
+                                    alternate_route='results/'+session.run_id+'-alternate.mid'
+                                    published_paths[alternate_route]=alternate_path
+                                    other_alternatives=[item for item in alternatives if item['result'].endswith('-raw.mid')]
+                                    if alternate_alignment['moved_notes']:
+                                        before_path=job/'alternate_selected.mid';write_midi(before_alternate,before_path)
+                                        before_route='results/'+session.run_id+'-alternate-selected.mid'
+                                        published_paths[before_route]=before_path
+                                        before_name=PROFILE_LABELS[alternate_profile]+'_'+title+'_对齐前.mid'
+                                        published_names[before_route]=before_name
+                                        other_alternatives.append({'label':'起音对齐前','result':before_route,'filename':before_name})
+                                    versions=[{'label':PROFILE_LABELS[session.source['profile']],'result':download},
+                                              {'label':PROFILE_LABELS[alternate_profile],'result':alternate_route}]
+                                    latest_result['versions']=versions
+                                    alternate_result={**latest_result,'notes':len(alternate_song.notes),'result':alternate_route,
+                                        'filename':alternate_path.name,'alternatives':other_alternatives,
+                                        'stats':{'candidates':len(raw_song.notes),'preset':alternate_profile,
+                                            'aligned_notes':alternate_alignment['moved_notes'],'alignment_ms':alternate_alignment['window_ms']}}
+                                    publications[alternate_route]=alternate_result
+                                    record['alternate']={'profile':alternate_profile,'filename':alternate_path.name,
+                                        'note_count':len(alternate_song.notes),'alignment':alternate_alignment,
+                                        'thresholds':{'onset':.7,'frame':.4,'min_frames':11} if alternate_profile=='polyphonic' else {'onset':.55,'frame':.3,'min_frames':7},
+                                        'midi_sha256':hashlib.sha256(alternate_path.read_bytes()).hexdigest(),
+                                        'same_inference':True,'quality':'alternative, not verified as more accurate'}
+                                (job / 'provenance.json').write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding='utf-8')
+                                # Publish only after every version and record has
+                                # saved. A failed secondary save cannot replace
+                                # the previous result or expose a partial score.
+                                staging.replace(output)
+                                publications[download]=latest_result
+                                session.results.update(published_paths);session.download_names.update(published_names)
+                                session.publications.update(publications)
+                                session.result,session.latest_result=output,latest_result
                                 session.run_id = None
                                 session.notify({'kind': 'light_done', 'path': output})
                                 response = session.latest_result

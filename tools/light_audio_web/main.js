@@ -3,6 +3,7 @@ import {automaticDownload,midiUrl,saveMidi} from './downloads.js';
 const el = id => document.getElementById(id), base = new URL('.', location.href);
 let task, job, audioUrl, selectedFile, lastResult, lastDesktopId, closed = false, running = false;
 let pulseFailures = 0, pulsing = false, generation = 0, selectionVersion = 0, startedAt = 0, phase = 'idle';
+let selectingResult = false;
 const eta = new RemainingTime(), now = () => performance.now() / 1000;
 const status = text => {el('status').textContent = text;};
 const api = async (route, data) => {
@@ -20,9 +21,11 @@ el('tab-settings').onclick = () => panel(false);
 el('tab-result').onclick = () => panel(true);
 function controls(busy) {
   running = busy;
-  for (const input of el('form').elements) input.disabled = busy;
+  for (const input of el('form').elements) input.disabled = busy || selectingResult;
   el('cancel').disabled = !busy;
-  el('dropzone').setAttribute('aria-disabled', String(busy));
+  el('dropzone').setAttribute('aria-disabled', String(busy || selectingResult));
+  for(const button of document.querySelectorAll('.result-version'))
+    button.disabled=busy || selectingResult || button.dataset.result===lastResult?.result;
 }
 function progress(value) {
   value = Math.max(0, Math.min(100, value));
@@ -38,7 +41,7 @@ function timing() {
   } else if (running) el('eta').textContent = phase === 'saving' ? '预计剩余：正在保存…' : phase === 'postprocess' ? '预计剩余：正在整理音符…' : '预计剩余：准备中…';
 }
 function setFile(file) {
-  if (running || closed) return;
+  if (running || selectingResult || closed) return;
   NteAudio.validateFile(file);
   selectionVersion++; selectedFile = file;
   if (audioUrl) URL.revokeObjectURL(audioUrl);
@@ -53,8 +56,8 @@ function acceptFiles(files) {
   catch (error) { status(error.message); }
 }
 el('file').onchange = () => { if (el('file').files.length) acceptFiles(el('file').files); };
-el('dropzone').onclick = event => { if (!running && !closed && event.target !== el('file')) el('file').click(); };
-el('dropzone').onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (!running && !closed) el('file').click(); } };
+el('dropzone').onclick = event => { if (!running && !selectingResult && !closed && event.target !== el('file')) el('file').click(); };
+el('dropzone').onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (!running && !selectingResult && !closed) el('file').click(); } };
 let dragDepth = 0;
 el('dropzone').ondragenter = event => { event.preventDefault(); if (!running) { dragDepth++; el('dropzone').classList.add('dragging'); } };
 el('dropzone').ondragover = event => { event.preventDefault(); event.dataTransfer.dropEffect = running ? 'none' : 'copy'; };
@@ -76,13 +79,33 @@ function showResult(result, automatic = false) {
   el('quality-stats').hidden=!stats;
   if(stats)el('quality-stats').textContent=`${({polyphonic:'均衡',detail:'弱音实验',melody:'旋律'})[stats.preset] || '识别'} · 候选 ${stats.candidates} 音 / 当前 ${result.notes} 音 · ${stats.alignment_ms ? '对齐 '+stats.aligned_notes+' 音' : '保留原起音'}`;
   const alternatives=el('alternate-downloads');alternatives.replaceChildren();
-  alternatives.hidden=!result.alternatives?.length;
+  alternatives.hidden=!result.alternatives?.length && !result.versions?.length;
+  for(const version of result.versions || []) {
+    const button=document.createElement('button');button.type='button';button.className='result-version';
+    button.dataset.result=version.result;
+    button.textContent=(version.result===result.result ? '✓ ' : '使用')+version.label;
+    button.setAttribute('aria-pressed',String(version.result===result.result));
+    button.disabled=running || selectingResult || version.result===result.result;
+    button.title='切换已保存的识别版本并导入工作台，无需重新计算；弱音版可能增加误音。';
+    button.onclick=()=>chooseVersion(version);
+    alternatives.append(button);
+  }
   for(const item of result.alternatives || []) {
     const link=document.createElement('a');link.textContent=item.label;link.href=midiUrl(item,base,true);link.download=item.filename;
     link.onclick=event=>{event.preventDefault();saveMidi(item,{base,surface:window,document,fetch,onStatus:downloadStatus});};
     alternatives.append(link);
   }
   if (automatic) automaticDownload(result,base,document);
+}
+async function chooseVersion(version) {
+  if(running || selectingResult || closed || version.result===lastResult?.result)return;
+  selectingResult=true;controls(running);status('正在切换已保存的'+version.label+'，不需要重新识别…');
+  try {
+    const result=await api('activate',{result:version.result});
+    showResult(result,true);
+    status('已切换'+version.label+'并送回工作台，共 '+result.notes+' 音。弱音版可能增加误音，请对比试听。');
+  } catch(error) {status(error.message || '切换失败，原识别文件仍保留。');}
+  finally {selectingResult=false;controls(running);}
 }
 function downloadStatus(text) {el('download-status').textContent=text;el('download-status').title=text;}
 function cancel() {
@@ -93,7 +116,7 @@ function cancel() {
 }
 el('cancel').onclick = cancel;
 el('form').onsubmit = async event => {
-  event.preventDefault(); if (running || closed) return;
+  event.preventDefault(); if (running || selectingResult || closed) return;
   const current = ++generation, active = {controller:new AbortController()}; task = active;
   controls(true); startedAt = now(); progress(0); panel(true); timing();
   const onEvent = data => {
@@ -136,7 +159,7 @@ async function heartbeat() {
     else {
       const response = await fetch(new URL('state',base)); if (!response.ok) throw new Error('工作台连接已断开');
       const state = await response.json();
-      if (!running) {
+      if (!running && !selectingResult) {
         showResult(state.latest_result);
         if (state.desktop_file && state.desktop_file.id !== lastDesktopId) {
           lastDesktopId = state.desktop_file.id; const version = selectionVersion;

@@ -55,7 +55,8 @@ class TranscriptionHandoffChecks(unittest.TestCase):
                     with urlopen(Request(session.url+route,json.dumps(data).encode(),
                         {'Content-Type':'application/json','Origin':session.origin}),timeout=3) as response:return json.load(response)
                 job=post('begin',{'name':'自己的短句.wav','bytes':100,'duration':5,'start':0,'end':5,'sha256':'a'*64,'profile':'polyphonic'})['job_id']
-                post('complete',{'job_id':job,'notes':[{'pitchMidi':60,'startTimeSeconds':1,'durationSeconds':1,'amplitude':.8}]})
+                result=post('complete',{'job_id':job,'notes':[{'pitchMidi':60,'startTimeSeconds':1,'durationSeconds':1,'amplitude':.8}],
+                    'alternate_notes':[{'pitchMidi':64,'startTimeSeconds':1,'durationSeconds':1,'amplitude':.3}]})
                 deadline=time.monotonic()+2
                 while app.current_path!=session.result and time.monotonic()<deadline:root.update();time.sleep(.01)
                 self.assertEqual(app.current_path,session.result)
@@ -64,6 +65,14 @@ class TranscriptionHandoffChecks(unittest.TestCase):
                 self.assertEqual(generated_scores(directory),[session.result])
                 self.assertFalse(app.active)
                 with urlopen(session.url+'state') as response:self.assertEqual(json.load(response)['latest_result']['workbench']['state'],'loaded')
+                original=session.result
+                post('activate',{'result':result['versions'][1]['result']})
+                deadline=time.monotonic()+2
+                while app.current_path!=session.result and time.monotonic()<deadline:root.update();time.sleep(.01)
+                self.assertNotEqual(original,session.result)
+                self.assertEqual(app.current_path,session.result)
+                self.assertIn(session.result,[p for _,p in app.library_buttons])
+                self.assertEqual(session.latest_result['workbench']['state'],'loaded')
                 final=session.result
             finally:app.close()
             root=tk.Tk();root.withdraw();app=App(root,engine)

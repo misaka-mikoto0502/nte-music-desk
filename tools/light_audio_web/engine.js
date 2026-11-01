@@ -38,12 +38,16 @@ export async function transcribe(samples, modelOrUrl, profile, progress = () => 
     progress(1, {phase: 'postprocess', backend});
     const detailed = profile === 'detail';
     const raw = noteFramesToTime(outputToNotesPoly(frames, onsets, .5, .3, detailed ? 7 : 11, true, null, null, true));
-    const notes = noteFramesToTime(outputToNotesPoly(frames, onsets, detailed ? .55 : .7, detailed ? .3 : .4, detailed ? 7 : 11, true, null, null, false))
-      .filter(note => profile !== 'melody' || note.amplitude >= .55);
+    // Decode both choices from the same model activations. This adds no second
+    // inference pass; lower thresholds are a comparison, not a quality claim.
+    const balanced = noteFramesToTime(outputToNotesPoly(frames, onsets, .7, .4, 11, true, null, null, false));
+    const weak = noteFramesToTime(outputToNotesPoly(frames, onsets, .55, .3, 7, true, null, null, false));
+    const notes = (detailed ? weak : balanced).filter(note => profile !== 'melody' || note.amplitude >= .55);
     const seconds = samples.length / 22050;
     const clip = list => list.map(n => ({...n, startTimeSeconds: Math.max(0, n.startTimeSeconds),
       durationSeconds: Math.min(seconds, n.startTimeSeconds + n.durationSeconds) - Math.max(0, n.startTimeSeconds)}))
       .filter(n => n.durationSeconds > 0 && n.startTimeSeconds < seconds);
-    return {notes: clip(notes), raw_notes: clip(raw), tensors_after_windows: tf.memory().numTensors};
+    return {notes: clip(notes), raw_notes: clip(raw), alternate_notes: clip(detailed ? balanced : weak),
+      tensors_after_windows: tf.memory().numTensors};
   } finally { model.dispose(); }
 }
