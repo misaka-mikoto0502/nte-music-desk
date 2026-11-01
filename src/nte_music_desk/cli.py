@@ -40,9 +40,9 @@ def limit_score(score, seconds):
 from .performance import key_schedule, piano_schedule, piano_chord_schedule, performance_plan
 
 
-def play_timed(score, backend, hold_ms=300, clock=time.perf_counter, sleep=time.sleep, *, control=None, on_progress=None):
+def play_timed(score, backend, hold_ms=300, clock=time.perf_counter, sleep=time.sleep, *, control=None, on_progress=None,start_at=0):
     from .playback import execute_plan
-    return execute_plan(performance_plan(score,hold_ms),backend,clock=clock,sleep=sleep,control=control,on_progress=on_progress)
+    return execute_plan(performance_plan(score,hold_ms),backend,clock=clock,sleep=sleep,control=control,on_progress=on_progress,start_at=start_at)
 
 
 class CancellableKeyboard(WindowsKeyboard):
@@ -73,12 +73,15 @@ def write_progress(report_path, phase, **values):
 def play_file(args):
     score = load_score(args.play)
     plan = performance_plan(score, args.hold_ms)  # Reject unsupported timing before UAC or focus changes.
+    start_at=getattr(args,'position',0)
+    if not math.isfinite(start_at) or not 0<=start_at<=plan.duration:raise ValueError('演奏位置超出曲谱范围。')
     if sys.platform != "win32":
         raise RuntimeError("游戏演奏仅支持 Windows。")
     if not ctypes.windll.shell32.IsUserAnAdmin():
         if args.elevated_child:
             raise RuntimeError("演奏进程未获得管理员权限。")
         arguments = ["--play", str(Path(args.play).resolve()), "--countdown", str(args.countdown), "--hold-ms", str(args.hold_ms)]
+        arguments.extend(['--position',str(start_at)])
         arguments.extend(["--data-dir", str(ROOT)])
         if args.report:
             arguments.extend(["--report", str(Path(args.report).resolve())])
@@ -88,6 +91,7 @@ def play_file(args):
             arguments.extend(['--control-file',str(Path(args.control_file).resolve())])
         return run_elevated_and_wait(__file__, arguments)
     backend, code = None, 0
+    last_elapsed,last_sequence=start_at,0
     destination = Path(args.report) if args.report else ROOT / "nte_midi_last_run.json"
     duration = plan.duration
     report = {"title": score.get("title", "MIDI"), "status": "starting", "elevated": True,
@@ -111,8 +115,10 @@ def play_file(args):
         from .playback import PauseControl
         control=PauseControl(args.control_file,hotkey=lambda:bool(backend.user32.GetAsyncKeyState(0x76)&0x8000))
         def progress(phase,elapsed,sequence):
+            nonlocal last_elapsed,last_sequence
+            last_elapsed,last_sequence=elapsed,sequence
             write_progress(destination,phase,elapsed=elapsed,seconds=duration,control_sequence=sequence)
-        report["sent_notes"] = play_timed(score, backend, args.hold_ms,control=control,on_progress=progress)
+        report["sent_notes"] = play_timed(score, backend, args.hold_ms,control=control,on_progress=progress,start_at=start_at)
         report["status"] = "completed"
         print("演奏按键已发送完毕。实际发声请在游戏中确认。", flush=True)
     except (PlaybackStopped, KeyboardInterrupt) as error:
@@ -126,22 +132,22 @@ def play_file(args):
     finally:
         if backend:
             backend.release_all()
+        report.update(elapsed=last_elapsed,control_sequence=last_sequence)
         destination.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-        write_progress(destination, report["status"])
+        write_progress(destination, report["status"],elapsed=last_elapsed,control_sequence=last_sequence)
     return code
 
 
-def render_preview(score, path, seconds=20, hold_ms=300, cancel=None):
+def render_preview(score, path, seconds=20, hold_ms=300, cancel=None, start_at=0):
     """Synthesize actual planned note attacks/releases, including Shift groups."""
     if not math.isfinite(seconds) or not 0 < seconds <= 60:
         raise ValueError("试听时长需为 0–60 秒。")
     plan = performance_plan(score, hold_ms)
-    stop = min(seconds, plan.duration)
-    events = [{"at": n.at, "duration": min(n.duration, stop - n.at), "midi": n.midi, 'velocity': n.velocity}
-              for n in plan.notes if n.at < stop]
-    if not events:
-        raise ValueError("试听范围内没有音符，请调整片段起点。")
-    return render_audio(events, path, stop, cancel=cancel)
+    if not math.isfinite(start_at) or not 0<=start_at<plan.duration:raise ValueError('试听位置超出曲谱范围。')
+    stop = min(start_at+seconds, plan.duration)
+    events = [{"at": max(n.at,start_at)-start_at, "duration": min(n.at+n.duration,stop)-max(n.at,start_at), "midi": n.midi, 'velocity': n.velocity}
+              for n in plan.notes if n.at < stop and n.at+n.duration>start_at]
+    return render_audio(events, path, stop-start_at, cancel=cancel)
 
 
 def render_song_preview(song, path, tracks=None, start=0, end=None, speed=1, transpose=0, seconds=20, cancel=None):
@@ -214,6 +220,7 @@ def main(argv=None):
     parser.add_argument("--end", type=float, help="片段终点（原曲秒数），留空演奏至曲末")
     parser.add_argument("--play", metavar="JSON", help="将已转换曲谱发送到游戏（需要管理员权限）")
     parser.add_argument("--countdown", type=int, default=3)
+    parser.add_argument('--position',type=float,default=0,help='游戏曲谱内的续播位置 / 秒')
     parser.add_argument("--hold-ms", type=int, default=300)
     parser.add_argument("--cancel-file", help=argparse.SUPPRESS)
     parser.add_argument('--control-file',help=argparse.SUPPRESS)

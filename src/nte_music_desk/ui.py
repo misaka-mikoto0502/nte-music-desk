@@ -10,6 +10,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import uuid
 import logging
+import math
 import os
 import re
 import sys
@@ -95,6 +96,8 @@ class App:
         self.song, self.score, self.active = None, None, None
         self.track_ids, self.controls, self.library_buttons = [], [], []
         self.pending_import = None
+        self.seek_drag=None
+        self.position_save_at=0
         self.messages, self.refresh_job = queue.Queue(), None
         self.preview_token, self.preview_started, self.preview_length = None, None, 0
         self.recommend_token = None
@@ -568,9 +571,11 @@ class App:
         self.status_dot.pack(side='left', padx=(0, 7))
         self.label(status_row, size=9, textvariable=self.status, anchor='w', wraplength=490).pack(side='left', fill='x', expand=True)
         self.label(status_row, size=9, color=C['muted'], textvariable=self.time_text).pack(side='right', padx=(8, 0))
-        self.progress_bar = tk.Canvas(footer, height=4, bg=C['line'], borderwidth=0, highlightthickness=0)
+        self.progress_bar = tk.Canvas(footer, height=12, bg=C['paper'], borderwidth=0, highlightthickness=0,cursor='hand2')
         self.progress_bar.pack(fill='x', pady=(10, 11))
         self.progress_bar.bind('<Configure>', self.draw_progress)
+        self.bind_seek(self.progress_bar)
+        Tooltip(self.progress_bar,'点击或拖动定位；暂停/停止位置自动记忆。游戏中可使用悬浮窗进度条。')
         self.progress.trace_add('write', self.draw_progress)
         actions = tk.Frame(footer, bg=C['paper'])
         actions.pack(fill='x')
@@ -592,6 +597,8 @@ class App:
         row = tk.Frame(footer, bg=C['paper'])
         row.pack(fill='x', pady=(9, 0))
         self.label(row, 'F7 暂停/继续 · F8 停止 · 切出游戏停止', 8, C['muted']).pack(side='left')
+        self.restart_button=self.button(row,'从头',lambda:self.seek_fraction(0),size=8,tip='定位到当前片段开头。')
+        self.restart_button.configure(padx=8,pady=3);self.restart_button.pack(side='left',padx=(8,0))
         self.export_button = self.button(row, '导出曲谱', self.export, size=8, tip='保存当前设置的 JSON 游戏曲谱。')
         self.export_button.configure(padx=8, pady=3)
         self.export_button.pack(side='right')
@@ -613,9 +620,87 @@ class App:
             self.body_canvas.yview_scroll(-int(event.delta / 120), "units")
 
     def draw_progress(self, *_):
-        self.progress_bar.delete("fill")
-        width = self.progress_bar.winfo_width() * min(100, max(0, self.progress.get())) / 100
-        self.progress_bar.create_rectangle(0, 0, width, 4, fill=C["teal"], outline="", tags="fill")
+        self.paint_progress(self.progress_bar,C['teal'],C['line'])
+
+    def paint_progress(self,canvas,fill,track):
+        canvas.delete('fill')
+        width=max(1,canvas.winfo_width());y=max(1,canvas.winfo_height())/2
+        x=width*min(100,max(0,self.progress.get()))/100
+        canvas.create_rectangle(0,y-1.5,width,y+1.5,fill=track,outline='',tags='fill')
+        canvas.create_rectangle(0,y-1.5,x,y+1.5,fill=fill,outline='',tags='fill')
+        x=max(4,min(width-4,x))
+        canvas.create_oval(x-4,y-4,x+4,y+4,fill=fill,outline='',tags='fill')
+
+    def position_frame(self):
+        if not self.score:return 0,1,0
+        active=self.active if isinstance(self.active,dict) else {}
+        return (active.get('origin',self.score['summary'].get('source_origin_seconds',0)),
+                active.get('speed',self.score['settings'].get('speed',1)),
+                active.get('length',getattr(self,'ready_duration',self.score['summary']['seconds'])))
+
+    def playback_offset(self):
+        origin,speed,length=self.position_frame()
+        positions=self.preferences.get('playback_positions',{})
+        position=positions.get(self.song_fingerprint,origin) if isinstance(positions,dict) else origin
+        if type(position) not in (int,float) or not math.isfinite(position):position=origin
+        return min(length,max(0,(position-origin)/speed))
+
+    def remember_position(self,elapsed,force=False):
+        if not self.score or not self.song_fingerprint:return
+        origin,speed,length=self.position_frame()
+        positions=self.preferences.get('playback_positions',{})
+        if not isinstance(positions,dict):positions={}
+        positions[self.song_fingerprint]=round(origin+min(length,max(0,elapsed))*speed,6)
+        self.preferences['playback_positions']=positions
+        if force or time.monotonic()-self.position_save_at>=2:
+            self.position_save_at=time.monotonic();self.save_preferences()
+
+    def bind_seek(self,canvas):
+        canvas.bind('<ButtonPress-1>',self.begin_seek)
+        canvas.bind('<B1-Motion>',self.move_seek)
+        canvas.bind('<ButtonRelease-1>',self.end_seek)
+
+    def begin_seek(self,event):
+        if not self.score or (self.active and self.active.get('phase') not in ('playing','paused')):return
+        self.stop_preview()
+        paused=self.active.get('pause_requested',False) if self.active else False
+        self.seek_drag={'canvas':event.widget,'paused':paused,'frame':self.position_frame(),'song':self.song_fingerprint}
+        if self.active and not paused:self.request_pause(True)
+        self.move_seek(event)
+
+    def move_seek(self,event):
+        if not self.seek_drag:return
+        canvas=self.seek_drag['canvas'];fraction=min(1,max(0,event.x/max(1,canvas.winfo_width())))
+        self.seek_drag['fraction']=fraction
+        length=self.seek_drag['frame'][2]
+        self.progress.set(fraction*100);self.time_text.set(f'{duration_label(fraction*length)} / {duration_label(length)}')
+        if self.mini:self.mini.refresh()
+
+    def end_seek(self,event):
+        if not self.seek_drag:return
+        self.move_seek(event);drag,self.seek_drag=self.seek_drag,None
+        if drag['song']!=self.song_fingerprint:return
+        old_origin,old_speed,old_length=drag['frame'];origin,speed,length=self.position_frame()
+        raw=old_origin+drag.get('fraction',0)*old_length*old_speed
+        self.seek_fraction((raw-origin)/speed/max(length,.001),paused=drag['paused'])
+
+    def seek_fraction(self,fraction,*,paused=None):
+        if not self.score:return
+        if self.active and (self.stop_requested or self.active.get('phase') not in ('playing','paused')):return
+        self.stop_preview()
+        origin,speed,length=self.position_frame();position=min(1,max(0,fraction))*length
+        self.remember_position(position,True)
+        self.progress.set(position/max(length,.001)*100)
+        self.time_text.set(f'{duration_label(position)} / {duration_label(length)}')
+        self.tracks.set_playhead(origin+position*speed)
+        if self.active:
+            active=self.active;sequence=active.get('control_sequence',0)+1
+            original=dict(active)
+            active.update(seek_to=position,seek_sequence=sequence,seek_control_sequence=sequence,elapsed=position)
+            if not self.request_pause(active.get('pause_requested',False) if paused is None else paused):
+                active.clear();active.update(original);return
+        self.set_status(f'已定位 {duration_label(position)}，'+('正在更新演奏位置。' if self.active else '点击演奏从这里开始。'),'演奏定位','blue')
+        self.refresh_controls()
 
     def read_preferences(self):
         try:
@@ -629,6 +714,7 @@ class App:
             values = {"last_file": str(self.current_path), "recent": self.preferences.get("recent", []),
                       'shelf_files':self.preferences.get('shelf_files',[]),
                       'countdown':self.countdown.get(),
+                      'playback_positions':self.preferences.get('playback_positions',{}),
                       "speed": self.speed.get(), "transpose": self.transpose.get(), "instrument": self.current_instrument().id,
                       "background_strength": self.background_opacity.get(),
                       'mini_player_visible':self.mini_visible.get(),
@@ -789,6 +875,7 @@ class App:
                         float(self.speed.get()), int(self.transpose.get()), policies[self.range_policy.get()], parse_time(self.start.get()), self.current_instrument().id,
                         parse_time(self.end.get()) if self.end.get().strip() else None, int(self.max_polyphony.get()), dict(self.tracks.roles))
         plan=performance_plan(score,hold)
+        self.ready_duration=plan.duration
         if plan.timing_adjusted_notes:
             score['warnings'].append(f'钢琴短间距校正 {plan.timing_adjusted_notes} 音，最多另延后 {plan.max_timing_adjustment_ms:g} 毫秒；该校正未删音，详见适配报告。')
         return validate_score(score)
@@ -895,8 +982,9 @@ class App:
             self.syncing_speed = True
             self.speed_slider.set(speed)
             self.syncing_speed = False
-            self.progress.set(0)
-            self.time_text.set(f'00:00 / {duration_label(summary["seconds"])}')
+            position=self.playback_offset()
+            self.progress.set(position/max(self.ready_duration,.001)*100)
+            self.time_text.set(f'{duration_label(position)} / {duration_label(self.ready_duration)}')
             self.set_status("曲谱已就绪，可以先试听，也可以开始游戏演奏。", "就绪", "teal")
             self.refresh_controls()
             self.save_preferences()
@@ -982,7 +1070,8 @@ class App:
         self.enabled(self.stop_button, locked or bool(self.preview_token))
         if locked or self.preview_token:
             self.stop_button.configure(bg=C["red"], fg="white", activebackground="#A52B40", activeforeground="white")
-        self.play_button.configure(text="演奏中…" if locked else "▶  开始演奏")
+        self.play_button.configure(text="演奏中…" if locked else ('▶  继续演奏' if ready and self.playback_offset()>.05 else '▶  开始演奏'))
+        self.enabled(self.restart_button,ready and not audio_busy)
         self.enabled(self.pause_button,locked and self.active.get('phase') in ('playing','paused') and not self.stop_requested)
         self.pause_button.configure(text='▶ 继续' if locked and self.active.get('pause_requested') else 'Ⅱ 暂停')
         if (self.audio_dialog and self.audio_dialog.job) or (self.light_audio and self.light_audio.busy):
@@ -996,16 +1085,21 @@ class App:
 
     def toggle_pause(self):
         if not self.active or self.stop_requested or self.active.get('phase') not in ('playing','paused'):return
+        self.request_pause(not self.active.get('pause_requested',False))
+
+    def request_pause(self,paused):
+        if not self.active or self.stop_requested:return
         from .playback import write_pause_command
         active=self.active
-        paused=not active.get('pause_requested',False)
         sequence=active.get('control_sequence',0)+1
         try:
-            write_pause_command(active['control'],paused,sequence)
+            write_pause_command(active['control'],paused,sequence,seek_to=active.get('seek_to'),seek_sequence=active.get('seek_sequence'))
             active.update(pause_requested=paused,control_sequence=sequence)
             self.set_status('正在暂停并释放琴键…' if paused else '正在继续演奏…','暂停中' if paused else '继续中','amber')
             self.refresh_controls()
-        except OSError as error:self.set_status('控制未送达，请按 F7 或 F8：'+str(error),'控制失败','red')
+            return True
+        except OSError as error:
+            self.set_status('控制未送达，请按 F7 或 F8：'+str(error),'控制失败','red');return False
 
     def preview(self):
         if self.active or self.preview_token:
@@ -1049,7 +1143,9 @@ class App:
         hold_ms = int(self.hold_ms.get()) if source is None else 300
         token = uuid.uuid4().hex
         self.preview_token, self.preview_started = token, None
-        self.preview_origin = options['start'] if source is not None else score['summary']['source_origin_seconds']
+        position=self.playback_offset() if source is None else 0
+        if source is None and position>=getattr(self,'ready_duration',score['summary']['seconds'])-.01:position=0
+        self.preview_origin = options['start'] if source is not None else score['summary']['source_origin_seconds']+position*score['settings']['speed']
         self.preview_speed = options['speed'] if source is not None else score['settings']['speed']
         self.set_status("正在准备电脑试听…", "准备试听", "blue")
         self.refresh_controls()
@@ -1061,7 +1157,7 @@ class App:
                 path = runs / f"preview_{token}.wav"
                 cancel = lambda: self.closed or token != self.preview_token
                 seconds = (self.engine.render_song_preview(source, path, cancel=cancel, **options) if source is not None
-                           else self.engine.render_preview(score, path, hold_ms=hold_ms, cancel=cancel))
+                           else self.engine.render_preview(score, path, hold_ms=hold_ms, cancel=cancel,start_at=position))
                 self.messages.put({"kind": "preview_ready", "token": token, "path": path, "seconds": seconds, "caption": caption})
             except Exception as error:
                 self.messages.put({"kind": "preview_error", "token": token, "text": str(error)})
@@ -1087,8 +1183,10 @@ class App:
         if score is None:
             return
         try:
+            position=self.playback_offset()
+            if position>=self.ready_duration-.01:position=0
             if seconds:
-                score = self.engine.limit_score(score, seconds)
+                score = self.engine.limit_score(score, position+seconds)
             run = self.directory / "runs" / uuid.uuid4().hex
             run.mkdir(parents=True)
             path, cancel, report = run / "score.json", run / "stop", run / "result.json"
@@ -1096,9 +1194,10 @@ class App:
             length = performance_plan(score, int(self.hold_ms.get())).duration
             self.active = {"cancel": cancel, "report": report, "progress": report.with_suffix(".progress.json"), "length": length,
                            'control':run/'control.json','control_sequence':0,'pause_requested':False,'phase':'waiting'}
+            self.active.update(origin=score['summary']['source_origin_seconds'],speed=score['settings']['speed'],elapsed=position)
             self.stop_requested = False
-            self.progress.set(0)
-            self.time_text.set(f"00:00 / {duration_label(length)}")
+            self.progress.set(position/max(length,.001)*100)
+            self.time_text.set(f"{duration_label(position)} / {duration_label(length)}")
             self.set_status(f"请进入 {score_instrument(score).title} 的 36 键界面，保持游戏前台。", "准备演奏", "amber")
             self.refresh_controls()
             countdown, hold = int(self.countdown.get()), int(self.hold_ms.get())
@@ -1107,6 +1206,7 @@ class App:
                 try:
                     arguments = ["--play", str(path), "--cancel-file", str(cancel), "--report", str(report),
                                  "--countdown", str(countdown), "--hold-ms", str(hold), '--control-file',str(run/'control.json')]
+                    arguments.extend(['--position',str(position)])
                     arguments.extend(["--data-dir", str(self.directory)])
                     code = self.engine.run_playback_and_wait(None, arguments)
                     result = json.loads(report.read_text(encoding="utf-8")) if report.exists() else {}
@@ -1123,6 +1223,8 @@ class App:
     def stop(self):
         self.stop_preview()
         if self.active:
+            self.update_progress()
+            self.remember_position(self.active.get('elapsed',self.playback_offset()),True)
             try:
                 self.active["cancel"].touch()
                 self.stop_requested = True
@@ -1142,10 +1244,15 @@ class App:
                     self.active['phase']='countdown'
                     self.set_status(f'请保持游戏在前台，{data["remaining"]} 秒后开始。', f'{data["remaining"]} 秒后开始', "amber")
                 elif phase in ('playing','paused'):
+                    if data.get('control_sequence',0)<self.active.get('seek_control_sequence',0):return
+                    previous_phase=self.active.get('phase')
                     self.active['phase']=phase
                     if data.get('control_sequence',0)>=self.active['control_sequence']:
                         self.active['pause_requested']=phase=='paused'
                     elapsed = min(self.active["length"], max(0, float(data.get('elapsed',0))))
+                    self.active['elapsed']=elapsed
+                    if self.seek_drag:return
+                    self.remember_position(elapsed,phase=='paused' and previous_phase!='paused')
                     self.progress.set(elapsed / self.active["length"] * 100)
                     self.time_text.set(f'{duration_label(elapsed)} / {duration_label(self.active["length"])}')
                     self.tracks.set_playhead(self.score['summary']['source_origin_seconds'] + elapsed * self.score['settings']['speed'])
@@ -1204,6 +1311,11 @@ class App:
             self.refresh_controls()
         elif kind == "game_done":
             result = message["result"]
+            active=self.active if isinstance(self.active,dict) else {}
+            if self.score and active:
+                if result.get('status')=='completed' and result.get('control_sequence',0)>=active.get('seek_control_sequence',0):self.remember_position(0,True)
+                elif result.get('control_sequence',0)>=active.get('seek_control_sequence',0):
+                    self.remember_position(result.get('elapsed',active.get('elapsed',self.playback_offset())),True)
             if result.get("status") == "completed":
                 self.progress.set(100)
                 self.time_text.set(f'{duration_label(self.active["length"])} / {duration_label(self.active["length"])}')

@@ -43,6 +43,63 @@ class MiniPlayerChecks(unittest.TestCase):
                 self.assertFalse(data['mini_player_visible'])
             finally:app.close()
 
+    def test_seek_position_is_saved_and_restored_in_source_time(self):
+        with tempfile.TemporaryDirectory() as d:
+            app=self.create(d)
+            try:
+                app.seek_fraction(.4)
+                before=app.playback_offset()
+                self.assertGreater(before,0)
+                app.speed.set('.8');app.update_score(quiet=True)
+                self.assertAlmostEqual(app.playback_offset(),before/.8,places=4)
+                saved=app.playback_offset()
+                self.assertTrue(app.progress_bar.bind('<ButtonPress-1>'))
+                self.assertTrue(app.mini.progress.bind('<ButtonPress-1>'))
+            finally:app.close()
+            app=self.create(d)
+            try:self.assertAlmostEqual(app.playback_offset(),saved,places=4)
+            finally:app.close()
+
+    def test_play_launch_uses_the_selected_position_without_native_game_input(self):
+        with tempfile.TemporaryDirectory() as d:
+            app=self.create(d);captured=[]
+            try:
+                app.seek_fraction(.3);position=app.playback_offset()
+                def fake_worker(_,arguments):
+                    captured.extend(arguments)
+                    path=Path(arguments[arguments.index('--report')+1])
+                    path.write_text(json.dumps({'status':'stopped','elapsed':position,'control_sequence':0}))
+                    return 2
+                app.engine.run_playback_and_wait=fake_worker
+                app.play(None)
+                message=app.messages.get(timeout=3)
+                self.assertEqual(message['kind'],'game_done')
+                self.assertAlmostEqual(float(captured[captured.index('--position')+1]),position,places=4)
+                app.handle_message(message)
+                self.assertAlmostEqual(app.playback_offset(),position,places=4)
+            finally:app.close()
+
+    def test_seek_preserves_pause_and_ignores_old_progress_until_acknowledged(self):
+        with tempfile.TemporaryDirectory() as d:
+            app=self.create(d);folder=Path(d)
+            try:
+                app.active={'control':folder/'control.json','cancel':folder/'stop','progress':folder/'progress.json',
+                    'length':10,'origin':0,'speed':1,'elapsed':1,'phase':'paused','pause_requested':True,'control_sequence':0}
+                app.seek_fraction(.6)
+                command=json.loads((folder/'control.json').read_text())
+                self.assertEqual((command['seek_to'],command['paused']),(6,True))
+                (folder/'progress.json').write_text(json.dumps({'phase':'paused','elapsed':1,'control_sequence':0}))
+                app.update_progress();self.assertEqual(app.progress.get(),60)
+                (folder/'progress.json').write_text(json.dumps({'phase':'paused','elapsed':6,'control_sequence':1}))
+                app.update_progress();self.assertEqual(app.progress.get(),60)
+                self.assertTrue(app.active['pause_requested'])
+                app.toggle_pause()
+                command=json.loads((folder/'control.json').read_text())
+                self.assertEqual((command['seek_sequence'],command['sequence'],command['paused']),(1,2,False))
+                app.handle_message({'kind':'game_done','code':2,'result':{'status':'stopped','elapsed':6,'control_sequence':2}})
+                self.assertGreater(app.playback_offset(),0)
+            finally:app.close()
+
     def test_ui_pause_resume_commands_and_paused_progress_remain_in_sync(self):
         with tempfile.TemporaryDirectory() as d:
             app=self.create(d)

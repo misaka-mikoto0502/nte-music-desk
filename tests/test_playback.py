@@ -36,7 +36,58 @@ class TimedPause:
     def poll(self):return self.start<=self.clock.now<self.end
 
 
+class TimedSeek:
+    sequence=0
+    def __init__(self,clock,at,target,pause=None):
+        self.clock,self.at,self.target,self.pause=clock,at,target,pause
+        self.issued,self.pending=False,None
+    def poll(self):
+        if not self.issued and self.clock.now>=self.at:
+            self.pending=self.target;self.issued=True;self.sequence=1
+        return self.pause is not None and self.pause[0]<=self.clock.now<self.pause[1]
+    def take_seek(self):
+        value,self.pending=self.pending,None;return value
+
+
 class PlaybackChecks(unittest.TestCase):
+    def test_start_in_middle_restores_shift_and_sustain_without_old_attacks(self):
+        a,b=KEYS['E3'],KEYS['F3']
+        plan=PerformancePlan(((0,True,SHIFT),(.02,True,a),(.3,False,a),(.31,False,SHIFT),(.6,True,b),(.8,False,b)),(),1,0)
+        clock=Clock();keyboard=Keyboard(clock)
+        execute_plan(plan,keyboard,clock=clock.read,sleep=clock.sleep,start_at=.2)
+        self.assertEqual([k for _,down,k in keyboard.events if down],[SHIFT,a,b])
+        self.assertAlmostEqual(clock.now,.8,delta=.001);self.assertFalse(keyboard.held)
+
+    def test_forward_and_backward_seek_reconstruct_the_new_key_state(self):
+        a,b=KEYS['E3'],KEYS['F3']
+        plan=PerformancePlan(((0,True,a),(.4,False,a),(.6,True,b),(.8,False,b)),(),1,0)
+        for at,target,expected in [(.1,.6,[a,b]),(.65,.1,[a,b,a,b])]:
+            clock=Clock();keyboard=Keyboard(clock);control=TimedSeek(clock,at,target);states=[]
+            execute_plan(plan,keyboard,clock=clock.read,sleep=clock.sleep,control=control,on_progress=lambda *s:states.append(s))
+            self.assertEqual([k for _,down,k in keyboard.events if down],expected)
+            self.assertTrue(any(abs(elapsed-target)<.011 and seq==1 for _,elapsed,seq in states))
+            self.assertFalse(keyboard.held)
+
+    def test_seek_while_paused_stays_silent_until_resume(self):
+        a,b=KEYS['E3'],KEYS['F3']
+        plan=PerformancePlan(((0,True,a),(.4,False,a),(.6,True,b),(.8,False,b)),(),1,0)
+        clock=Clock();keyboard=Keyboard(clock);control=TimedSeek(clock,.2,.6,pause=(.1,.5))
+        execute_plan(plan,keyboard,clock=clock.read,sleep=clock.sleep,control=control)
+        self.assertFalse(any(down and .1<at<.5 for at,down,_ in keyboard.events))
+        self.assertAlmostEqual(next(at for at,down,k in keyboard.events if down and k==b),.5,delta=.011)
+        self.assertFalse(keyboard.held)
+
+    def test_seek_id_survives_fast_pause_commands_without_repeating_the_jump(self):
+        with tempfile.TemporaryDirectory() as d:
+            path=Path(d)/'control.json';clock=Clock();control=PauseControl(path,clock=clock.read)
+            write_pause_command(path,False,1,seek_to=.6,seek_sequence=1)
+            control.poll();self.assertEqual(control.take_seek(),.6)
+            write_pause_command(path,True,2,seek_to=.6,seek_sequence=1);clock.now+=.1
+            self.assertTrue(control.poll());self.assertIsNone(control.take_seek())
+            write_pause_command(path,True,3,seek_to=.2,seek_sequence=3);clock.now+=.1
+            control.poll();self.assertEqual(control.take_seek(),.2)
+            with self.assertRaises(ValueError):write_pause_command(path,False,4,seek_to=float('nan'))
+
     def test_pause_freezes_timeline_releases_and_restores_sustain_without_skipping(self):
         a,b=KEYS['E3'],KEYS['F3']
         plan=PerformancePlan(((0,True,a),(.4,False,a),(.6,True,b),(.8,False,b)),(),1,0)

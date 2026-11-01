@@ -60,8 +60,9 @@ class MiniPlayer:
         self.status=tk.Label(line,text='',bg='#263A35',fg='#AEC3B7',font=('Microsoft YaHei UI',8))
         self.status.pack(side='left')
         tk.Label(line,textvariable=app.time_text,bg='#263A35',fg='#D5E1D5',font=('Microsoft YaHei UI',8)).pack(side='right')
-        self.progress=tk.Canvas(panel,height=3,bg='#4A6055',borderwidth=0,highlightthickness=0)
+        self.progress=tk.Canvas(panel,height=12,bg='#263A35',borderwidth=0,highlightthickness=0,cursor='hand2')
         self.progress.pack(fill='x',pady=(5,7))
+        app.bind_seek(self.progress)
         controls=tk.Frame(panel,bg='#263A35');controls.pack(fill='x')
         self.play=self.button(controls,'▶ 演奏',self.toggle,'#C6D9AB','#263A35');self.play.pack(side='left',fill='x',expand=True)
         self.stop=self.button(controls,'■ 停止',app.stop,'#40574B','#FCFBF7');self.stop.pack(side='left',padx=6)
@@ -127,7 +128,7 @@ class MiniPlayer:
         active=self.app.active
         phase=active.get('phase','waiting') if active else ''
         paused=active.get('pause_requested',False) if active else False
-        caption='▶ 继续' if paused else ('Ⅱ 暂停' if active else '▶ 演奏')
+        caption='▶ 继续' if paused else ('Ⅱ 暂停' if active else ('▶ 续播' if self.app.score and self.app.playback_offset()>.05 else '▶ 演奏'))
         ready=bool(self.app.score) and not self.app.preview_token and not (self.app.audio_dialog and self.app.audio_dialog.job)
         if getattr(self.app,'light_audio',None) and self.app.light_audio.busy:ready=False
         enabled=(phase in ('playing','paused') and not self.app.stop_requested) if active else ready
@@ -139,9 +140,7 @@ class MiniPlayer:
         self.title.configure(text=title)
         self.status.configure(text=('已暂停 · F7 继续 · F8 停止' if phase=='paused' else 'F7 暂停 · F8 停止')
                               if active and phase in ('playing','paused') else ('准备演奏…' if active else '就绪 · 拖动标题可移动'))
-        self.progress.delete('fill')
-        width=max(1,self.progress.winfo_width())*max(0,min(100,self.app.progress.get()))/100
-        self.progress.create_rectangle(0,0,width,3,fill='#C6D9AB',outline='',tags='fill')
+        self.app.paint_progress(self.progress,'#C6D9AB','#4A6055')
 
     def close(self):
         if self.native:self.native.close()
