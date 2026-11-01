@@ -319,8 +319,8 @@ class AudioDialog:
 
     def import_result(self):
         path=self.result_paths.get(self.result_choice.get())
-        if path and not self.job and not self.app.active:
-            if self.app.open_path(path):
+        if path and not self.job:
+            if self.app.accept_transcription(path) in ('loaded','queued'):
                 caption=self.result_choice.get()
                 warning=' '.join(self.result.warnings) if self.result else ''
                 self.state.set(f'已导入{caption}。请在多轨工作区试听，再进入游戏试奏。'+(' '+warning if warning else ''))

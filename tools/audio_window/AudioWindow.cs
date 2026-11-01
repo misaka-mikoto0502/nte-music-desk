@@ -21,6 +21,8 @@ class AudioWindow : Form {
     readonly int diagnosticAlign;
     WebView2 view;
     string diagnosticData;
+    bool saveDialogOpen;
+    string exportDirectory;
     readonly List<object> layoutChecks=new List<object>();
     readonly JavaScriptSerializer json = new JavaScriptSerializer();
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -64,6 +66,7 @@ class AudioWindow : Form {
                 var env=await CoreWebView2Environment.CreateAsync(null,profile);
                 await view.EnsureCoreWebView2Async(env);
                 var core=view.CoreWebView2;
+                await core.AddScriptToExecuteOnDocumentCreatedAsync("Object.defineProperty(window,'NteDesktop',{value:Object.freeze({midiSaveDialog:true})});");
                 core.Settings.AreHostObjectsAllowed=false;
                 core.Settings.IsWebMessageEnabled=diagnostic;
                 core.Settings.AreDevToolsEnabled=false;
@@ -79,32 +82,57 @@ class AudioWindow : Form {
                     if((address.StartsWith("http:") || address.StartsWith("https:")) && !Local(address))
                         b.Response=env.CreateWebResourceResponse(new MemoryStream(),403,"Local files only","Content-Type: text/plain");
                 };
-                core.DownloadStarting+=(a,b)=> {
-                    if(!Local(b.DownloadOperation.Uri) || !b.DownloadOperation.Uri.StartsWith(new Uri(home,"results/").AbsoluteUri,StringComparison.Ordinal)) {b.Cancel=true;return;}
-                    try {
-                    var folder=Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders","{374DE290-123F-4565-9164-39C4925E467B}",null) as string;
-                    folder=folder==null?Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),"Downloads"):Environment.ExpandEnvironmentVariables(folder);
-                    if(diagnostic)folder=Path.Combine(Path.GetDirectoryName(report),"downloads");
-                    Directory.CreateDirectory(folder);
-                    var name=Path.GetFileName(b.ResultFilePath);
-                    if(!name.EndsWith(".mid",StringComparison.OrdinalIgnoreCase))name="轻量转谱.mid";
-                    var target=Path.Combine(folder,name);int suffix=1;
-                    while(File.Exists(target))target=Path.Combine(folder,Path.GetFileNameWithoutExtension(name)+" ("+(suffix++)+").mid");
-                    b.ResultFilePath=target;b.Handled=true;
-                    var operation=b.DownloadOperation;
-                    operation.StateChanged+=(x,y)=> {
-                        if(operation.State==CoreWebView2DownloadState.Completed) {
-                            if(diagnostic){State(new {state="diagnostic",data=diagnosticData,download=target,layout=layoutChecks});Close();}
-                            else DownloadStatus("MIDI 已保存到系统下载文件夹，工作台另有副本。");
-                        } else if(operation.State==CoreWebView2DownloadState.Interrupted) {
-                            if(diagnostic){State(new {state="error",error="MIDI download interrupted"});Close();}
-                            else DownloadStatus("下载未完成，可再次点击下载；工作台副本已保留。");
-                        }
-                    };
-                    } catch(Exception error) {
-                        b.Cancel=true;State(new {state="download_error",error=error.Message});
-                        if(diagnostic)Close();
-                        else DownloadStatus("自动下载失败，可再次点击下载；工作台副本已保留。");
+                core.DownloadStarting+=async (a,b)=> {
+                    var address=b.DownloadOperation.Uri;
+                    if(!Local(address) || !address.StartsWith(new Uri(home,"results/").AbsoluteUri,StringComparison.Ordinal)) {b.Cancel=true;return;}
+                    var query=new Uri(address).Query;
+                    if(query!="" && query!="?save=1"){b.Cancel=true;return;}
+                    bool manual=query=="?save=1";
+                    if(manual && saveDialogOpen){b.Cancel=true;return;}
+                    b.Handled=true;
+                    if(manual)saveDialogOpen=true;
+                    using(b.GetDeferral()) {
+                        try {
+                            // Leave the WebView2 callback before opening modal UI.
+                            await Task.Yield();
+                            if(IsDisposed || Disposing){b.Cancel=true;return;}
+                            var folder=Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders","{374DE290-123F-4565-9164-39C4925E467B}",null) as string;
+                            folder=folder==null?Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),"Downloads"):Environment.ExpandEnvironmentVariables(folder);
+                            if(diagnostic)folder=Path.Combine(Path.GetDirectoryName(report),"downloads");
+                            var name=Path.GetFileName(b.ResultFilePath);
+                            if(!name.EndsWith(".mid",StringComparison.OrdinalIgnoreCase))name="轻量转谱.mid";
+                            string target;
+                            if(manual) {
+                                using(var dialog=new SaveFileDialog {Title="另存 MIDI 曲谱",FileName=name,
+                                    InitialDirectory=exportDirectory ?? folder,DefaultExt="mid",AddExtension=true,
+                                    Filter="MIDI 曲谱 (*.mid)|*.mid",OverwritePrompt=true,CheckPathExists=true,RestoreDirectory=true}) {
+                                    if(dialog.ShowDialog(this)!=DialogResult.OK) {
+                                        b.Cancel=true;DownloadStatus("已取消另存为；工作台副本不受影响。");return;
+                                    }
+                                    target=dialog.FileName;exportDirectory=Path.GetDirectoryName(target);
+                                }
+                            } else {
+                                Directory.CreateDirectory(folder);
+                                target=Path.Combine(folder,name);int suffix=1;
+                                while(File.Exists(target))target=Path.Combine(folder,Path.GetFileNameWithoutExtension(name)+" ("+(suffix++)+").mid");
+                            }
+                            b.ResultFilePath=target;b.Handled=true;
+                            var operation=b.DownloadOperation;
+                            DownloadStatus(manual?"正在另存 MIDI…":"正在自动保存 MIDI 到下载文件夹…");
+                            operation.StateChanged+=(x,y)=> {
+                                if(operation.State==CoreWebView2DownloadState.Completed) {
+                                    if(diagnostic){State(new {state="diagnostic",data=diagnosticData,download=target,layout=layoutChecks});Close();}
+                                    else DownloadStatus(manual?"MIDI 已另存为："+Path.GetFileName(target):"MIDI 已自动保存到下载文件夹，工作台另有副本。",target);
+                                } else if(operation.State==CoreWebView2DownloadState.Interrupted) {
+                                    if(diagnostic){State(new {state="error",error="MIDI download interrupted"});Close();}
+                                    else DownloadStatus("保存未完成，可点击下载 MIDI 重试；工作台副本已保留。");
+                                }
+                            };
+                        } catch(Exception error) {
+                            b.Cancel=true;State(new {state="download_error",error=error.Message});
+                            if(diagnostic)Close();
+                            else DownloadStatus("保存失败，可点击下载 MIDI 重试；工作台副本已保留。");
+                        } finally {if(manual)saveDialogOpen=false;}
                     }
                 };
                 core.NavigationCompleted+=async (a,b)=> {
@@ -164,9 +192,9 @@ class AudioWindow : Form {
         Uri uri;return Uri.TryCreate(address,UriKind.Absolute,out uri) && uri.Scheme==home.Scheme &&
             uri.Host==home.Host && uri.Port==home.Port && uri.AbsolutePath.StartsWith(home.AbsolutePath,StringComparison.Ordinal) && uri.UserInfo.Length==0;
     }
-    void DownloadStatus(string text) {
+    void DownloadStatus(string text,string detail=null) {
         try {if(!IsDisposed && view!=null && view.CoreWebView2.Source==home.AbsoluteUri)
-            view.CoreWebView2.ExecuteScriptAsync("document.getElementById('download-status').textContent="+json.Serialize(text)+";");
+            view.CoreWebView2.ExecuteScriptAsync("document.getElementById('download-status').textContent="+json.Serialize(text)+";document.getElementById('download-status').title="+json.Serialize(detail ?? text)+";");
         }catch(ObjectDisposedException){}catch(InvalidOperationException){}
     }
     void State(object data) {try {Directory.CreateDirectory(Path.GetDirectoryName(report));File.WriteAllText(report,json.Serialize(data));}catch {}}

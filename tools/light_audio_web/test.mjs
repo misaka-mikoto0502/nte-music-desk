@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {RemainingTime,timeLabel} from './eta.js';
 import {withCpuFallback} from './runtime.js';
 import {validateFile,settingsFor} from './pipeline.js';
+await import('./test_downloads.mjs');
 const eta=new RemainingTime();eta.reset(0);
 assert.equal(eta.remaining(3),null);
 eta.update(.25,10);assert.equal(eta.remaining(10),30);

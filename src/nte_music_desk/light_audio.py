@@ -176,6 +176,9 @@ class LightAudioSession:
 
             def do_GET(self):
                 name = self.route()
+                # Only published MIDI routes accept the explicit Save As marker.
+                if name and name.endswith('?save=1') and name[:-7] in session.results:
+                    name = name[:-7]
                 if name == 'state':
                     with session.lock:
                         source = session.desktop_input
@@ -283,6 +286,7 @@ class LightAudioSession:
                                     session.results[route]=path;session.download_names[route]=name
                                     alternatives.append({'label':label,'result':route,'filename':name})
                                 session.latest_result = {'notes': len(song.notes), 'result': download, 'filename': output.name,
+                                    'workbench':{'state':'pending','message':'正在自动添加到演奏工作台…'},
                                     'alternatives':alternatives,'stats':{'candidates':len(raw_song.notes),'preset':session.source['profile'],
                                         'aligned_notes':alignment['moved_notes'],'alignment_ms':alignment['window_ms']}}
                                 session.run_id = None
@@ -322,6 +326,12 @@ class LightAudioSession:
             if self.run_id is None:return
             self.run_id=None
         self.notify({'kind':'light_status','text':'未完成的轻量转谱已取消，已保存的结果不受影响。'})
+
+    def acknowledge_import(self, path, state, message):
+        if state not in ('loaded','queued','failed'):raise ValueError('Invalid import state')
+        with self.lock:
+            if self.latest_result and self.result and self.result.resolve()==Path(path).resolve():
+                self.latest_result={**self.latest_result,'workbench':{'state':state,'message':message}}
 
     def close(self):
         if self.closed:

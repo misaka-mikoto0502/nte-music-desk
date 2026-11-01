@@ -94,6 +94,7 @@ class App:
         self.audio_audition = None
         self.song, self.score, self.active = None, None, None
         self.track_ids, self.controls, self.library_buttons = [], [], []
+        self.pending_import = None
         self.messages, self.refresh_job = queue.Queue(), None
         self.preview_token, self.preview_started, self.preview_length = None, None, 0
         self.recommend_token = None
@@ -242,6 +243,38 @@ class App:
         if path is not None:
             self.open_path(path)
 
+    def refresh_library(self):
+        from .local_library import generated_scores
+        for widget in self.shelf_content.winfo_children():widget.destroy()
+        self.library_buttons=[]
+        entries=[('小星星',self.assets/'scores/twinkle.mid','自制离线示例')]
+        entries.extend((p.stem,p,'音频识别 · 已保存') for p in generated_scores(self.directory))
+        for name,path,caption in entries:
+            display=name if len(name)<=17 else name[:16]+'…'
+            button=self.button(self.shelf_content,f'{display}\n{caption}',lambda n=name,p=path:self.choose_library(n,p),
+                'nav',9,f'{name}\n{path}',anchor='w',justify='left')
+            button.configure(pady=7,padx=10)
+            button.pack(fill='x',pady=(0,5))
+            self.library_buttons.append((button,path))
+
+    def accept_transcription(self, path):
+        path=Path(path).resolve()
+        self.refresh_library()
+        if self.active:
+            self.pending_import=path
+            state='queued';text='已加入曲目架，当前演奏结束后自动载入。'
+        elif self.open_path(path):
+            self.pending_import=None
+            state='loaded';text='已自动加入曲目架并载入演奏工作台，无需下载后再导入。'
+            hint='当前方案为单旋律，需要和弦可切换为原曲声部。' if self.score and self.score['mode']=='melody' else '请先试听检查错漏音。'
+            self.set_status(text+hint,'转谱已导入','amber')
+        else:
+            state='failed';text='曲谱已保存，自动载入未完成，请在曲目架重试。'
+        if self.light_audio:self.light_audio.acknowledge_import(path,state,text)
+        if state=='queued':self.set_status(text,'曲谱已加入','blue')
+        self.refresh_controls()
+        return state
+
     def configure_styles(self):
         style = ttk.Style(self.root)
         style.theme_use("clam")
@@ -320,13 +353,9 @@ class App:
         self.nav_content.bind('<Configure>', lambda _: self.nav_canvas.configure(scrollregion=self.nav_canvas.bbox('all')))
         self.nav_canvas.bind('<Configure>', lambda e: self.nav_canvas.itemconfigure(nav_window, width=e.width))
         self.label(self.nav_content, '曲目架', 9, '#A9B9A6').pack(anchor='w', pady=(0, 10))
-        for name, filename, caption in [('小星星', 'twinkle.mid', '自制离线示例')]:
-            path = self.assets / 'scores' / filename if filename else None
-            button = self.button(self.nav_content, f'{name}\n{caption}', lambda n=name, p=path: self.choose_library(n,p),
-                'nav', 9, '载入本机自制示例曲谱。', anchor='w', justify='left')
-            button.configure(pady=7, padx=10)
-            button.pack(fill='x', pady=(0, 5))
-            self.library_buttons.append((button, path))
+        self.shelf_content=tk.Frame(self.nav_content,bg=C['nav'])
+        self.shelf_content.pack(fill='x')
+        self.refresh_library()
         bottom = tk.Frame(sidebar, bg=C['nav'])
         bottom.pack(side='bottom', fill='x', before=nav_area, pady=(10, 0))
         tk.Frame(bottom, bg='#4B5C4E', height=1).pack(fill='x', pady=(0, 14))
@@ -1140,12 +1169,7 @@ class App:
             self.set_status(message['text'], '轻量转谱 Beta', 'blue')
             self.refresh_controls()
         elif kind == 'light_done':
-            if self.active:
-                self.set_status('轻量曲谱已保存到数据目录 light-transcriptions，请停止演奏后导入。', '曲谱已保存', 'blue')
-            elif self.open_path(message['path']):
-                hint='当前演奏方案为单旋律，会减少和弦；需要和弦请切换为原曲声部。' if self.score and self.score['mode']=='melody' else '请先试听检查错漏音；候选谱与对齐前 MIDI 已分别保留。'
-                self.set_status('已导入轻量识别曲谱。'+hint, '轻量转谱 Beta', 'amber')
-            self.refresh_controls()
+            self.accept_transcription(message['path'])
         elif kind.startswith("transpose"):
             if message["token"] != self.recommend_token:
                 return
@@ -1179,6 +1203,9 @@ class App:
                 reason = result.get("reason") or ("演奏已停止。" if message["code"] == 2 else f'演奏进程退出：{message["code"]}')
                 self.set_status(reason, "已停止" if stopped else "演奏失败", "muted" if stopped else "red")
             self.active, self.stop_requested = None, False
+            if self.pending_import is not None:
+                path,self.pending_import=self.pending_import,None
+                self.accept_transcription(path)
             self.refresh_controls()
 
     def poll(self):

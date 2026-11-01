@@ -1,4 +1,5 @@
 import {RemainingTime, timeLabel} from './eta.js';
+import {automaticDownload,midiUrl,saveMidi} from './downloads.js';
 const el = id => document.getElementById(id), base = new URL('.', location.href);
 let task, job, audioUrl, selectedFile, lastResult, lastDesktopId, closed = false, running = false;
 let pulseFailures = 0, pulsing = false, generation = 0, selectionVersion = 0, startedAt = 0, phase = 'idle';
@@ -62,23 +63,28 @@ el('dropzone').ondrop = event => { event.preventDefault(); event.stopPropagation
 document.addEventListener('dragover', event => event.preventDefault());
 document.addEventListener('drop', event => { event.preventDefault(); if (!running) status('请把音频拖到“把音频拖到这里”区域。'); });
 function showResult(result, automatic = false) {
-  if (!result || !result.result || result.result === lastResult?.result) return;
+  if (!result || !result.result) return;
+  el('workbench-status').textContent=result.workbench?.message || '识别结果已送回演奏工作台。';
+  if (result.result === lastResult?.result) return;
   lastResult = result;
   const download = el('download');
-  download.href = new URL(result.result, base); download.download = result.filename || '轻量转谱.mid'; download.hidden = false;
+  download.href = midiUrl(result, base, true); download.download = result.filename || '轻量转谱.mid'; download.hidden = false;
+  download.onclick=event=>{event.preventDefault();saveMidi(result,{base,surface:window,document,fetch,onStatus:downloadStatus});};
   el('result-name').textContent = download.download; el('result-name').title = download.download;
-  el('download-status').textContent = automatic ? '已发起自动下载。若未见文件，请点击上方按钮；工作台另有已保存副本。' : '工作台已保存副本，可再次点击下载。';
+  downloadStatus(automatic ? '已发起自动下载；点击“下载 MIDI”可另外选择位置和文件名。' : '工作台已保存副本；点击“下载 MIDI”可另存。');
   const stats=result.stats;
   el('quality-stats').hidden=!stats;
   if(stats)el('quality-stats').textContent=`${({polyphonic:'均衡',detail:'弱音实验',melody:'旋律'})[stats.preset] || '识别'} · 候选 ${stats.candidates} 音 / 当前 ${result.notes} 音 · ${stats.alignment_ms ? '对齐 '+stats.aligned_notes+' 音' : '保留原起音'}`;
   const alternatives=el('alternate-downloads');alternatives.replaceChildren();
   alternatives.hidden=!result.alternatives?.length;
   for(const item of result.alternatives || []) {
-    const link=document.createElement('a');link.textContent=item.label;link.href=new URL(item.result,base);link.download=item.filename;
+    const link=document.createElement('a');link.textContent=item.label;link.href=midiUrl(item,base,true);link.download=item.filename;
+    link.onclick=event=>{event.preventDefault();saveMidi(item,{base,surface:window,document,fetch,onStatus:downloadStatus});};
     alternatives.append(link);
   }
-  if (automatic) download.click();
+  if (automatic) automaticDownload(result,base,document);
 }
+function downloadStatus(text) {el('download-status').textContent=text;el('download-status').title=text;}
 function cancel() {
   if (!task || !running || phase === 'saving') return;
   task.controller.abort();

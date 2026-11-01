@@ -93,6 +93,9 @@ class LightAudioChecks(unittest.TestCase):
             with urlopen(session.url+a['result']) as response:
                 original=response.read();self.assertIn('attachment;',response.headers['Content-Disposition'])
                 self.assertIn("filename*=UTF-8''",response.headers['Content-Disposition'])
+            with urlopen(session.url+a['result']+'?save=1') as response:self.assertEqual(response.read(),original)
+            with self.assertRaises(HTTPError):urlopen(session.url+a['result']+'?save=1&path=bad')
+            with self.assertRaises(HTTPError):urlopen(session.url+'state?save=1')
             second=post('begin',source())['job_id']
             b=post('complete',{'job_id':second,'notes':[{**note(),'pitchMidi':64}]})
             self.assertNotEqual(a['result'],b['result'])
