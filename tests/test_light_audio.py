@@ -105,7 +105,7 @@ class LightAudioChecks(unittest.TestCase):
         legacy = validate_source({**source(), 'basis':'permission','reference':'an old client statement'})
         self.assertEqual(legacy['rights']['basis'],'local-file')
         self.assertNotIn('reference',legacy['rights'])
-        for field,value in [('bytes',True),('bytes',100_000_000),('duration',float('nan')),('end',200),
+        for field,value in [('bytes',True),('bytes',100_000_000),('duration',float('nan')),('duration',601),('end',200),
                             ('start',-1),('sha256','bad'),('profile','shell')]:
             with self.assertRaises(ValueError):validate_source({**source(),field:value})
         song=notes_to_song([note()],6,'fixture')
@@ -113,6 +113,24 @@ class LightAudioChecks(unittest.TestCase):
         for field,value in [('pitchMidi',True),('pitchMidi',109),('startTimeSeconds',float('nan')),
                             ('durationSeconds',0),('amplitude',2)]:
             with self.assertRaises(ValueError):notes_to_song([{**note(),field:value}],6,'fixture')
+
+    def test_expired_job_cannot_resume_or_publish_a_late_result(self):
+        with tempfile.TemporaryDirectory() as d:
+            messages=[]
+            session=LightAudioSession(d,messages.append);self.addCleanup(session.close)
+            def post(route,data):
+                with urlopen(Request(session.url+route,json.dumps(data).encode(),
+                    {'Content-Type':'application/json','Origin':session.origin}),timeout=3) as response:return json.load(response)
+            for route in ('pulse','complete'):
+                job=post('begin',source())['job_id']
+                session.last_seen=time.monotonic()-121
+                self.assertFalse(session.busy)
+                with self.assertRaises(HTTPError):post(route,{'job_id':job,'notes':[note()]})
+                self.assertIsNone(session.run_id)
+                self.assertFalse(list(Path(d).rglob('*.mid')))
+                self.assertFalse(any(m['kind']=='light_done' for m in messages))
+            job=post('begin',source())['job_id']
+            self.assertEqual(post('complete',{'job_id':job,'notes':[note()]})['notes'],1)
 
     def test_local_http_result_cancellation_and_origin_boundaries(self):
         with tempfile.TemporaryDirectory() as d:

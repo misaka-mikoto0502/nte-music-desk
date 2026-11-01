@@ -41,7 +41,9 @@ def validate_source(data):
     start, end, duration = (data.get(k) for k in ('start', 'end', 'duration'))
     if any(type(n) not in (int, float) or not math.isfinite(n) for n in (start, end, duration)):
         raise ValueError('音频时间无效。')
-    if not 0 < duration <= 7200 or not 0 <= start < end <= duration + .02 or end - start > MAX_SECONDS + .02:
+    if not 0 < duration <= 600:
+        raise ValueError('源文件支持 10 分钟以内，请先裁短。')
+    if not 0 <= start < end <= duration + .02 or end - start > MAX_SECONDS + .02:
         raise ValueError('轻量转谱每次最多 3 分钟，请选择有效片段。')
     digest = data.get('sha256')
     if not isinstance(digest, str) or len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest):
@@ -237,6 +239,10 @@ class LightAudioSession:
                         response = {'job_id': session.run_id}
                     else:
                         with session.lock:
+                            # An expired lease cannot be revived by a delayed tab,
+                            # or publish after the desktop has become idle again.
+                            if session.run_id and not session.busy:
+                                session.run_id = None
                             if not session.run_id or data.get('job_id') != session.run_id:
                                 raise ValueError('任务已取消或会话过期。')
                             if route == 'pulse':
