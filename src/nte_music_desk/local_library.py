@@ -17,6 +17,20 @@ def generated_scores(directory):
     return [path for _,path in sorted(paths,key=lambda item:(item[0],str(item[1])),reverse=True)]
 
 
+def shelf_entries(directory, imported):
+    entries={}
+    for item in imported if isinstance(imported,list) else []:
+        if not isinstance(item,dict) or not isinstance(item.get('path'),str):continue
+        try:
+            path=Path(item['path']).resolve()
+            if path.is_file():
+                title=item.get('title')
+                entries[path]=(title[:180] if isinstance(title,str) and title else path.stem,'本地曲谱')
+        except (OSError,ValueError):continue
+    for path in generated_scores(directory):entries[path]=(entries.get(path,(path.stem,''))[0],'音频识别 · 已保存')
+    return [(title,path,caption) for path,(title,caption) in entries.items()]
+
+
 def local_title(path, directory):
     path, directory = Path(path).resolve(), Path(directory).resolve()
     if path.parent != directory / 'downloaded_midis':

@@ -122,7 +122,7 @@ class App:
         self.status = tk.StringVar(value="先选曲，再试听，最后开始游戏演奏。")
         self.notice = tk.StringVar(value="")
         self.time_text, self.progress = tk.StringVar(value="00:00 / 00:00"), tk.DoubleVar(value=0)
-        self.root.title(f"{APP_NAME} · v{__version__}")
+        self.root.title(f"{APP_NAME} · v{__version__}"+(' · 开发预览' if not getattr(sys,'frozen',False) else ''))
         try:
             root.iconbitmap(str(self.assets / "icon.ico"))
         except tk.TclError:
@@ -244,11 +244,11 @@ class App:
             self.open_path(path)
 
     def refresh_library(self):
-        from .local_library import generated_scores
+        from .local_library import shelf_entries
         for widget in self.shelf_content.winfo_children():widget.destroy()
         self.library_buttons=[]
         entries=[('小星星',self.assets/'scores/twinkle.mid','自制离线示例')]
-        entries.extend((p.stem,p,'音频识别 · 已保存') for p in generated_scores(self.directory))
+        entries.extend(shelf_entries(self.directory,self.preferences.get('shelf_files',[])))
         for name,path,caption in entries:
             display=name if len(name)<=17 else name[:16]+'…'
             button=self.button(self.shelf_content,f'{display}\n{caption}',lambda n=name,p=path:self.choose_library(n,p),
@@ -625,6 +625,7 @@ class App:
     def save_preferences(self):
         try:
             values = {"last_file": str(self.current_path), "recent": self.preferences.get("recent", []),
+                      'shelf_files':self.preferences.get('shelf_files',[]),
                       "speed": self.speed.get(), "transpose": self.transpose.get(), "instrument": self.current_instrument().id,
                       "background_strength": self.background_opacity.get(),
                       'mini_player_visible':self.mini_visible.get(),
@@ -684,6 +685,11 @@ class App:
             song.title = examples.get(path, local_title(path, self.directory) or song.title)
             self.song, self.current_path = song, path
             self.song_fingerprint = digest
+            if path!=self.assets/'scores/twinkle.mid':
+                saved=self.preferences.get('shelf_files',[])
+                saved=[item for item in saved if isinstance(item,dict) and item.get('path')!=str(path)] if isinstance(saved,list) else []
+                self.preferences['shelf_files']=[{'path':str(path),'title':song.title},*saved]
+                self.refresh_library()
             self.title.set(song.title)
             kind = "MusicXML" if path.suffix.lower() in (".xml",".musicxml",".mxl") else "MIDI"
             self.subtitle.set(f"{kind} 曲谱  ·  {path.name}")
@@ -779,8 +785,9 @@ class App:
         score = convert(self.song, tracks, mode_key(self.mode.get()),
                         float(self.speed.get()), int(self.transpose.get()), policies[self.range_policy.get()], parse_time(self.start.get()), self.current_instrument().id,
                         parse_time(self.end.get()) if self.end.get().strip() else None, int(self.max_polyphony.get()), dict(self.tracks.roles))
-        if hasattr(self.engine, "key_schedule"):
-            self.engine.key_schedule(score, hold)
+        plan=performance_plan(score,hold)
+        if plan.timing_adjusted_notes:
+            score['warnings'].append(f'钢琴短间距校正 {plan.timing_adjusted_notes} 音，最多另延后 {plan.max_timing_adjustment_ms:g} 毫秒；该校正未删音，详见适配报告。')
         return validate_score(score)
 
     def current_instrument(self):

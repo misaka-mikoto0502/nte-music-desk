@@ -66,6 +66,7 @@ def adaptation_report(score, plan=None):
     if plan is not None:
         from dataclasses import asdict
         result["performance"] = {"seconds": plan.duration, "planned_notes": len(plan.notes),
+                                 'timing_adjusted_notes':plan.timing_adjusted_notes,'max_timing_adjustment_ms':plan.max_timing_adjustment_ms,
                                  "mixed_groups": plan.mixed_groups,
                                  "notes": [asdict(n) for n in plan.notes[:2000]], "truncated": len(plan.notes) > 2000}
         held, peak = set(), 0
