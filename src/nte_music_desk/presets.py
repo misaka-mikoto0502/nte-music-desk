@@ -9,7 +9,7 @@ from pathlib import Path
 from .instruments import INSTRUMENTS
 
 DEFAULTS = {"tracks": [], "mode": "melody", "speed": 1.0, "transpose": 0,
-            "range_policy": "fold", "start": 0.0, "end": None, "countdown": 7, "hold_ms": 300, "roles": {}, "max_polyphony": 12}
+            "range_policy": "fold", "start": 0.0, "end": None, "countdown": 3, "hold_ms": 300, "roles": {}, "max_polyphony": 12}
 
 
 def fingerprint(path):

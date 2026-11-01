@@ -109,7 +109,7 @@ class App:
         self.invalid_presets = set()
         self.speed = tk.StringVar(value=str(self.preferences.get("speed", "1.0")))
         self.transpose = tk.StringVar(value=str(self.preferences.get("transpose", "0")))
-        self.start, self.countdown, self.hold_ms = tk.StringVar(value="0"), tk.StringVar(value="7"), tk.StringVar(value="300")
+        self.start, self.countdown, self.hold_ms = tk.StringVar(value="0"), tk.StringVar(value=str(self.preferences.get('countdown',DEFAULTS['countdown']))), tk.StringVar(value="300")
         self.end = tk.StringVar(value="")
         self.mode = tk.StringVar(value=MODES['faithful'])
         self.max_polyphony = tk.StringVar(value="12")
@@ -250,10 +250,12 @@ class App:
         entries=[('小星星',self.assets/'scores/twinkle.mid','自制离线示例')]
         entries.extend(shelf_entries(self.directory,self.preferences.get('shelf_files',[])))
         for name,path,caption in entries:
-            display=name if len(name)<=17 else name[:16]+'…'
-            button=self.button(self.shelf_content,f'{display}\n{caption}',lambda n=name,p=path:self.choose_library(n,p),
-                'nav',9,f'{name}\n{path}',anchor='w',justify='left')
-            button.configure(pady=7,padx=10)
+            title=re.sub(r'(?:_轻量Beta|\s*[·•]\s*轻量转谱\s*Beta)$','',name,flags=re.IGNORECASE).strip() or name
+            title=' '.join(title.split(' - ',1)[0].split())
+            display=title if len(title)<=17 else title[:16]+'…'
+            button=self.button(self.shelf_content,display,lambda n=name,p=path:self.choose_library(n,p),
+                'nav',10,f'{name}\n{caption}\n{path}',anchor='w',justify='left')
+            button.configure(pady=9,padx=10)
             button.pack(fill='x',pady=(0,5))
             self.library_buttons.append((button,path))
 
@@ -626,6 +628,7 @@ class App:
         try:
             values = {"last_file": str(self.current_path), "recent": self.preferences.get("recent", []),
                       'shelf_files':self.preferences.get('shelf_files',[]),
+                      'countdown':self.countdown.get(),
                       "speed": self.speed.get(), "transpose": self.transpose.get(), "instrument": self.current_instrument().id,
                       "background_strength": self.background_opacity.get(),
                       'mini_player_visible':self.mini_visible.get(),
@@ -761,7 +764,7 @@ class App:
             self.invalid_presets.add((self.song_fingerprint, self.applied_instrument))
         self.syncing_settings = True
         try:
-            for name in ("speed", "transpose", "start", "countdown", "hold_ms", "max_polyphony"):
+            for name in ("speed", "transpose", "start", "hold_ms", "max_polyphony"):
                 getattr(self, name).set(str(settings[name]))
             self.end.set("" if settings["end"] is None else str(settings["end"]))
             self.mode.set(MODES[settings["mode"]])
@@ -925,7 +928,7 @@ class App:
         for variable, value in [(self.speed, "1.0"), (self.transpose, "0"), (self.start, "0"),
                                 (self.end, ""),
                                 (self.mode, MODES['faithful']), (self.max_polyphony, "12"), (self.range_policy, "超出音域折回八度"),
-                                (self.countdown, "7"), (self.hold_ms, "300")]:
+                                (self.countdown, str(DEFAULTS['countdown'])), (self.hold_ms, "300")]:
             variable.set(value)
         if self.song:
             self.tracks.set_enabled_tracks([p['index'] for p in self.tracks.rows if not p['drums']])
