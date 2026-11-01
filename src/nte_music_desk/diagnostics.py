@@ -91,6 +91,36 @@ def run_self_test(engine, destination):
         app.light_audio = LightAudioSession(engine.ROOT, app.messages.put, assets=engine.ASSETS/'light_audio')
         with urlopen(app.light_audio.url+'state',timeout=3) as response:
             assert json.load(response)['open'] is True
+        # Exercise the latest workflow through the frozen modules as well as
+        # source tests. All notes are synthetic; no game backend is created.
+        from urllib.request import Request
+        import time
+        def post(route,data):
+            request=Request(app.light_audio.url+route,json.dumps(data).encode(),
+                {'Content-Type':'application/json','Origin':app.light_audio.origin})
+            with urlopen(request,timeout=3) as response:return json.load(response)
+        job=post('begin',{'name':'offline-check.wav','bytes':100,'duration':5,'start':0,'end':5,
+            'sha256':'a'*64,'profile':'polyphonic'})['job_id']
+        note={'pitchMidi':60,'startTimeSeconds':1,'durationSeconds':.5,'amplitude':.8}
+        generated=post('complete',{'job_id':job,'notes':[note],
+            'alternate_notes':[note,{**note,'pitchMidi':64,'amplitude':.3}]})
+        assert len(generated['versions'])==2
+        post('activate',{'result':generated['versions'][1]['result']})
+        deadline=time.monotonic()+3
+        while (app.current_path!=app.light_audio.result or not app.messages.empty()) and time.monotonic()<deadline:
+            root.update();time.sleep(.01)
+        assert app.current_path==app.light_audio.result
+        assert len(app.song.notes)==2 and all(n.velocity==96 for n in app.song.notes)
+        assert app.light_audio.latest_result['workbench']['state']=='loaded'
+        app.chord_align.set(True);app.update_score(quiet=True)
+        assert app.score['settings']['chord_alignment_ms']==24
+        assert app.progress_bar.bind('<ButtonPress-1>') and app.mini.progress.bind('<ButtonPress-1>')
+        app.seek_fraction(.4)
+        position=app.playback_offset()
+        assert position>0 and app.preferences['playback_positions'][app.song_fingerprint]>0
+        engine.render_preview(app.score,preview,start_at=position,seconds=.1)
+        assert preview.stat().st_size>1000
+        preview.unlink()
         light_bytes=app.light_audio.asset_bytes
         assert light_bytes < 4_500_000
         from .audio_window import verify_host
@@ -109,6 +139,9 @@ def run_self_test(engine, destination):
               "music_download_feature": "removed", "model_terms_defaults": "unchecked", "audio_worker_resources": "passed",
               "separation_backend":"umxhq", "audio_comparison":"passed_silent_open_and_seek",
               "light_audio":"passed_resources_and_local_http", "light_audio_bytes":light_bytes,
+              "light_saved_variants":"passed_offline_switch_and_workbench_handoff",
+              "seek_resume":"passed_saved_position_bindings_and_mid_score_preview; no_game_input",
+              "chord_onset_alignment":"passed_setting_and_shared_planner",
               "light_browser_inference":"not_run_by_frozen_self_test",
               "desktop_audio_window":"passed_host_resource_hashes; runtime_inference_checked_separately",
               "desktop_file_drop":"passed_native_widget_registration; physical_drag_not_run",
