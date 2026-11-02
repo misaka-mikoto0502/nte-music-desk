@@ -40,18 +40,19 @@ def prepare(config):
     info = audio_info(config['output'])
     if info['seconds'] > 1800:
         raise ValueError('音频超过 30 分钟，请先选取更短的片段。')
-    if end is not None and info['seconds'] + .05 < end - start:
+    if end is not None and not config.get('allow_short',False) and info['seconds'] + .05 < end - start:
         raise ValueError('片段终点超过音频末尾，请缩短终点或留空。')
     return {**info, 'source_start_seconds': start, 'source_end_seconds': start + info['seconds']}
 
 
 def separate(config):
-    raise ValueError('原唱分离已暂停：ViperX 权重许可尚未核实，不下载或调用该模型。')
+    from separation_runtime import separate as run
+    return run(config)
 
 
 def diagnose(config):
     checks = {}
-    for package in ('muscriptor', 'audio-separator', 'soundfile', 'imageio-ffmpeg', 'onnxruntime'):
+    for package in ('muscriptor', 'openunmix', 'soundfile', 'imageio-ffmpeg', 'onnxruntime'):
         try:
             checks[package] = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:
@@ -86,10 +87,25 @@ def diagnose(config):
     return checks
 
 
+def model_access(config):
+    """Explicit online HEAD check, without downloading weights or exposing tokens."""
+    if config.get('model') not in ('small','medium'):raise ValueError('仅支持 1B 参数以内的 small / medium 模型。')
+    from huggingface_hub import get_hf_file_metadata,hf_hub_url
+    from huggingface_hub.errors import HfHubHTTPError
+    try:
+        metadata=get_hf_file_metadata(hf_hub_url('MuScriptor/muscriptor-'+config['model'],'model.safetensors'),timeout=20)
+    except HfHubHTTPError as error:
+        status=error.response.status_code if error.response is not None else None
+        if status in (401,403):raise ValueError('模型访问未获准：请在所选模型页面接受条款，并在当前引擎登录 Hugging Face。') from None
+        raise ValueError('模型访问检查失败，请检查网络或稍后重试。') from None
+    return {'model':'muscriptor-'+config['model'],'access':'verified_by_authorized_file_metadata',
+            'bytes':metadata.size,'weights_downloaded':False,'inference_tested':False}
+
+
 def main():
     request = Path(sys.argv[1])
     config = json.loads(request.read_text(encoding='utf-8'))
-    operations = {'prepare':prepare, 'separate':separate, 'diagnose':diagnose}
+    operations = {'prepare':prepare, 'separate':separate, 'diagnose':diagnose,'model_access':model_access}
     result = operations[config['operation']](config)
     Path(config['response']).write_text(json.dumps(result, ensure_ascii=False, indent=2),encoding='utf-8')
 

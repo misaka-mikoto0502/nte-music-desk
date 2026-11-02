@@ -1,6 +1,34 @@
-"""Read legacy local titles without contacting the former online catalogs."""
+"""Local titles and saved transcription shelf; no online catalogs."""
 import json
 from pathlib import Path
+
+
+def generated_scores(directory):
+    """Saved final MIDI files are the shelf; downloads and diagnostics stay out."""
+    directory=Path(directory)
+    paths=[]
+    for folder,pattern in [('light-transcriptions','*/*_轻量Beta.mid'),('transcriptions','*/*.mid')]:
+        for path in (directory/folder).glob(pattern):
+            if '.partial.' in path.name or path.name in ('partial.mid','model_raw.mid','model_selected.mid'):
+                continue
+            try:
+                if path.is_file():paths.append((path.stat().st_mtime_ns,path.resolve()))
+            except OSError:continue
+    return [path for _,path in sorted(paths,key=lambda item:(item[0],str(item[1])),reverse=True)]
+
+
+def shelf_entries(directory, imported):
+    entries={}
+    for item in imported if isinstance(imported,list) else []:
+        if not isinstance(item,dict) or not isinstance(item.get('path'),str):continue
+        try:
+            path=Path(item['path']).resolve()
+            if path.is_file():
+                title=item.get('title')
+                entries[path]=(title[:180] if isinstance(title,str) and title else path.stem,'本地曲谱')
+        except (OSError,ValueError):continue
+    for path in generated_scores(directory):entries[path]=(entries.get(path,(path.stem,''))[0],'音频识别 · 已保存')
+    return [(title,path,caption) for path,(title,caption) in entries.items()]
 
 
 def local_title(path, directory):

@@ -12,6 +12,14 @@ from test_audio_pipeline import FixturePipeline
 
 
 class MelodyChecks(unittest.TestCase):
+    def test_merge_prefers_melody_for_exact_duplicate_but_keeps_long_harmony(self):
+        melody=events_to_song({'seconds':3,'notes':[{'pitch':60,'start':1,'end':1.5}]},'voice')
+        backing=MidiSong('backing',1,480,[MidiNote(0,0,60,80,1.01,1.51),MidiNote(0,0,60,70,1,2.7)],['harmony'],[],3,[])
+        combined=combine_with_accompaniment(backing,melody,'all')
+        self.assertEqual(len(combined.notes),2)
+        self.assertEqual(len(backing.notes),2)
+        self.assertIn('1 个',combined.warnings[-1])
+
     def test_beta_timeline_preserves_rests_and_combines_in_seconds(self):
         melody=events_to_song({'seconds':6,'notes':[{'pitch':64,'start':2.25,'end':2.8},{'pitch':65,'start':4,'end':4.5}]},'beta')
         backing=MidiSong('a',1,480,[MidiNote(0,0,48,80,0,.8,32),MidiNote(1,9,36,90,0,.1,0)],['bass','drums'],[],6,[])

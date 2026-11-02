@@ -22,6 +22,7 @@ ASSETS = asset_dir()
 from .midi import convert, load_score, note_name, read_midi, save_score, validate_score
 from .keyboard import KEYS, PlaybackStopped, WindowsKeyboard, run_elevated_and_wait
 from .keyboard import PianoKey
+from .keyboard import run_playback_and_wait
 from .instruments import INSTRUMENTS, SHIFT, score_instrument
 
 
@@ -39,33 +40,9 @@ def limit_score(score, seconds):
 from .performance import key_schedule, piano_schedule, piano_chord_schedule, performance_plan
 
 
-def play_timed(score, backend, hold_ms=300, clock=time.perf_counter, sleep=time.sleep):
-    plan = performance_plan(score, hold_ms)
-    schedule = plan.key_events
-    started, sent = clock(), 0
-
-    def wait_until(deadline):
-        while True:
-            backend.check()
-            remaining = deadline - clock()
-            if remaining <= 0:
-                return
-            sleep(min(0.01, remaining))
-
-    try:
-        for at, is_down, key in schedule:
-            wait_until(started + at)
-            if clock() - started - at > 0.3:
-                raise PlaybackStopped("系统调度延迟超过 300 毫秒，已停止，避免音符挤在一起。")
-            if is_down:
-                backend.down(key)
-                sent += key.virtual_key != SHIFT.virtual_key
-            else:
-                backend.up(key)
-        wait_until(started + plan.duration)
-        return sent
-    finally:
-        backend.release_all()
+def play_timed(score, backend, hold_ms=300, clock=time.perf_counter, sleep=time.sleep, *, control=None, on_progress=None,start_at=0):
+    from .playback import execute_plan
+    return execute_plan(performance_plan(score,hold_ms),backend,clock=clock,sleep=sleep,control=control,on_progress=on_progress,start_at=start_at)
 
 
 class CancellableKeyboard(WindowsKeyboard):
@@ -75,6 +52,11 @@ class CancellableKeyboard(WindowsKeyboard):
 
     def cancelled(self):
         return (self.cancel_path is not None and self.cancel_path.exists()) or super().cancelled()
+
+    def cancellation_reason(self):
+        if self.cancel_path is not None and self.cancel_path.exists():
+            return "收到工作台停止指令，已停止。"
+        return super().cancellation_reason()
 
 
 def write_progress(report_path, phase, **values):
@@ -91,19 +73,25 @@ def write_progress(report_path, phase, **values):
 def play_file(args):
     score = load_score(args.play)
     plan = performance_plan(score, args.hold_ms)  # Reject unsupported timing before UAC or focus changes.
+    start_at=getattr(args,'position',0)
+    if not math.isfinite(start_at) or not 0<=start_at<=plan.duration:raise ValueError('演奏位置超出曲谱范围。')
     if sys.platform != "win32":
         raise RuntimeError("游戏演奏仅支持 Windows。")
     if not ctypes.windll.shell32.IsUserAnAdmin():
         if args.elevated_child:
             raise RuntimeError("演奏进程未获得管理员权限。")
         arguments = ["--play", str(Path(args.play).resolve()), "--countdown", str(args.countdown), "--hold-ms", str(args.hold_ms)]
+        arguments.extend(['--position',str(start_at)])
         arguments.extend(["--data-dir", str(ROOT)])
         if args.report:
             arguments.extend(["--report", str(Path(args.report).resolve())])
         if args.cancel_file:
             arguments.extend(["--cancel-file", str(Path(args.cancel_file).resolve())])
+        if args.control_file:
+            arguments.extend(['--control-file',str(Path(args.control_file).resolve())])
         return run_elevated_and_wait(__file__, arguments)
     backend, code = None, 0
+    last_elapsed,last_sequence=start_at,0
     destination = Path(args.report) if args.report else ROOT / "nte_midi_last_run.json"
     duration = plan.duration
     report = {"title": score.get("title", "MIDI"), "status": "starting", "elevated": True,
@@ -124,8 +112,13 @@ def play_file(args):
                     raise PlaybackStopped("倒计时期间取消。")
                 time.sleep(0.01)
         backend.check()
-        write_progress(destination, "playing", started_at=time.time(), seconds=duration)
-        report["sent_notes"] = play_timed(score, backend, args.hold_ms)
+        from .playback import PauseControl
+        control=PauseControl(args.control_file,hotkey=lambda:bool(backend.user32.GetAsyncKeyState(0x76)&0x8000))
+        def progress(phase,elapsed,sequence):
+            nonlocal last_elapsed,last_sequence
+            last_elapsed,last_sequence=elapsed,sequence
+            write_progress(destination,phase,elapsed=elapsed,seconds=duration,control_sequence=sequence)
+        report["sent_notes"] = play_timed(score, backend, args.hold_ms,control=control,on_progress=progress,start_at=start_at)
         report["status"] = "completed"
         print("演奏按键已发送完毕。实际发声请在游戏中确认。", flush=True)
     except (PlaybackStopped, KeyboardInterrupt) as error:
@@ -139,22 +132,22 @@ def play_file(args):
     finally:
         if backend:
             backend.release_all()
+        report.update(elapsed=last_elapsed,control_sequence=last_sequence)
         destination.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-        write_progress(destination, report["status"])
+        write_progress(destination, report["status"],elapsed=last_elapsed,control_sequence=last_sequence)
     return code
 
 
-def render_preview(score, path, seconds=20, hold_ms=300, cancel=None):
+def render_preview(score, path, seconds=20, hold_ms=300, cancel=None, start_at=0):
     """Synthesize actual planned note attacks/releases, including Shift groups."""
     if not math.isfinite(seconds) or not 0 < seconds <= 60:
         raise ValueError("试听时长需为 0–60 秒。")
     plan = performance_plan(score, hold_ms)
-    stop = min(seconds, plan.duration)
-    events = [{"at": n.at, "duration": min(n.duration, stop - n.at), "midi": n.midi, 'velocity': n.velocity}
-              for n in plan.notes if n.at < stop]
-    if not events:
-        raise ValueError("试听范围内没有音符，请调整片段起点。")
-    return render_audio(events, path, stop, cancel=cancel)
+    if not math.isfinite(start_at) or not 0<=start_at<plan.duration:raise ValueError('试听位置超出曲谱范围。')
+    stop = min(start_at+seconds, plan.duration)
+    events = [{"at": max(n.at,start_at)-start_at, "duration": min(n.at+n.duration,stop)-max(n.at,start_at), "midi": n.midi, 'velocity': n.velocity}
+              for n in plan.notes if n.at < stop and n.at+n.duration>start_at]
+    return render_audio(events, path, stop-start_at, cancel=cancel)
 
 
 def render_song_preview(song, path, tracks=None, start=0, end=None, speed=1, transpose=0, seconds=20, cancel=None):
@@ -225,10 +218,12 @@ def main(argv=None):
     parser.add_argument("--range-policy", choices=["fold", "drop", "strict"], default="fold")
     parser.add_argument("--start", type=float, default=0)
     parser.add_argument("--end", type=float, help="片段终点（原曲秒数），留空演奏至曲末")
-    parser.add_argument("--play", metavar="JSON", help="将已转换曲谱发送到游戏（请求 UAC）")
-    parser.add_argument("--countdown", type=int, default=7)
+    parser.add_argument("--play", metavar="JSON", help="将已转换曲谱发送到游戏（需要管理员权限）")
+    parser.add_argument("--countdown", type=int, default=3)
+    parser.add_argument('--position',type=float,default=0,help='游戏曲谱内的续播位置 / 秒')
     parser.add_argument("--hold-ms", type=int, default=300)
     parser.add_argument("--cancel-file", help=argparse.SUPPRESS)
+    parser.add_argument('--control-file',help=argparse.SUPPRESS)
     parser.add_argument("--report", help=argparse.SUPPRESS)
     parser.add_argument("--elevated-child", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
@@ -276,8 +271,12 @@ def entrypoint():
     if sys.stderr is None:
         sys.stderr = open(os.devnull, "w", encoding="utf-8")
     raw = sys.argv[1:]
-    is_task = any(flag in raw for flag in ("--play", "--convert", "--inspect", "--self-test","--to-midi"))
+    from .startup import ensure_gui_elevation, is_task as task_arguments
+    is_task = task_arguments(raw)
     try:
+        startup_result=ensure_gui_elevation(raw)
+        if startup_result is not None:
+            return startup_result
         if sys.platform == "win32":
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("NteMusicDesk.Desktop.1")
         return main()

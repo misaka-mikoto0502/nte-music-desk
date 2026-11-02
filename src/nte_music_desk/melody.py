@@ -109,14 +109,25 @@ def combine_with_accompaniment(accompaniment,melody,title):
     # every voice to a piano is deliberate here; instrument names remain in tracks.
     from .parts import instrument_name
     names=list(accompaniment.track_names)+list(melody.track_names)
-    notes=[]
+    notes=[];duplicates=0
+    from bisect import bisect_left, bisect_right
+    from collections import defaultdict
+    by_pitch=defaultdict(list)
+    for n in melody.notes:by_pitch[n.pitch].append(n)
+    for group in by_pitch.values():group.sort(key=lambda n:n.start)
+    starts={pitch:[n.start for n in group] for pitch,group in by_pitch.items()}
     for n in accompaniment.notes:
         if n.channel==9:continue
+        group=by_pitch[n.pitch];times=starts.get(n.pitch,[])
+        nearby=group[bisect_left(times,n.start-.03):bisect_right(times,n.start+.03)]
+        if any(abs(n.end-v.end)<=.08 for v in nearby):
+            duplicates+=1;continue
         notes.append(replace(n,program=0))
         names[n.track]=f'伴奏 · {instrument_name(n.program,n.channel)} · {accompaniment.track_names[n.track]}'
     notes.extend(replace(n,track=n.track+offset,program=0) for n in melody.notes)
     return MidiSong(title,1,480,sorted(notes,key=lambda n:(n.start,n.track,n.pitch)),names,[(0,500000)],max(accompaniment.seconds,melody.seconds),
-                    ['主旋律为 Beta 识别结果；伴奏与旋律均转换为钢琴音色，原始伴奏 MIDI 另存保留。'])
+                    ['主旋律为 Beta 识别结果；伴奏与旋律均转换为钢琴音色，原始伴奏 MIDI 另存保留。',
+                     f'合并移除 {duplicates} 个与旋律近同时起止的同音重复；其余和声保留。'])
 
 
 def extract_beta(job,executable,audio,directory,models_directory,notify=None,language='auto',*,accepted_terms=False):

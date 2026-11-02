@@ -25,3 +25,5 @@ audio-engine.json
 audio-models/
 audio-checks/
 transcriptions/
+light-transcriptions/
+node_modules/

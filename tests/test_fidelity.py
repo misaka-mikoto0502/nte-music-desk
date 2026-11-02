@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 import unittest
+import copy
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from nte_music_desk.midi import MidiSong, MidiNote, convert, validate_score
 from nte_music_desk.performance import performance_plan
@@ -13,6 +14,81 @@ def fixture(notes, names=('melody', 'bass', 'harmony')):
 
 
 class FidelityChecks(unittest.TestCase):
+    def test_optional_onset_alignment_preserves_input_and_repeated_attacks(self):
+        events=[MidiNote(0,0,p,80,t,t+.15) for p,t in [(60,0),(64,.012),(67,.023),(72,.045),(60,.2),(60,.21),(64,.22)]]
+        score=convert(fixture(events),mode='faithful',instrument='guitar')
+        score['settings']['chord_alignment_ms']=24;before=copy.deepcopy(score)
+        plan=performance_plan(score)
+        self.assertEqual(score,before)
+        self.assertEqual(len(plan.notes),len(score['events']))
+        self.assertEqual([n.at for n in plan.notes[:4]],[0,0,0,.045])
+        self.assertEqual([n.at for n in plan.notes[4:]],[.2,.21,.22])
+        self.assertEqual(plan.aligned_notes,2);self.assertAlmostEqual(plan.max_alignment_ms,23)
+        score['settings']['chord_alignment_ms']=0
+        self.assertEqual(performance_plan(score).aligned_notes,0)
+
+    def test_alignment_respects_piano_shift_and_polyphony_limits(self):
+        score=convert(fixture([MidiNote(0,0,p,80,t,.4) for p,t in [(60,0),(64,.012),(67,.023)]]),mode='faithful',instrument='piano')
+        score['settings']['chord_alignment_ms']=24
+        plan=performance_plan(score)
+        self.assertEqual([n.at for n in plan.notes],[.02,.02,.02]);self.assert_piano_keys_safe(plan)
+        score['settings']['max_polyphony']=2
+        self.assertEqual(performance_plan(score).aligned_notes,0)
+        score=convert(fixture([MidiNote(0,0,60,80,0,.3),MidiNote(0,0,61,80,.012,.3)]),mode='faithful',instrument='piano')
+        score['settings']['chord_alignment_ms']=24
+        plan=performance_plan(score)
+        self.assertEqual(plan.aligned_notes,0);self.assert_piano_keys_safe(plan)
+
+    def test_alignment_uses_original_time_and_leaves_overlapping_repeats_alone(self):
+        song=fixture([MidiNote(0,0,60,80,0,.2),MidiNote(0,0,64,80,.02,.2),MidiNote(0,0,67,80,.03,.2)])
+        for speed in (.5,2):
+            score=convert(song,mode='faithful',instrument='guitar',speed=speed)
+            score['settings']['chord_alignment_ms']=24
+            plan=performance_plan(score)
+            self.assertEqual([n.at for n in plan.notes],[0,0,round(.03/speed,6)])
+            self.assertEqual(plan.aligned_notes,1)
+            self.assertAlmostEqual(plan.max_alignment_ms,20/speed)
+        song=fixture([MidiNote(0,0,60,80,0,.2),MidiNote(0,0,64,80,.1,.4),MidiNote(0,0,60,80,.11,.3)])
+        score=convert(song,mode='faithful',instrument='guitar')
+        score['settings']['chord_alignment_ms']=24
+        self.assertEqual(performance_plan(score).aligned_notes,0)
+
+    def assert_piano_keys_safe(self,plan):
+        held=set()
+        for _,down,key in plan.key_events:
+            if key==SHIFT:self.assertFalse(held)
+            elif down:
+                self.assertNotIn(key.virtual_key,held);held.add(key.virtual_key)
+            else:
+                self.assertIn(key.virtual_key,held);held.remove(key.virtual_key)
+        self.assertFalse(held)
+
+    def test_short_retrigger_gets_small_bounded_delay_instead_of_rejecting_song(self):
+        score=convert(fixture([MidiNote(0,0,60,80,0,.3),MidiNote(0,0,60,80,.010,.4)]),mode='faithful',instrument='piano')
+        plan=performance_plan(score)
+        self.assertEqual(len(plan.notes),2)
+        self.assertAlmostEqual(plan.max_timing_adjustment_ms,3)
+        self.assertEqual(plan.timing_adjusted_notes,1)
+        self.assertGreaterEqual(plan.notes[1].at-(plan.notes[0].at+plan.notes[0].duration),.008-1e-9)
+        self.assert_piano_keys_safe(plan)
+
+    def test_rolled_black_group_cannot_run_before_an_earlier_white_group(self):
+        score=convert(fixture([MidiNote(0,0,60,80,0,.4),MidiNote(0,0,61,80,0,.4),MidiNote(0,0,62,80,.03,.4)]),mode='faithful',instrument='piano')
+        plan=performance_plan(score)
+        self.assertEqual(len(plan.notes),3)
+        self.assertAlmostEqual(plan.max_timing_adjustment_ms,5)
+        self.assert_piano_keys_safe(plan)
+
+    def test_unplayable_density_still_rejects_instead_of_drifting_the_song(self):
+        score=convert(fixture([MidiNote(0,0,60+i%2,80,i*.001,.3+i*.001) for i in range(10)]),mode='faithful',instrument='piano')
+        with self.assertRaisesRegex(ValueError,'50 毫秒'):
+            performance_plan(score)
+
+    def test_final_shift_release_waits_for_earlier_overlapping_black_note(self):
+        score=convert(fixture([MidiNote(0,0,61,80,0,.8),MidiNote(0,0,63,80,.1,.15)]),mode='faithful',instrument='piano')
+        plan=performance_plan(score,400)
+        self.assert_piano_keys_safe(plan)
+
     def test_twelve_voice_chord_and_duplicate_accounting(self):
         song = fixture([MidiNote(0, 0, p, 80, 0, .5) for p in range(60, 72)])
         score = convert(song, mode='faithful')

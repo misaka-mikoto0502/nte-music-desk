@@ -8,17 +8,17 @@ import math
 from pathlib import Path
 import uuid
 
-from .midi import read_midi
+from .midi import read_midi, write_midi
 from .paths import asset_dir
-from .rights import validate_use, require_separation_license, MUSCRIPTOR_TERMS, GAME_TERMS
-from .transcription import ProcessJob, TranscriptionCancelled, AUDIO_SUFFIXES, ENGINE_VERSION, managed_python, transcription_command
+from .rights import validate_use, require_separation_license, MUSCRIPTOR_TERMS, GAME_TERMS, SEPARATION_MODEL
+from .transcription import ProcessJob, TranscriptionCancelled, AUDIO_SUFFIXES, ENGINE_VERSION, MODEL_PARAMETERS, managed_python, transcription_command
 
 DECODER_VERSION = '0.6.0'
 # A tested Windows/Python 3.12 baseline. Newest binary wheels may have different
 # DLL requirements; keep the three PyTorch components mutually compatible.
 AUDIO_DEPENDENCIES = [f'muscriptor=={ENGINE_VERSION}',
     f'imageio-ffmpeg=={DECODER_VERSION}','numpy==2.2.6','scipy==1.15.3','librosa==0.11.0',
-    'numba==0.61.2','onnxruntime==1.22.1']
+    'numba==0.61.2','onnxruntime==1.22.1','openunmix==1.3.0']
 TORCH_DEPENDENCIES = ['torch==2.8.0','torchaudio==2.8.0','torchvision==0.23.0']
 MELODY_DEPENDENCIES = ['numpy==2.2.6','scipy==1.15.3','soundfile>=0.14,<1','onnxruntime==1.22.1',f'imageio-ffmpeg=={DECODER_VERSION}']
 
@@ -36,6 +36,7 @@ class AudioRequest:
     rights_basis: str = ''
     rights_reference: str = ''
     accepted_models: tuple[str, ...] = ()
+    separator: str = 'umxhq'
 
     def validate(self):
         path = Path(self.source).expanduser().resolve()
@@ -45,8 +46,8 @@ class AudioRequest:
             raise ValueError('音频需大于 0 且不超过 512 MB。')
         if self.source_kind not in ('original', 'instrumental'):
             raise ValueError('请选择原唱或伴奏 / 纯音乐。')
-        if self.model not in ('small','medium','large') or self.device not in ('cpu','auto','cuda'):
-            raise ValueError('模型或设备无效。')
+        if self.model not in MODEL_PARAMETERS or self.device not in ('cpu','auto','cuda'):
+            raise ValueError('本版仅支持 1B 参数以内的 small / medium 模型，以及 CPU / NVIDIA 设备。')
         if type(self.melody_beta) is not bool:
             raise ValueError('旋律 Beta 选项无效。')
         if self.melody_language not in ('auto','zh','ja','en','yue'):
@@ -57,6 +58,7 @@ class AudioRequest:
             raise ValueError('片段终点需大于起点，单次最多 30 分钟。')
         if self.melody_beta and self.source_kind != 'original':
             raise ValueError('旋律 Beta 需要包含歌声的原唱音频，请选择“原唱 / 含人声”。')
+        require_separation_license(self.separator)
         return replace(self,source=path)
 
     def use_record(self, melody_only=False):
@@ -73,6 +75,7 @@ class AudioResult:
     melody: Path | None = None
     combined: Path | None = None
     warnings: tuple[str,...] = ()
+    vocals_audio: Path | None = None
 
 
 def python_engine(executable):
@@ -97,7 +100,7 @@ class AudioPipeline(ProcessJob):
         request.write_text(json.dumps({**config,'operation':operation,'response':str(response)},ensure_ascii=False),encoding='utf-8')
         self.run([str(python_engine(executable)),str(asset_dir()/'audio_worker.py'),str(request)],
                  directory/'engine.log',notify,timeout=7200 if operation=='separate' else 120,
-                 failure={'prepare':'音频解码或选段失败。','separate':'伴奏分离失败，请检查依赖、模型下载与设备。','diagnose':'环境检查失败，请检查 Python 与依赖。'}[operation],
+                 failure={'prepare':'音频解码或选段失败。','separate':'伴奏分离失败，请检查依赖、模型下载与设备。','diagnose':'环境检查失败，请检查 Python 与依赖。','model_access':'模型访问检查失败。'}[operation],
                  environment={'CUDA_VISIBLE_DEVICES':'-1'} if config.get('device')=='cpu' else None)
         if not response.is_file() or response.stat().st_size > 128*1024:
             raise ValueError('音频引擎未返回有效结果。')
@@ -111,7 +114,15 @@ class AudioPipeline(ProcessJob):
         target.mkdir(parents=True)
         return self.worker(executable,'diagnose',target,{'model':model},notify)
 
-    def install(self, python, directory, notify=None, device='cpu', melody_only=False):
+    def verify_model_access(self, executable, directory, model='medium', notify=None, *, accepted_terms=False):
+        if accepted_terms is not True:raise ValueError('请先阅读并确认 MuScriptor 模型条款。')
+        if model not in MODEL_PARAMETERS:raise ValueError('本版仅支持 1B 参数以内的 small / medium 模型。')
+        target=Path(directory)/'audio-checks'/uuid.uuid4().hex;target.mkdir(parents=True)
+        return self.worker(executable,'model_access',target,{'model':model},notify)
+
+    def install(self, python, directory, notify=None, device='cpu', melody_only=False, separation_only=False):
+        if device not in ('cpu','auto','cuda'):
+            raise ValueError('请选择 CPU、自动或 NVIDIA GPU。')
         python = python_engine(python)
         directory = Path(directory)
         directory.mkdir(parents=True,exist_ok=True)
@@ -122,9 +133,19 @@ class AudioPipeline(ProcessJob):
             self.run([str(target),'-m','pip','install','--disable-pip-version-check',*MELODY_DEPENDENCIES],log,notify,failure='旋律 Beta 依赖安装失败，可重试。')
             self.diagnose(target,directory,notify=notify)
             return target
-        torch_command=[str(target),'-m','pip','install','--disable-pip-version-check',*TORCH_DEPENDENCIES]
-        if device=='cuda':torch_command+=['--index-url','https://download.pytorch.org/whl/cu128']
+        variant='cu128' if device=='cuda' else 'cpu'
+        torch_command=[str(target),'-m','pip','install','--disable-pip-version-check',
+                       *(package+'+'+variant for package in TORCH_DEPENDENCIES)]
+        # Auto uses a portable CPU baseline until a user explicitly requests
+        # CUDA. Avoid downloading the much larger NVIDIA runtime by accident.
+        # Pin local wheel tags too: a pre-existing +cu128 install otherwise
+        # satisfies ==2.8.0 and would not switch back to the CPU profile.
+        torch_command+=['--index-url','https://download.pytorch.org/whl/'+variant]
         self.run(torch_command,log,notify,failure='PyTorch 安装失败，请检查下载连接；NVIDIA 组件需要较大空间与兼容驱动。')
+        if separation_only:
+            self.run([str(target),'-m','pip','install','--disable-pip-version-check','openunmix==1.3.0',
+                      'soundfile>=0.14,<1',f'imageio-ffmpeg=={DECODER_VERSION}'],log,notify,failure='分离引擎安装失败，可重试。')
+            return target
         self.run([str(target),'-m','pip','install','--disable-pip-version-check',
                   *TORCH_DEPENDENCIES,*AUDIO_DEPENDENCIES],log,notify,
                  failure='音频引擎依赖安装失败，可重试；原 Python 环境未改动。')
@@ -134,11 +155,11 @@ class AudioPipeline(ProcessJob):
 
     def preflight(self, executable, request, job, notify=None, require_transcription=True, require_separation=True):
         checks=self.worker(executable,'diagnose',job,{'model':request.model,'device':request.device},notify)
-        required=['soundfile','imageio-ffmpeg']+(['audio-separator'] if require_separation and request.source_kind=='original' else [])+(['muscriptor','torch'] if require_transcription else ['onnxruntime'])
+        required=['soundfile','imageio-ffmpeg']+(['openunmix','torch'] if require_separation and request.source_kind=='original' else [])+(['muscriptor','torch'] if require_transcription else (['onnxruntime'] if not require_separation else []))
         missing=[name for name in required if not checks.get(name)]
         if missing or not checks.get('decoder'):
             raise ValueError('独立引擎缺少依赖：'+', '.join(missing or ['音频解码器'])+'。请安装 / 更新独立引擎。')
-        if not require_transcription and not checks.get('onnxruntime_ready'):
+        if not require_transcription and not require_separation and not checks.get('onnxruntime_ready'):
             raise ValueError('旋律 Beta 的 ONNX Runtime 无法启动，请更新独立引擎或查看环境检查日志。')
         if request.device=='cuda' and (require_transcription or require_separation) and not checks.get('cuda_available'):
             raise ValueError('当前引擎未启用 NVIDIA GPU，请安装 GPU 组件或选择 CPU。')
@@ -146,11 +167,44 @@ class AudioPipeline(ProcessJob):
             raise ValueError('伴奏转谱需要先完成 MuScriptor 模型授权与 Hugging Face 登录。请打开“配置说明”；旋律 Beta 可独立试用。')
         return checks
 
+    def preview(self, executable, request, directory, notify=None):
+        """Decode at most 30 seconds before inference; never load any model."""
+        executable, request = python_engine(executable), request.validate()
+        target = Path(directory)/'audio-previews'/uuid.uuid4().hex
+        target.mkdir(parents=True)
+        output = target/'preview.wav'
+        end = min(request.end or request.start+30, request.start+30)
+        # A short file with an unspecified end can end before the 30s cap.
+        self.worker(executable,'prepare',target,{'source':str(request.source),'output':str(output),
+                    'start':request.start,'end':end,'allow_short':request.end is None or request.end>request.start+30},notify)
+        return output
+
+    def separate_only(self, executable, request, directory, notify=None):
+        executable, request = python_engine(executable), request.validate()
+        if request.source_kind!='original':raise ValueError('人声分离请先选择“原唱 / 含人声”。')
+        use_record = validate_use(request.rights_basis,request.rights_reference,request.accepted_models,[])
+        root=Path(directory);job=root/'transcriptions'/uuid.uuid4().hex;job.mkdir(parents=True)
+        try:
+            self.preflight(executable,request,job,notify,require_transcription=False,require_separation=True)
+            prepared=job/'source.wav'
+            self.worker(executable,'prepare',job,{'source':str(request.source),'output':str(prepared),'start':request.start,'end':request.end},notify)
+            info=self.worker(executable,'separate',job,{'source':str(prepared),'output':str(job),
+                'models':str(root/'audio-models'/'umxhq'),'device':request.device,'separator':request.separator},notify)
+            backing,vocals=job/'accompaniment.wav',job/'vocals.wav'
+            if not backing.is_file() or not vocals.is_file():raise ValueError('分离任务没有输出完整的人声与伴奏。')
+            if self.cancelled.is_set():raise TranscriptionCancelled('任务已取消；未导入分离结果。')
+            (job/'provenance.json').write_text(json.dumps({'schema':'nte-audio-pipeline-v1','workflow':'separation',
+                'source_name':request.source.name,'source_sha256':sha256(request.source),'source_start_seconds':request.start,
+                'separation':info,'model':SEPARATION_MODEL,'rights':use_record,
+                'quality':'model output, requires audition; not a measured fidelity score'},ensure_ascii=False,indent=2),encoding='utf-8')
+            return AudioResult(job,None,prepared,backing,vocals_audio=vocals)
+        finally:self.sanitize_log(job/'engine.log')
+
     def accompaniment(self, executable, request, directory, notify=None):
         executable, request = python_engine(executable), request.validate()
         use_record = request.use_record()
         if request.source_kind == 'original' or request.melody_beta:
-            require_separation_license()
+            require_separation_license(request.separator)
         root = Path(directory)
         job = root/'transcriptions'/uuid.uuid4().hex
         job.mkdir(parents=True,exist_ok=False)
@@ -164,6 +218,14 @@ class AudioPipeline(ProcessJob):
             prepared = job/'source.wav'
             info = self.worker(executable,'prepare',job,{'source':str(request.source),'output':str(prepared),'start':request.start,'end':request.end},notify)
             backing = prepared
+            vocals = None
+            separation = None
+            if request.source_kind=='original':
+                stage('分离人声与伴奏（UMX-HQ）…')
+                separation=self.worker(executable,'separate',job,{'source':str(prepared),'output':str(job),
+                    'models':str(root/'audio-models'/'umxhq'),'device':request.device,'separator':request.separator},notify)
+                backing,vocals=job/'accompaniment.wav',job/'vocals.wav'
+                if not backing.is_file() or not vocals.is_file():raise ValueError('分离任务没有输出完整的人声与伴奏。')
             stage('2/2 识别伴奏中的乐器声部，保留原始起音与和声…')
             self.run(transcription_command(executable,backing,staging,request.model,request.device),job/'engine.log',notify,
                      failure='伴奏转谱失败。请检查 MuScriptor 模型授权、登录、设备和日志。')
@@ -182,11 +244,27 @@ class AudioPipeline(ProcessJob):
                 'model':request.model,'device':request.device, 'midi_sha256':sha256(staging),'notes':len(song.notes),
                 'parts':len(song.track_info()),'timing':'relative to selected audio start; leading silence retained in MIDI',
                 'quality':'model output, requires audition; not a measured fidelity score', 'melody_beta_requested':request.melody_beta,
-                'rights':use_record}
+                'rights':use_record,'separation':separation,'separation_model':SEPARATION_MODEL if separation else None}
             (job/'provenance.json').write_text(json.dumps(metadata,ensure_ascii=False,indent=2),encoding='utf-8')
             stage('伴奏已完成，可试听并导入工作台。')
             staging.replace(result)
-            outcome=AudioResult(job,result,prepared,backing)
+            outcome=AudioResult(job,result,prepared,backing,vocals_audio=vocals)
+            if request.melody_beta:
+                from .melody import extract_beta, combine_with_accompaniment
+                try:
+                    stage('伴奏已保留，正在识别独立主旋律 Beta…')
+                    melody,beta=extract_beta(self,executable,vocals,job,root,notify,language=request.melody_language,
+                                            accepted_terms=GAME_TERMS in request.accepted_models)
+                    named=job/(request.source.stem[:70]+'_旋律Beta.mid');melody.replace(named)
+                    combined=job/(request.source.stem[:70]+'_伴奏与旋律Beta.mid')
+                    merged=combine_with_accompaniment(song,read_midi(named),request.source.stem)
+                    write_midi(merged,combined)
+                    metadata['melody_beta']={k:v for k,v in beta.items() if k!='notes'}
+                    outcome=replace(outcome,melody=named,combined=combined,warnings=tuple(merged.warnings))
+                except TranscriptionCancelled:raise
+                except (ValueError,OSError) as error:
+                    outcome=replace(outcome,warnings=('主旋律 Beta 未完成，伴奏仍可使用：'+str(error).splitlines()[0],))
+                metadata['warnings']=list(outcome.warnings)
             if self.cancelled.is_set():raise TranscriptionCancelled('任务已取消；已完成的伴奏保留在结果目录。')
             metadata['results']={key:getattr(outcome,key).name for key in ('accompaniment','melody','combined') if getattr(outcome,key)}
             (job/'provenance.json').write_text(json.dumps(metadata,ensure_ascii=False,indent=2),encoding='utf-8')

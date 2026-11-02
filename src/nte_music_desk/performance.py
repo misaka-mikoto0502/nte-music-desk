@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from .midi import validate_score, note_name
 from .keyboard import KEYS, PianoKey
 from .instruments import SHIFT, score_instrument
@@ -24,6 +25,10 @@ class PerformancePlan:
     notes: tuple[PlannedNote, ...]
     duration: float
     mixed_groups: int
+    timing_adjusted_notes: int = 0
+    max_timing_adjustment_ms: float = 0
+    aligned_notes: int = 0
+    max_alignment_ms: float = 0
 
 
 def _record(notes, event, at, release):
@@ -32,13 +37,46 @@ def _record(notes, event, at, release):
                                  event.get("source_at", event["at"]), event.get("source_track", -1), event.get('velocity', 80)))
 
 
-def _compile_keys(score, hold_ms=300, notes=None):
+def _align_score(score,timing):
+    """Opt-in chord onset alignment on a copy, bounded from each group's first onset.
+
+    Do not chain nearby events into a long group or cross a piano Shift state.
+    Original source timestamps stay available for reports and resume positions.
+    """
+    milliseconds=score.get('settings',{}).get('chord_alignment_ms',0)
+    if type(milliseconds) is not int or milliseconds not in (0,24):raise ValueError('起音对齐只支持关闭或 24 毫秒。')
+    if not milliseconds or score['mode']=='melody':return score
+    speed=score.get('settings',{}).get('speed',1)
+    if type(speed) not in (int,float) or not math.isfinite(speed) or speed<=0:raise ValueError('曲谱速度无效。')
+    groups=[]
+    for event in score['events']:
+        if not groups or event['at']-groups[-1][0]['at']>milliseconds/1000/speed+1e-9:groups.append([event])
+        else:groups[-1].append(event)
+    result,previous_end=[],{}
+    limit=score.get('settings',{}).get('max_polyphony',6)
+    profile=score_instrument(score)
+    for group in groups:
+        at=group[0]['at'];pitches=[event['midi'] for event in group]
+        eligible=(1<len(group)<=limit and len(set(pitches))==len(pitches)
+            and (profile.id!='piano' or len({profile.keys[note_name(pitch)].shifted for pitch in pitches})==1)
+            and all(previous_end.get(event['midi'],0)<=at+1e-9 and event['duration']+event['at']-at<=120 for event in group))
+        for event in group:
+            shift=event['at']-at if eligible else 0
+            previous_end[event['midi']]=max(previous_end.get(event['midi'],0),event['at']+event['duration'])
+            if shift>1e-9:
+                event={**event,'at':at,'duration':event['duration']+shift}
+                timing['aligned_notes']+=1;timing['max_alignment_ms']=max(timing['max_alignment_ms'],shift*1000)
+            result.append(event)
+    return {**score,'events':sorted(result,key=lambda event:(event['at'],event['midi']))}
+
+
+def _compile_keys(score, hold_ms=300, notes=None, timing=None):
     validate_score(score)
     if not 20 <= hold_ms <= 400:
         raise ValueError("按键时长应为 20–400 毫秒。")
     profile = score_instrument(score)
     if profile.id == "piano":
-        return piano_schedule(score, hold_ms, notes)
+        return piano_schedule(score, hold_ms, notes, timing)
     events, next_key = [], {}
     # Reverse scan finds the next occurrence of the same physical key, so a
     # repeated pitch always gets a release gap, including octave-fold collisions.
@@ -57,10 +95,10 @@ def _compile_keys(score, hold_ms=300, notes=None):
     return events
 
 
-def piano_schedule(score, hold_ms, notes=None):
+def piano_schedule(score, hold_ms, notes=None, timing=None):
     """Reserve a modifier-settle gap; no note remains down across a Shift change."""
     if score["mode"] != "melody":
-        return piano_chord_schedule(score, hold_ms, notes)
+        return piano_chord_schedule(score, hold_ms, notes, timing)
     events, shifted, last_release = [], False, 0
     source_notes = score["events"]
     for index, note in enumerate(source_notes):
@@ -87,7 +125,30 @@ def piano_schedule(score, hold_ms, notes=None):
     return events
 
 
-def piano_chord_schedule(score, hold_ms, notes=None):
+def _settle_piano_batches(batches, timing):
+    """Resolve brief conflicts without shrinking modifier/retrigger safety gaps."""
+    result,last_keys=[],{}
+    previous_at,previous_shift=-float('inf'),None
+    for desired,shifted,part in sorted(batches,key=lambda batch:batch[0]):
+        at=max(desired,previous_at)
+        if previous_shift is not None and shifted!=previous_shift:
+            at=max(at,previous_at+.030)  # 5 ms attack plus 25 ms modifier gap.
+        for _,mapped in part:
+            at=max(at,last_keys.get(mapped.virtual_key,-float('inf'))+.013)  # 5 + 8 ms.
+        delay=at-desired
+        if delay>.050+1e-9:
+            source_at=part[0][0].get('source_at',desired)
+            raise ValueError(f'钢琴在原曲 {source_at:.2f} 秒附近过密，所需局部延后超过 50 毫秒；请使用吉他钢琴模式、减少声部或降低速度。')
+        if timing is not None and delay>1e-9:
+            timing['adjusted_notes']+=len(part)
+            timing['max_delay_ms']=max(timing['max_delay_ms'],delay*1000)
+        result.append((at,shifted,part))
+        previous_at,previous_shift=at,shifted
+        for _,mapped in part:last_keys[mapped.virtual_key]=at
+    return result
+
+
+def piano_chord_schedule(score, hold_ms, notes=None, timing=None):
     """White/black subgroups use short successive attacks, never mixed Shift states.
 
     Within each subgroup the physical keys are pressed together. Release all
@@ -121,6 +182,9 @@ def piano_chord_schedule(score, hold_ms, notes=None):
             batches.append((group[0]["at"] + 0.02 + offset * 0.055, shifted, part))
     events, owns_shift, last_release = [], False, 0
     preserving = score['mode'] in ('faithful', 'balanced')
+    # The 55 ms black-key roll can cross later source onsets. Future release
+    # constraints must use chronological batches, not source-group order.
+    batches=(_settle_piano_batches(batches,timing) if preserving else sorted(batches,key=lambda batch:batch[0]))
     switch_at, next_switch = float('inf'), {}
     for i in range(len(batches) - 1, -1, -1):
         if i + 1 < len(batches) and batches[i][1] != batches[i + 1][1]:
@@ -139,18 +203,18 @@ def piano_chord_schedule(score, hold_ms, notes=None):
         elif index + 1 < len(batches):
             next_at, next_shift, _ = batches[index + 1]
             release_cap = next_at - (0.025 if shifted != next_shift else 0.008)
-        if release_cap - at < 0.005:
+        if release_cap - at < 0.005-1e-9:
             raise ValueError("钢琴和弦过密，无法留出分组与松键时间，请降低速度倍率或减少音轨。")
         if shifted != owns_shift:
             events.append((at - 0.015, int(shifted), SHIFT))
             owns_shift = shifted
-        last_release = at
+        last_release = max(last_release,at)
         for note, mapped in part:
             key = PianoKey(mapped.label.replace("Shift + ", ""), mapped.virtual_key, mapped.scan_code)
             release = min(at + min(hold_ms / 1000, note["duration"] * 0.8), release_cap)
             if preserving:
                 release = min(release, same_key_at[index, mapped.virtual_key] - .008)
-                if release - at < .005:
+                if release - at < .005-1e-9:
                     raise ValueError('钢琴声部在 Shift 切换或重复键处过密，请降低速度或使用吉他钢琴模式。')
             events.extend([(at, 1, key), (release, 0, key)])
             _record(notes, note, at, release)
@@ -163,7 +227,10 @@ def piano_chord_schedule(score, hold_ms, notes=None):
 
 def performance_plan(score, hold_ms=300):
     notes = []
-    keys = _compile_keys(score, hold_ms, notes)
+    validate_score(score)
+    timing={'adjusted_notes':0,'max_delay_ms':0,'aligned_notes':0,'max_alignment_ms':0}
+    score=_align_score(score,timing)
+    keys = _compile_keys(score, hold_ms, notes, timing)
     if not notes:
         raise ValueError("曲谱没有可执行的音符。")
     notes.sort(key=lambda n: (n.at, n.midi))
@@ -177,7 +244,7 @@ def performance_plan(score, hold_ms=300):
     mixed = sum(len({profile.keys[note_name(e["midi"])].shifted for e in group}) > 1 for group in groups) if profile.id == "piano" else 0
     duration = max(score.get("summary", {}).get("seconds", 0), keys[-1][0],
                    max(n.at + n.duration for n in notes))
-    return PerformancePlan(tuple(keys), tuple(notes), duration, mixed)
+    return PerformancePlan(tuple(keys), tuple(notes), duration, mixed,timing['adjusted_notes'],round(timing['max_delay_ms'],3),timing['aligned_notes'],round(timing['max_alignment_ms'],3))
 
 
 def key_schedule(score, hold_ms=300):

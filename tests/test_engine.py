@@ -41,6 +41,19 @@ class Keyboard:
 
 
 class MidiChecks(unittest.TestCase):
+    def test_stop_command_is_distinguished_from_physical_stop_hotkey(self):
+        with tempfile.TemporaryDirectory() as directory:
+            native = cli.CancellableKeyboard.__new__(cli.CancellableKeyboard)
+            native.cancel_path = Path(directory) / 'stop'
+            native.user32 = SimpleNamespace(GetAsyncKeyState=lambda vk: 0)
+            native.cancel_path.touch()
+            with self.assertRaisesRegex(PlaybackStopped, '工作台停止指令'):
+                native.check()
+            native.cancel_path.unlink()
+            native.user32.GetAsyncKeyState = lambda vk: 0x8000 if vk == 0x77 else 0
+            with self.assertRaisesRegex(PlaybackStopped, 'Esc 或 F8'):
+                native.check()
+
     def test_preview_and_execution_share_mixed_chord_and_repeated_key_timing(self):
         for instrument in ('piano', 'guitar'):
             for mode in ('melody', 'chords'):

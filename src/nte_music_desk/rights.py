@@ -1,6 +1,8 @@
 """Explicit user statements and model terms, never an automated legal verdict."""
 MUSCRIPTOR_TERMS = 'muscriptor-cc-by-nc-4.0-2026-10-21'
 GAME_TERMS = 'game-1.0-cc-by-nc-sa-4.0-2026-10-21'
+SEPARATION_MODEL = {'name': 'Open-Unmix UMX-HQ', 'license': 'MIT',
+                    'url': 'https://zenodo.org/records/3370489', 'code_version': '1.3.0'}
 MODEL_TERMS = {
     MUSCRIPTOR_TERMS: {'name': 'MuScriptor', 'license': 'CC BY-NC 4.0 + additional conditions',
                        'url': 'https://huggingface.co/MuScriptor/muscriptor-medium'},
@@ -30,7 +32,8 @@ def validate_use(basis, reference, accepted_models, models):
             'publication_rights': 'not_verified; check separately before sharing MIDI or video'}
 
 
-def require_separation_license():
+def require_separation_license(model=None):
     # The publicly downloadable ViperX checkpoint has no verified grant in our
     # audit. Wrapper code's MIT license cannot license those third-party weights.
-    raise ValueError('原唱分离暂不可用：原分离模型的权重许可尚未核实，已停用下载与调用。请使用已获授权的伴奏 / 纯音乐，或单独试用主旋律 Beta。')
+    if model != 'umxhq':
+        raise ValueError('原 ViperX 权重许可尚未核实，不下载或调用；请选择官方 UMX-HQ 分离模型。')

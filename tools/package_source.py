@@ -1,29 +1,55 @@
 """Create a GitHub-ready source ZIP from an explicit directory allowlist."""
 import hashlib
+import argparse
 from pathlib import Path
 import sys
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT))
 sys.path.insert(0,str(ROOT/"src"))
 from nte_music_desk import __version__
+from tools.check_release import check_release
 
+
+TOP_FILES=("README.md","LICENSE","THIRD_PARTY_NOTICES.md","CHANGELOG.md","pyproject.toml","requirements-build.txt",".gitignore",".gitattributes")
+HOST_BINARIES={"src/nte_music_desk/assets/audio_window/"+name for name in (
+    "NteAudioWindow.exe","Microsoft.Web.WebView2.Core.dll","Microsoft.Web.WebView2.WinForms.dll","WebView2Loader.dll")}
+PRIVATE_DIRS={"__pycache__","node_modules",".venv","venv",".build","build","dist","runs","arrangements",
+              "light-transcriptions","transcriptions","audio-models","downloaded_midis","catalog_cache"}
+
+def collect_files(root=ROOT):
+    files=[root/name for name in TOP_FILES]
+    for directory in ("src","tests","tools","docs",".github"):
+        for path in (root/directory).rglob("*"):
+            relative=path.relative_to(root)
+            if (not path.is_file() or path.is_symlink() or any(part in PRIVATE_DIRS or part.endswith('.egg-info') for part in relative.parts)
+                or path.suffix in ('.pyc','.pyo','.log') or path.name in ('midi_ui_settings.json','audio-engine.json','.env') or path.name.startswith('.env.')):continue
+            if path.suffix.lower() in ('.exe','.dll','.cmd','.bat') and relative.as_posix() not in HOST_BINARIES:
+                raise ValueError(f'Unexpected executable in source tree: {relative}')
+            files.append(path)
+    files.append(root/"releases/README.md")
+    return sorted(files)
 
 def main():
-    files=[ROOT/name for name in ("README.md","LICENSE","THIRD_PARTY_NOTICES.md","CHANGELOG.md","pyproject.toml","requirements-build.txt",".gitignore")]
-    for directory in ("src","tests","tools","docs",".github"):
-        for path in (ROOT/directory).rglob("*"):
-            if path.is_file() and not any(part == "__pycache__" or part.endswith(".egg-info") for part in path.parts) and path.suffix not in (".pyc",".pyo",".log"):
-                files.append(path)
-    files.append(ROOT/"releases/README.md")
-    output=ROOT/"releases"/f"NTE-Music-Desk-v{__version__}-Source.zip"
-    output.parent.mkdir(exist_ok=True)
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--output',type=Path,default=ROOT/"releases"/f"v{__version__}"/f"NTE-Music-Desk-v{__version__}-Source.zip")
+    parser.add_argument('--overwrite',action='store_true')
+    args=parser.parse_args();output=args.output.resolve()
+    if output.exists() and not args.overwrite:raise FileExistsError('Source archive already exists; choose a new --output or explicitly use --overwrite')
+    check_release(ROOT)
+    files=collect_files()
+    output.parent.mkdir(parents=True,exist_ok=True)
     with zipfile.ZipFile(output,"w",zipfile.ZIP_DEFLATED,compresslevel=9) as archive:
-        for path in sorted(files):
+        for path in files:
             archive.write(path,"nte-music-desk/"+path.relative_to(ROOT).as_posix())
     with zipfile.ZipFile(output) as archive:
         assert archive.testzip() is None
-        assert all(not any(part in name for part in ("__pycache__","midi_ui_settings.json","downloaded_midis/","runs/",".exe",".cmd")) for name in archive.namelist())
+        assert 'nte-music-desk/.gitattributes' in archive.namelist()
+        for name in archive.namelist():
+            relative=Path(name).relative_to('nte-music-desk')
+            assert not PRIVATE_DIRS.intersection(relative.parts)
+            if relative.suffix.lower() in ('.exe','.dll','.cmd','.bat'):assert relative.as_posix() in HOST_BINARIES
     digest=hashlib.sha256(output.read_bytes()).hexdigest()
     output.with_suffix(".zip.sha256").write_text(f"{digest}  {output.name}\n",encoding="ascii")
     print(f"Source package: {len(files)} files, {output.stat().st_size:,} bytes")

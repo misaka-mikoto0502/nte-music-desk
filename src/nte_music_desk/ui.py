@@ -10,8 +10,10 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import uuid
 import logging
+import math
 import os
 import re
+import sys
 
 from .midi import convert, note_name, save_score, validate_score, write_midi
 from .notation import read_score
@@ -86,34 +88,45 @@ class App:
         self.directory.mkdir(parents=True, exist_ok=True)
         self.assets = getattr(engine, "ASSETS", self.directory)
         self.audio_dialog = None
+        self.file_drop = None
+        self.light_audio = None
+        self.light_window = None
+        self.task_lock=threading.RLock()
+        self.audio_audition = None
         self.song, self.score, self.active = None, None, None
         self.track_ids, self.controls, self.library_buttons = [], [], []
+        self.pending_import = None
+        self.seek_drag=None
+        self.position_save_at=0
         self.messages, self.refresh_job = queue.Queue(), None
         self.preview_token, self.preview_started, self.preview_length = None, None, 0
         self.recommend_token = None
         self.stop_requested, self.syncing_speed, self.closed = False, False, False
         self.advanced_visible, self.notes_visible = False, False
         self.preferences = self.read_preferences()
+        self.mini=None
+        self.mini_visible=tk.BooleanVar(value=self.preferences.get('mini_player_visible',True) is True)
         self.background_opacity = tk.DoubleVar(value=self.background_strength())
         self.preset_store = PresetStore(self.directory)
         self.song_fingerprint, self.syncing_settings = None, False
         self.invalid_presets = set()
         self.speed = tk.StringVar(value=str(self.preferences.get("speed", "1.0")))
         self.transpose = tk.StringVar(value=str(self.preferences.get("transpose", "0")))
-        self.start, self.countdown, self.hold_ms = tk.StringVar(value="0"), tk.StringVar(value="7"), tk.StringVar(value="300")
+        self.start, self.countdown, self.hold_ms = tk.StringVar(value="0"), tk.StringVar(value=str(self.preferences.get('countdown',DEFAULTS['countdown']))), tk.StringVar(value="300")
         self.end = tk.StringVar(value="")
         self.mode = tk.StringVar(value=MODES['faithful'])
         self.max_polyphony = tk.StringVar(value="12")
+        self.chord_align=tk.BooleanVar(value=False)
         selected = INSTRUMENTS.get(self.preferences.get("instrument"), INSTRUMENTS["guitar"])
         self.instrument = tk.StringVar(value=selected.title)
         self.applied_instrument = selected.id
         self.range_policy = tk.StringVar(value="超出音域折回八度")
         self.speed_slider = tk.DoubleVar(value=1.0)
-        self.title, self.subtitle = tk.StringVar(value="选择一首曲子"), tk.StringVar(value="从左侧曲库开始，或导入自己的 MIDI")
+        self.title, self.subtitle = tk.StringVar(value="选择一首曲子"), tk.StringVar(value="从左侧曲目架开始，或导入本地曲谱")
         self.status = tk.StringVar(value="先选曲，再试听，最后开始游戏演奏。")
         self.notice = tk.StringVar(value="")
         self.time_text, self.progress = tk.StringVar(value="00:00 / 00:00"), tk.DoubleVar(value=0)
-        self.root.title(f"{APP_NAME} · v{__version__}")
+        self.root.title(f"{APP_NAME} · v{__version__}"+(' · 开发预览' if not getattr(sys,'frozen',False) else ''))
         try:
             root.iconbitmap(str(self.assets / "icon.ico"))
         except tk.TclError:
@@ -126,13 +139,19 @@ class App:
         root.option_add("*Font", (FONT, 10))
         self.configure_styles()
         self.build_layout()
+        if sys.platform == 'win32':
+            from .file_drop import FileDropTarget
+            root.update_idletasks()
+            try:self.file_drop=FileDropTarget(self.drop_zone,self.messages.put)
+            except OSError as error:logging.getLogger(__name__).warning('File drop unavailable: %s',error)
         self.build_menu()
-        for variable in (self.speed, self.transpose, self.start, self.end, self.mode, self.max_polyphony, self.range_policy, self.countdown, self.hold_ms, self.instrument):
+        for variable in (self.speed, self.transpose, self.start, self.end, self.mode, self.max_polyphony, self.range_policy, self.countdown, self.hold_ms, self.instrument,self.chord_align):
             variable.trace_add("write", self.queue_refresh)
         self.tracks.bind("<<ListboxSelect>>", self.queue_refresh)
         root.bind("<Control-o>", lambda _: self.open_file())
         root.bind("<Control-Return>", lambda _: self.play(None))
         root.bind("<F8>", lambda _: self.stop())
+        root.bind('<F7>',lambda _: self.toggle_pause())
         root.protocol("WM_DELETE_WINDOW", self.close)
         root.report_callback_exception = self.callback_error
         last = self.preferences.get("last_file", "")
@@ -141,6 +160,9 @@ class App:
             candidate = self.assets / "scores/twinkle.mid"
         if candidate.is_file():
             self.open_path(candidate)
+        from .mini_player import MiniPlayer
+        self.mini=MiniPlayer(self)
+        if self.mini_visible.get() and root.state()!='withdrawn':self.mini.show()
         self.refresh_controls()
         self.poll_job = root.after(120, self.poll)
 
@@ -148,7 +170,9 @@ class App:
         menu = tk.Menu(self.root)
         files = tk.Menu(menu, tearoff=False)
         files.add_command(label="导入曲谱…", command=self.open_file, accelerator="Ctrl+O")
-        files.add_command(label="音频转谱…", command=self.open_audio)
+        files.add_command(label="轻量音频转谱（Beta）…", command=self.open_light_audio)
+        files.add_command(label="轻量转谱（浏览器兼容）…", command=lambda:self.open_light_audio(browser=True))
+        files.add_command(label="高级音频处理（独立引擎）…", command=self.open_audio)
         files.add_command(label="另存原曲为 MIDI…", command=self.export_midi)
         files.add_separator()
         files.add_command(label="打开数据目录", command=lambda: os.startfile(self.directory))
@@ -158,6 +182,10 @@ class App:
         for name, value in [('关闭背景图片', 0), ('淡雅', .18), ('柔和（默认）', .32), ('清晰', .52)]:
             appearance.add_radiobutton(label=name, variable=self.background_opacity, value=value, command=self.set_background_strength)
         menu.add_cascade(label='外观', menu=appearance)
+        player=tk.Menu(menu,tearoff=False)
+        player.add_checkbutton(label='显示迷你播放器',variable=self.mini_visible,command=self.toggle_mini)
+        player.add_command(label='暂停 / 继续演奏',command=self.toggle_pause,accelerator='F7')
+        menu.add_cascade(label='播放器',menu=player)
         help_menu = tk.Menu(menu, tearoff=False)
         help_menu.add_command(label="使用说明", command=self.show_help)
         help_menu.add_command(label="素材与模型许可", command=lambda: self.show_help(filename='COPYRIGHT_AND_MODELS.md'))
@@ -175,12 +203,32 @@ class App:
         self.save_preferences()
 
     def open_audio(self):
-        if self.active: return
+        if self.active or (self.light_audio and self.light_audio.busy): return
         if self.audio_dialog:
             self.audio_dialog.window.lift()
             return
         from .audio_ui import AudioDialog
         self.audio_dialog = AudioDialog(self)
+
+    def open_light_audio(self, source=None, *, browser=False):
+        if self.active or (self.audio_dialog and self.audio_dialog.job):return
+        try:
+            from .light_audio import LightAudioSession
+            if self.light_audio is None:
+                self.light_audio = LightAudioSession(self.directory, self.messages.put,
+                    can_start=lambda: not self.closed and not self.active and not (self.audio_dialog and self.audio_dialog.job),gate=self.task_lock)
+            if source is not None:self.light_audio.select_desktop_audio(source)
+            if browser:
+                import webbrowser
+                if not webbrowser.open(self.light_audio.url, new=2):
+                    raise ValueError('无法打开默认浏览器，请检查 Windows 默认浏览器设置。')
+            else:
+                from .audio_window import DesktopAudioWindow
+                if self.light_window is None or not self.light_window.show():
+                    if self.light_window is not None:self.light_audio.cancel_current()
+                    self.light_window=DesktopAudioWindow(self.light_audio,self.assets,self.directory,self.messages.put)
+            self.set_status('已打开本机轻量转谱。使用 CPU 计算，生成后自动保存并导入；请先试听。', '轻量转谱 Beta', 'blue')
+        except (OSError,ValueError) as error:self.show_error(error)
 
     def show_help(self, filename='USAGE.md'):
         path = self.assets / filename
@@ -198,6 +246,40 @@ class App:
     def choose_library(self, title, path):
         if path is not None:
             self.open_path(path)
+
+    def refresh_library(self):
+        from .local_library import shelf_entries
+        for widget in self.shelf_content.winfo_children():widget.destroy()
+        self.library_buttons=[]
+        entries=[('小星星',self.assets/'scores/twinkle.mid','自制离线示例')]
+        entries.extend(shelf_entries(self.directory,self.preferences.get('shelf_files',[])))
+        for name,path,caption in entries:
+            title=re.sub(r'(?:_轻量Beta|\s*[·•]\s*轻量转谱\s*Beta)$','',name,flags=re.IGNORECASE).strip() or name
+            title=' '.join(title.split(' - ',1)[0].split())
+            display=title if len(title)<=17 else title[:16]+'…'
+            button=self.button(self.shelf_content,display,lambda n=name,p=path:self.choose_library(n,p),
+                'nav',10,f'{name}\n{caption}\n{path}',anchor='w',justify='left')
+            button.configure(pady=9,padx=10)
+            button.pack(fill='x',pady=(0,5))
+            self.library_buttons.append((button,path))
+
+    def accept_transcription(self, path):
+        path=Path(path).resolve()
+        self.refresh_library()
+        if self.active:
+            self.pending_import=path
+            state='queued';text='已加入曲目架，当前演奏结束后自动载入。'
+        elif self.open_path(path):
+            self.pending_import=None
+            state='loaded';text='已自动加入曲目架并载入演奏工作台，无需下载后再导入。'
+            hint='当前方案为单旋律，需要和弦可切换为原曲声部。' if self.score and self.score['mode']=='melody' else '请先试听检查错漏音。'
+            self.set_status(text+hint,'转谱已导入','amber')
+        else:
+            state='failed';text='曲谱已保存，自动载入未完成，请在曲目架重试。'
+        if self.light_audio:self.light_audio.acknowledge_import(path,state,text)
+        if state=='queued':self.set_status(text,'曲谱已加入','blue')
+        self.refresh_controls()
+        return state
 
     def configure_styles(self):
         style = ttk.Style(self.root)
@@ -258,9 +340,13 @@ class App:
         self.import_button = self.button(sidebar, "+  导入曲谱", self.open_file, "primary", 11,
             "支持 MIDI、KAR、RMI、MusicXML、XML、MXL。快捷键 Ctrl+O")
         self.import_button.pack(fill='x', pady=(0, 7))
-        self.audio_button = self.button(sidebar, "音频转谱", self.open_audio, "nav", 10,
-            "本地伴奏转多轨 MIDI，或试用歌声旋律 Beta。首次需独立引擎与模型条款确认。")
+        self.audio_button = self.button(sidebar, "音频转谱 · Beta", self.open_light_audio, "nav", 10,
+            "在独立窗口中用本机 CPU 转谱。复用系统 WebView2，无需安装音频引擎；高级分离见文件菜单。")
         self.audio_button.pack(fill='x')
+        self.drop_zone=tk.Label(sidebar,text='拖入音频 / 曲谱',bg='#344E43',fg='#E1E8D8',font=(FONT,9),pady=14,highlightbackground='#657B64',highlightthickness=1,cursor='hand2')
+        self.drop_zone.pack(fill='x',pady=(9,0))
+        self.drop_zone.bind('<Button-1>',lambda _:self.choose_import())
+        Tooltip(self.drop_zone,'拖入一个 MIDI、MusicXML 或本地音频。音频会自动送到桌面转谱窗口。')
         nav_area = tk.Frame(sidebar, bg=C['nav'])
         nav_area.pack(fill='both', expand=True, pady=(15, 8))
         self.nav_canvas = tk.Canvas(nav_area, bg=C['nav'], highlightthickness=0, width=170)
@@ -273,17 +359,9 @@ class App:
         self.nav_content.bind('<Configure>', lambda _: self.nav_canvas.configure(scrollregion=self.nav_canvas.bbox('all')))
         self.nav_canvas.bind('<Configure>', lambda e: self.nav_canvas.itemconfigure(nav_window, width=e.width))
         self.label(self.nav_content, '曲目架', 9, '#A9B9A6').pack(anchor='w', pady=(0, 10))
-        for name, filename, caption in [('小星星', 'twinkle.mid', '自制离线示例')]:
-            path = self.assets / 'scores' / filename if filename else None
-            button = self.button(self.nav_content, f'{name}\n{caption}', lambda n=name, p=path: self.choose_library(n,p),
-                'nav', 9, '载入本机自制示例曲谱。', anchor='w', justify='left')
-            button.configure(pady=7, padx=10)
-            button.pack(fill='x', pady=(0, 5))
-            self.library_buttons.append((button, path))
-        self.label(self.nav_content, '最近打开', 9, '#A9B9A6').pack(anchor='w', pady=(17, 8))
-        self.recent_frame = tk.Frame(self.nav_content, bg=C['nav'])
-        self.recent_frame.pack(fill='x')
-        self.render_recents()
+        self.shelf_content=tk.Frame(self.nav_content,bg=C['nav'])
+        self.shelf_content.pack(fill='x')
+        self.refresh_library()
         bottom = tk.Frame(sidebar, bg=C['nav'])
         bottom.pack(side='bottom', fill='x', before=nav_area, pady=(10, 0))
         tk.Frame(bottom, bg='#4B5C4E', height=1).pack(fill='x', pady=(0, 14))
@@ -291,8 +369,9 @@ class App:
         self.instrument_label.pack(anchor='w')
         self.range_label = self.label(bottom, '', 9, '#A9B9A6')
         self.range_label.pack(anchor='w', pady=(4, 14))
-        self.label(bottom, 'F8  停止演奏', 10, C['mint'], True).pack(anchor='w')
+        self.label(bottom, 'F7  暂停 / 继续\nF8  停止演奏', 10, C['mint'], True,justify='left').pack(anchor='w')
         self.label(bottom, 'Ctrl+O 导入本地曲谱', 8, '#A9B9A6').pack(anchor='w', pady=(8, 0))
+        self.label(bottom, '考虑音乐版权风险，不提供搜曲下载。\n请选择自己的本地曲谱或音频。', 8, '#A9B9A6',wraplength=210,justify='left').pack(anchor='w',pady=(8,0))
 
         main = tk.Frame(self.root, bg=C['bg'])
         main.pack(side='left', fill='both', expand=True)
@@ -444,7 +523,7 @@ class App:
         grid = tk.Frame(self.advanced, bg=C["paper"])
         grid.pack(fill="x")
         for col, (label, variable, lower, upper, tip) in enumerate([
-                ("开始前倒计时", self.countdown, 0, 60, "确认权限后，给你切回乐器界面和松开键鼠的时间。"),
+                ("开始前倒计时", self.countdown, 0, 60, "开始演奏前，留出切回乐器界面和松开键鼠的时间。"),
                 ("按键上限 / 毫秒", self.hold_ms, 20, 400, "每个音按住的时长上限。默认 300 毫秒；长音只触发一次。"),
                 ("和弦音数上限", self.max_polyphony, 2, 36, "原曲声部模式每组保留 2–36 音，默认 12。长音重叠时，实际并行键数可能更高；游戏多音能力需要试奏确认。")]):
             grid.columnconfigure(col, weight=1)
@@ -459,6 +538,10 @@ class App:
         range_box.pack(fill="x", pady=(12, 0))
         self.controls.append((range_box, "readonly"))
         Tooltip(range_box, "折回八度会保留音名，但可能改变旋律的上下走势。\n原音域已适配的曲目不会被改动。")
+        alignment=tk.Checkbutton(self.advanced,text='近同时起音对齐（原曲 24ms）',variable=self.chord_align,
+            bg=C['paper'],activebackground=C['paper'],fg=C['ink'],font=(FONT,9),anchor='w')
+        alignment.pack(fill='x',pady=(9,0));self.controls.append((alignment,'normal'))
+        Tooltip(alignment,'把识别后稍错开的和弦起音对齐；分解和弦请保持关闭。\n钢琴只对齐相同 Shift 状态，黑白混合仍需分组。重复同音不合并，单旋律模式不启用。\n只影响演奏和时序试听，不改原 MIDI；变速时按原曲 24ms 等比例缩放。')
 
         self.notes_card = self.card(content)
         row = tk.Frame(self.notes_card, bg=C["paper"])
@@ -493,28 +576,34 @@ class App:
         self.status_dot.pack(side='left', padx=(0, 7))
         self.label(status_row, size=9, textvariable=self.status, anchor='w', wraplength=490).pack(side='left', fill='x', expand=True)
         self.label(status_row, size=9, color=C['muted'], textvariable=self.time_text).pack(side='right', padx=(8, 0))
-        self.progress_bar = tk.Canvas(footer, height=4, bg=C['line'], borderwidth=0, highlightthickness=0)
+        self.progress_bar = tk.Canvas(footer, height=12, bg=C['paper'], borderwidth=0, highlightthickness=0,cursor='hand2')
         self.progress_bar.pack(fill='x', pady=(10, 11))
         self.progress_bar.bind('<Configure>', self.draw_progress)
+        self.bind_seek(self.progress_bar)
+        Tooltip(self.progress_bar,'点击或拖动定位；暂停/停止位置自动记忆。游戏中可使用悬浮窗进度条。')
         self.progress.trace_add('write', self.draw_progress)
         actions = tk.Frame(footer, bg=C['paper'])
         actions.pack(fill='x')
-        for index, weight in enumerate((3, 2, 2, 1)):
+        for index, weight in enumerate((3, 2, 2, 2, 1)):
             actions.columnconfigure(index, weight=weight, uniform='actions' if index else 'primary')
         self.play_button = self.button(actions, '▶  开始演奏', lambda: self.play(None), 'primary', 12,
-            '按当前片段演奏。先进入对应游戏乐器界面，再确认权限。Ctrl+Enter 开始。')
+            '按当前片段演奏。先进入对应游戏乐器界面。Ctrl+Enter 开始。')
+        self.pause_button=self.button(actions,'Ⅱ 暂停',self.toggle_pause,'preview',10,
+            '暂停时释放所有按键，继续时从当前位置演奏。游戏中可按 F7。')
         self.preview_button = self.button(actions, '时序试听', self.preview, 'preview', 10,
             '电脑试听前 20 秒，体现按键时序和 Shift 分组。合成音色，不操作游戏。')
         self.trial_button = self.button(actions, '游戏试奏', lambda: self.play(20), 'trial', 10,
             '向游戏发送前 20 秒的按键，先确认音色和旋律。')
         self.stop_button = self.button(actions, '■  停止', self.stop, 'stop', 10,
             '停止并释放程序按住的琴键。游戏中按 F8，切出游戏也会停止。')
-        for index, button in enumerate((self.play_button, self.preview_button, self.trial_button, self.stop_button)):
+        for index, button in enumerate((self.play_button, self.pause_button, self.preview_button, self.trial_button, self.stop_button)):
             button.configure(pady=10)
-            button.grid(row=0, column=index, sticky='nsew', padx=(0, 8 if index < 3 else 0))
+            button.grid(row=0, column=index, sticky='nsew', padx=(0, 7 if index < 4 else 0))
         row = tk.Frame(footer, bg=C['paper'])
         row.pack(fill='x', pady=(9, 0))
-        self.label(row, 'F8 停止  ·  切出游戏自动停止', 8, C['muted']).pack(side='left')
+        self.label(row, 'F7 暂停/继续 · F8 停止 · 切出游戏停止', 8, C['muted']).pack(side='left')
+        self.restart_button=self.button(row,'从头',lambda:self.seek_fraction(0),size=8,tip='定位到当前片段开头。')
+        self.restart_button.configure(padx=8,pady=3);self.restart_button.pack(side='left',padx=(8,0))
         self.export_button = self.button(row, '导出曲谱', self.export, size=8, tip='保存当前设置的 JSON 游戏曲谱。')
         self.export_button.configure(padx=8, pady=3)
         self.export_button.pack(side='right')
@@ -536,9 +625,91 @@ class App:
             self.body_canvas.yview_scroll(-int(event.delta / 120), "units")
 
     def draw_progress(self, *_):
-        self.progress_bar.delete("fill")
-        width = self.progress_bar.winfo_width() * min(100, max(0, self.progress.get())) / 100
-        self.progress_bar.create_rectangle(0, 0, width, 4, fill=C["teal"], outline="", tags="fill")
+        self.paint_progress(self.progress_bar,C['teal'],C['line'])
+
+    def paint_progress(self,canvas,fill,track):
+        canvas.delete('fill')
+        width=max(1,canvas.winfo_width());y=max(1,canvas.winfo_height())/2
+        x=width*min(100,max(0,self.progress.get()))/100
+        canvas.create_rectangle(0,y-1.5,width,y+1.5,fill=track,outline='',tags='fill')
+        canvas.create_rectangle(0,y-1.5,x,y+1.5,fill=fill,outline='',tags='fill')
+        x=max(4,min(width-4,x))
+        canvas.create_oval(x-4,y-4,x+4,y+4,fill=fill,outline='',tags='fill')
+
+    def position_frame(self):
+        if not self.score:return 0,1,0
+        active=self.active if isinstance(self.active,dict) else {}
+        return (active.get('origin',self.score['summary'].get('source_origin_seconds',0)),
+                active.get('speed',self.score['settings'].get('speed',1)),
+                active.get('length',getattr(self,'ready_duration',self.score['summary']['seconds'])))
+
+    def playback_offset(self):
+        origin,speed,length=self.position_frame()
+        positions=self.preferences.get('playback_positions',{})
+        position=positions.get(self.song_fingerprint,origin) if isinstance(positions,dict) else origin
+        if type(position) not in (int,float) or not math.isfinite(position):position=origin
+        return min(length,max(0,(position-origin)/speed))
+
+    def remember_position(self,elapsed,force=False):
+        if not self.score or not self.song_fingerprint:return
+        origin,speed,length=self.position_frame()
+        positions=self.preferences.get('playback_positions',{})
+        if not isinstance(positions,dict):positions={}
+        positions[self.song_fingerprint]=round(origin+min(length,max(0,elapsed))*speed,6)
+        self.preferences['playback_positions']=positions
+        if force or time.monotonic()-self.position_save_at>=2:
+            self.position_save_at=time.monotonic();self.save_preferences()
+
+    def bind_seek(self,canvas):
+        canvas.bind('<ButtonPress-1>',self.begin_seek)
+        canvas.bind('<B1-Motion>',self.move_seek)
+        canvas.bind('<ButtonRelease-1>',self.end_seek)
+
+    def begin_seek(self,event):
+        if not self.score or (self.active and self.active.get('phase') not in ('playing','paused')):return
+        self.stop_preview()
+        paused=self.active.get('pause_requested',False) if self.active else False
+        self.seek_drag={'canvas':event.widget,'paused':paused,'frame':self.position_frame(),'song':self.song_fingerprint}
+        try:event.widget.grab_set()
+        except tk.TclError:pass
+        if self.active and not paused:self.request_pause(True)
+        self.move_seek(event)
+
+    def move_seek(self,event):
+        if not self.seek_drag:return
+        canvas=self.seek_drag['canvas'];fraction=min(1,max(0,event.x/max(1,canvas.winfo_width())))
+        self.seek_drag['fraction']=fraction
+        length=self.seek_drag['frame'][2]
+        self.progress.set(fraction*100);self.time_text.set(f'{duration_label(fraction*length)} / {duration_label(length)}')
+        if self.mini:self.mini.refresh()
+
+    def end_seek(self,event):
+        if not self.seek_drag:return
+        self.move_seek(event);drag,self.seek_drag=self.seek_drag,None
+        try:drag['canvas'].grab_release()
+        except tk.TclError:pass
+        if drag['song']!=self.song_fingerprint:return
+        old_origin,old_speed,old_length=drag['frame'];origin,speed,length=self.position_frame()
+        raw=old_origin+drag.get('fraction',0)*old_length*old_speed
+        self.seek_fraction((raw-origin)/speed/max(length,.001),paused=drag['paused'])
+
+    def seek_fraction(self,fraction,*,paused=None):
+        if not self.score:return
+        if self.active and (self.stop_requested or self.active.get('phase') not in ('playing','paused')):return
+        self.stop_preview()
+        origin,speed,length=self.position_frame();position=min(1,max(0,fraction))*length
+        self.remember_position(position,True)
+        self.progress.set(position/max(length,.001)*100)
+        self.time_text.set(f'{duration_label(position)} / {duration_label(length)}')
+        self.tracks.set_playhead(origin+position*speed)
+        if self.active:
+            active=self.active;sequence=active.get('control_sequence',0)+1
+            original=dict(active)
+            active.update(seek_to=position,seek_sequence=sequence,seek_control_sequence=sequence,elapsed=position)
+            if not self.request_pause(active.get('pause_requested',False) if paused is None else paused):
+                active.clear();active.update(original);return
+        self.set_status(f'已定位 {duration_label(position)}，'+('正在更新演奏位置。' if self.active else '点击演奏从这里开始。'),'演奏定位','blue')
+        self.refresh_controls()
 
     def read_preferences(self):
         try:
@@ -550,8 +721,13 @@ class App:
     def save_preferences(self):
         try:
             values = {"last_file": str(self.current_path), "recent": self.preferences.get("recent", []),
+                      'shelf_files':self.preferences.get('shelf_files',[]),
+                      'countdown':self.countdown.get(),
+                      'playback_positions':self.preferences.get('playback_positions',{}),
                       "speed": self.speed.get(), "transpose": self.transpose.get(), "instrument": self.current_instrument().id,
-                      "background_strength": self.background_opacity.get()}
+                      "background_strength": self.background_opacity.get(),
+                      'mini_player_visible':self.mini_visible.get(),
+                      'mini_player_position':list(self.mini.position) if self.mini else self.preferences.get('mini_player_position')}
             path = self.directory / "midi_ui_settings.json"
             temporary = path.with_suffix(".tmp")
             temporary.write_text(json.dumps(values, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -559,31 +735,38 @@ class App:
         except (OSError, AttributeError):
             pass  # A read-only folder must not prevent playing a selected score.
 
-    def render_recents(self):
-        for child in self.recent_frame.winfo_children():
-            child.destroy()
-        self.recent_buttons = []
-        recent = self.preferences.get("recent", [])
-        if not isinstance(recent, list):
-            recent = []
-        paths = [Path(p) for p in recent if isinstance(p, str) and Path(p).is_file()][:3]
-        if not paths:
-            self.label(self.recent_frame, "导入自己的曲谱后\n会显示在这里", 9, "#90A6BF", justify="left").pack(anchor="w")
-        for path in paths:
-            title = local_title(path, self.directory) or path.stem
-            title = title if len(title) < 17 else title[:15] + "…"
-            button = self.button(self.recent_frame, title, lambda p=path: self.open_path(p), "nav", 9, str(path), anchor="w")
-            button.configure(pady=7, padx=9)
-            button.pack(fill="x", pady=(0, 4))
-            self.recent_buttons.append(button)
-
     def open_file(self):
-        if self.active:
+        if self.active or (self.light_audio and self.light_audio.busy) or (self.audio_dialog and self.audio_dialog.job):
+            self.set_status('请先完成或取消当前任务，再导入另一份曲谱。','任务进行中','amber')
             return
         path = filedialog.askopenfilename(parent=self.root, title="导入曲谱", filetypes=[("支持的曲谱", "*.mid *.midi *.kar *.rmi *.musicxml *.xml *.mxl"),
                     ("MIDI / Karaoke", "*.mid *.midi *.kar *.rmi"),("MusicXML", "*.musicxml *.xml *.mxl")])
         if path:
             self.open_path(path)
+
+    def choose_import(self):
+        if self.active:return
+        path=filedialog.askopenfilename(parent=self.root,title='选择音频或曲谱',filetypes=[
+            ('音频或曲谱','*.mid *.midi *.kar *.rmi *.musicxml *.xml *.mxl *.wav *.mp3 *.flac *.ogg *.m4a *.aac *.wma *.opus *.webm'),
+            ('所有文件','*.*')])
+        if path:self.import_local_file(path)
+
+    def import_local_file(self,path):
+        from .file_drop import SCORE_EXTENSIONS
+        from .light_audio import AUDIO_EXTENSIONS
+        if self.active or self.preview_token or (self.audio_dialog and self.audio_dialog.job) or (self.light_audio and self.light_audio.busy):
+            self.set_status('请先停止演奏、试听或当前转谱任务，再导入文件。','暂时无法导入','amber')
+            return False
+        path=Path(path)
+        if not path.is_file():
+            self.set_status('请拖入一个本地文件，文件夹暂不支持。','文件无效','amber')
+            return False
+        if path.suffix.lower() in SCORE_EXTENSIONS:return self.open_path(path)
+        if path.suffix.lower() in AUDIO_EXTENSIONS:
+            self.open_light_audio(path)
+            return True
+        self.set_status('支持 MIDI、MusicXML 及 WAV、MP3、FLAC 等本地音频。','格式不支持','amber')
+        return False
 
     def open_path(self, path):
         if self.active:
@@ -600,6 +783,11 @@ class App:
             song.title = examples.get(path, local_title(path, self.directory) or song.title)
             self.song, self.current_path = song, path
             self.song_fingerprint = digest
+            if path!=self.assets/'scores/twinkle.mid':
+                saved=self.preferences.get('shelf_files',[])
+                saved=[item for item in saved if isinstance(item,dict) and item.get('path')!=str(path)] if isinstance(saved,list) else []
+                self.preferences['shelf_files']=[{'path':str(path),'title':song.title},*saved]
+                self.refresh_library()
             self.title.set(song.title)
             kind = "MusicXML" if path.suffix.lower() in (".xml",".musicxml",".mxl") else "MIDI"
             self.subtitle.set(f"{kind} 曲谱  ·  {path.name}")
@@ -610,11 +798,6 @@ class App:
                 selected = path == preset
                 button.palette = (C["nav_active"] if selected else C["nav_hover"], "white", "#2A425D")
                 button.configure(highlightbackground=C["mint"] if selected else C["nav"], bg=button.palette[0])
-            if path not in examples:
-                recent = self.preferences.get("recent", [])
-                recent = recent if isinstance(recent, list) else []
-                self.preferences["recent"] = [str(path), *[p for p in recent if isinstance(p, str) and p != str(path)]][:5]
-                self.render_recents()
             self.update_score(quiet=True)
             self.save_preferences()
             return True
@@ -645,7 +828,8 @@ class App:
                 "speed": float(self.speed.get()), "transpose": int(self.transpose.get()),
                 "range_policy": {"超出音域折回八度": "fold", "丢弃超出音域的音": "drop", "超出音域时报错": "strict"}[self.range_policy.get()],
                 "start": parse_time(self.start.get()), "end": parse_time(self.end.get()) if self.end.get().strip() else None,
-                "countdown": int(self.countdown.get()), "hold_ms": int(self.hold_ms.get()), "roles": dict(self.tracks.roles)}
+                "countdown": int(self.countdown.get()), "hold_ms": int(self.hold_ms.get()), "roles": dict(self.tracks.roles),
+                'chord_alignment_ms':24 if self.chord_align.get() else 0}
 
     def save_arrangement(self):
         if not self.song_fingerprint or self.syncing_settings or self.song is None or (self.song_fingerprint, self.applied_instrument) in self.invalid_presets:
@@ -654,6 +838,7 @@ class App:
             settings = self.arrangement_settings()
             score = convert(self.song, settings["tracks"], settings["mode"], settings["speed"], settings["transpose"],
                             settings["range_policy"], settings["start"], self.applied_instrument, settings["end"], settings["max_polyphony"], settings["roles"])
+            score['settings']['chord_alignment_ms']=settings['chord_alignment_ms']
             performance_plan(score, settings["hold_ms"])
             self.preset_store.save(self.song_fingerprint, self.applied_instrument, settings)
         except (OSError, ValueError, KeyError, tk.TclError):
@@ -676,10 +861,11 @@ class App:
             self.invalid_presets.add((self.song_fingerprint, self.applied_instrument))
         self.syncing_settings = True
         try:
-            for name in ("speed", "transpose", "start", "countdown", "hold_ms", "max_polyphony"):
+            for name in ("speed", "transpose", "start", "hold_ms", "max_polyphony"):
                 getattr(self, name).set(str(settings[name]))
             self.end.set("" if settings["end"] is None else str(settings["end"]))
             self.mode.set(MODES[settings["mode"]])
+            self.chord_align.set(settings.get('chord_alignment_ms',0)==24)
             self.range_policy.set({"fold": "超出音域折回八度", "drop": "丢弃超出音域的音", "strict": "超出音域时报错"}[settings["range_policy"]])
             self.tracks.set_enabled_tracks(settings['tracks'])
             self.tracks.roles = {str(p['index']): p['role'] for p in self.tracks.rows}
@@ -700,8 +886,13 @@ class App:
         score = convert(self.song, tracks, mode_key(self.mode.get()),
                         float(self.speed.get()), int(self.transpose.get()), policies[self.range_policy.get()], parse_time(self.start.get()), self.current_instrument().id,
                         parse_time(self.end.get()) if self.end.get().strip() else None, int(self.max_polyphony.get()), dict(self.tracks.roles))
-        if hasattr(self.engine, "key_schedule"):
-            self.engine.key_schedule(score, hold)
+        score['settings']['chord_alignment_ms']=24 if self.chord_align.get() else 0
+        plan=performance_plan(score,hold)
+        self.ready_duration=plan.duration
+        if plan.timing_adjusted_notes:
+            score['warnings'].append(f'钢琴短间距校正 {plan.timing_adjusted_notes} 音，最多另延后 {plan.max_timing_adjustment_ms:g} 毫秒；该校正未删音，详见适配报告。')
+        if plan.aligned_notes:
+            score['warnings'].append(f'近同时起音已对齐 {plan.aligned_notes} 音，当前速度最多提前 {plan.max_alignment_ms:g} 毫秒；分解和弦建议关闭此选项。')
         return validate_score(score)
 
     def current_instrument(self):
@@ -806,8 +997,9 @@ class App:
             self.syncing_speed = True
             self.speed_slider.set(speed)
             self.syncing_speed = False
-            self.progress.set(0)
-            self.time_text.set(f'00:00 / {duration_label(summary["seconds"])}')
+            position=self.playback_offset()
+            self.progress.set(position/max(self.ready_duration,.001)*100)
+            self.time_text.set(f'{duration_label(position)} / {duration_label(self.ready_duration)}')
             self.set_status("曲谱已就绪，可以先试听，也可以开始游戏演奏。", "就绪", "teal")
             self.refresh_controls()
             self.save_preferences()
@@ -839,7 +1031,7 @@ class App:
         for variable, value in [(self.speed, "1.0"), (self.transpose, "0"), (self.start, "0"),
                                 (self.end, ""),
                                 (self.mode, MODES['faithful']), (self.max_polyphony, "12"), (self.range_policy, "超出音域折回八度"),
-                                (self.countdown, "7"), (self.hold_ms, "300")]:
+                                (self.countdown, str(DEFAULTS['countdown'])), (self.hold_ms, "300"),(self.chord_align,False)]:
             variable.set(value)
         if self.song:
             self.tracks.set_enabled_tracks([p['index'] for p in self.tracks.rows if not p['drums']])
@@ -879,8 +1071,10 @@ class App:
         ready, locked = self.score is not None, self.active is not None
         for widget, normal in self.controls:
             self.enabled(widget, not locked, normal)
-        for button in [self.import_button, self.audio_button, *self.recent_buttons, *[b for b, _ in self.library_buttons]]:
-            self.enabled(button, not locked)
+        audio_busy=bool((self.light_audio and self.light_audio.busy) or (self.audio_dialog and self.audio_dialog.job))
+        for button in [self.import_button, *[b for b, _ in self.library_buttons]]:
+            self.enabled(button, not locked and not audio_busy)
+        self.enabled(self.audio_button,not locked and not (self.audio_dialog and self.audio_dialog.job))
         for button in [self.play_button, self.trial_button, self.export_button, self.details_button, self.notes_button, self.report_button]:
             self.enabled(button, ready and not locked)
         self.enabled(self.preview_button, ready and not locked and not self.preview_token)
@@ -891,10 +1085,36 @@ class App:
         self.enabled(self.stop_button, locked or bool(self.preview_token))
         if locked or self.preview_token:
             self.stop_button.configure(bg=C["red"], fg="white", activebackground="#A52B40", activeforeground="white")
-        self.play_button.configure(text="演奏进行中…" if locked else "▶  开始演奏")
-        if self.audio_dialog and self.audio_dialog.job:
+        self.play_button.configure(text="演奏中…" if locked else ('▶  继续演奏' if ready and self.playback_offset()>.05 else '▶  开始演奏'))
+        self.enabled(self.restart_button,ready and not audio_busy)
+        self.enabled(self.pause_button,locked and self.active.get('phase') in ('playing','paused') and not self.stop_requested)
+        self.pause_button.configure(text='▶ 继续' if locked and self.active.get('pause_requested') else 'Ⅱ 暂停')
+        if (self.audio_dialog and self.audio_dialog.job) or (self.light_audio and self.light_audio.busy):
             self.enabled(self.play_button, False)
             self.enabled(self.trial_button, False)
+        if self.mini:self.mini.refresh()
+
+    def toggle_mini(self):
+        if self.mini_visible.get():self.mini.show()
+        else:self.mini.hide()
+
+    def toggle_pause(self):
+        if not self.active or self.stop_requested or self.active.get('phase') not in ('playing','paused'):return
+        self.request_pause(not self.active.get('pause_requested',False))
+
+    def request_pause(self,paused):
+        if not self.active or self.stop_requested:return
+        from .playback import write_pause_command
+        active=self.active
+        sequence=active.get('control_sequence',0)+1
+        try:
+            write_pause_command(active['control'],paused,sequence,seek_to=active.get('seek_to'),seek_sequence=active.get('seek_sequence'))
+            active.update(pause_requested=paused,control_sequence=sequence)
+            self.set_status('正在暂停并释放琴键…' if paused else '正在继续演奏…','暂停中' if paused else '继续中','amber')
+            self.refresh_controls()
+            return True
+        except OSError as error:
+            self.set_status('控制未送达，请按 F7 或 F8：'+str(error),'控制失败','red');return False
 
     def preview(self):
         if self.active or self.preview_token:
@@ -916,7 +1136,7 @@ class App:
             self.show_error(ValueError('鼓组不能直接作为钢琴音高试听。'))
             return
         try:
-            options = {"tracks": [self.track_ids[index]], "start": parse_time(self.start.get()),
+            options = {"tracks": [self.track_ids[index]], "start": self.source_preview_start(),
                        "end": parse_time(self.end.get()) if self.end.get().strip() else None,
                        "speed": float(self.speed.get()), "transpose": int(self.transpose.get())}
             self.start_preview(source=self.song, options=options, caption=f"音轨 {self.track_ids[index]} 原声部")
@@ -928,17 +1148,28 @@ class App:
             return
         try:
             options = {"tracks": [self.track_ids[int(i)] for i in self.tracks.curselection()],
-                       "start": parse_time(self.start.get()), "end": parse_time(self.end.get()) if self.end.get().strip() else None,
+                       "start": self.source_preview_start(), "end": parse_time(self.end.get()) if self.end.get().strip() else None,
                        "speed": float(self.speed.get()), "transpose": int(self.transpose.get())}
             self.start_preview(source=self.song, options=options, caption="原谱声部")
         except ValueError as error:
             self.show_error(error)
 
+    def source_preview_start(self):
+        start=parse_time(self.start.get())
+        if self.score:
+            origin,speed,_=self.position_frame()
+            position=origin+self.playback_offset()*speed
+            end=parse_time(self.end.get()) if self.end.get().strip() else self.song.seconds
+            if position<end:start=max(start,position)
+        return start
+
     def start_preview(self, score=None, source=None, options=None, caption="按键时序"):
         hold_ms = int(self.hold_ms.get()) if source is None else 300
         token = uuid.uuid4().hex
         self.preview_token, self.preview_started = token, None
-        self.preview_origin = options['start'] if source is not None else score['summary']['source_origin_seconds']
+        position=self.playback_offset() if source is None else 0
+        if source is None and position>=getattr(self,'ready_duration',score['summary']['seconds'])-.01:position=0
+        self.preview_origin = options['start'] if source is not None else score['summary']['source_origin_seconds']+position*score['settings']['speed']
         self.preview_speed = options['speed'] if source is not None else score['settings']['speed']
         self.set_status("正在准备电脑试听…", "准备试听", "blue")
         self.refresh_controls()
@@ -950,7 +1181,7 @@ class App:
                 path = runs / f"preview_{token}.wav"
                 cancel = lambda: self.closed or token != self.preview_token
                 seconds = (self.engine.render_song_preview(source, path, cancel=cancel, **options) if source is not None
-                           else self.engine.render_preview(score, path, hold_ms=hold_ms, cancel=cancel))
+                           else self.engine.render_preview(score, path, hold_ms=hold_ms, cancel=cancel,start_at=position))
                 self.messages.put({"kind": "preview_ready", "token": token, "path": path, "seconds": seconds, "caption": caption})
             except Exception as error:
                 self.messages.put({"kind": "preview_error", "token": token, "text": str(error)})
@@ -958,40 +1189,50 @@ class App:
         threading.Thread(target=worker, daemon=True).start()
 
     def stop_preview(self):
+        if self.audio_audition:self.audio_audition.close()
         self.preview_token, self.preview_started = None, None
         import winsound
         winsound.PlaySound(None, 0)
 
     def play(self, seconds):
-        if self.active or (self.audio_dialog and self.audio_dialog.job):
+        with self.task_lock:return self._play_locked(seconds)
+
+    def _play_locked(self, seconds):
+        if self.active or (self.audio_dialog and self.audio_dialog.job) or (self.light_audio and self.light_audio.busy):
             return
+        if self.light_audio:self.light_audio.cancel_current()
         self.recommend_token = None
         self.stop_preview()
         score = self.update_score()
         if score is None:
             return
         try:
+            position=self.playback_offset()
+            if position>=self.ready_duration-.01:position=0
             if seconds:
-                score = self.engine.limit_score(score, seconds)
+                score = self.engine.limit_score(score, position+seconds)
             run = self.directory / "runs" / uuid.uuid4().hex
             run.mkdir(parents=True)
             path, cancel, report = run / "score.json", run / "stop", run / "result.json"
             save_score(score, path)
             length = performance_plan(score, int(self.hold_ms.get())).duration
-            self.active = {"cancel": cancel, "report": report, "progress": report.with_suffix(".progress.json"), "length": length}
+            self.active = {"cancel": cancel, "report": report, "progress": report.with_suffix(".progress.json"), "length": length,
+                           'control':run/'control.json','control_sequence':0,'pause_requested':False,'phase':'waiting'}
+            self.active.update(origin=score['summary']['source_origin_seconds'],speed=score['settings']['speed'],elapsed=position)
             self.stop_requested = False
-            self.progress.set(0)
-            self.time_text.set(f"00:00 / {duration_label(length)}")
-            self.set_status(f"请确认权限，随后进入 {score_instrument(score).title} 的 36 键界面。", "等待确认", "amber")
+            self.progress.set(position/max(length,.001)*100)
+            self.time_text.set(f"{duration_label(position)} / {duration_label(length)}")
+            self.set_status(f"请进入 {score_instrument(score).title} 的 36 键界面，保持游戏前台。", "准备演奏", "amber")
             self.refresh_controls()
             countdown, hold = int(self.countdown.get()), int(self.hold_ms.get())
 
             def worker():
                 try:
                     arguments = ["--play", str(path), "--cancel-file", str(cancel), "--report", str(report),
-                                 "--countdown", str(countdown), "--hold-ms", str(hold)]
+                                 "--countdown", str(countdown), "--hold-ms", str(hold), '--control-file',str(run/'control.json')]
+                    arguments.extend(['--position',str(position)])
                     arguments.extend(["--data-dir", str(self.directory)])
-                    code = self.engine.run_elevated_and_wait(None, arguments)
+                    code = self.engine.run_playback_and_wait(None, arguments)
                     result = json.loads(report.read_text(encoding="utf-8")) if report.exists() else {}
                     self.messages.put({"kind": "game_done", "code": code, "result": result})
                 except Exception as error:
@@ -1006,6 +1247,8 @@ class App:
     def stop(self):
         self.stop_preview()
         if self.active:
+            self.update_progress()
+            self.remember_position(self.active.get('elapsed',self.playback_offset()),True)
             try:
                 self.active["cancel"].touch()
                 self.stop_requested = True
@@ -1022,13 +1265,24 @@ class App:
                 data = json.loads(self.active["progress"].read_text(encoding="utf-8"))
                 phase = data.get("phase")
                 if phase == "countdown":
+                    self.active['phase']='countdown'
                     self.set_status(f'请保持游戏在前台，{data["remaining"]} 秒后开始。', f'{data["remaining"]} 秒后开始', "amber")
-                elif phase == "playing":
-                    elapsed = min(self.active["length"], max(0, time.time() - data["started_at"]))
+                elif phase in ('playing','paused'):
+                    if data.get('control_sequence',0)<self.active.get('seek_control_sequence',0):return
+                    previous_phase=self.active.get('phase')
+                    self.active['phase']=phase
+                    if data.get('control_sequence',0)>=self.active['control_sequence']:
+                        self.active['pause_requested']=phase=='paused'
+                    elapsed = min(self.active["length"], max(0, float(data.get('elapsed',0))))
+                    self.active['elapsed']=elapsed
+                    if self.seek_drag:return
+                    self.remember_position(elapsed,phase=='paused' and previous_phase!='paused')
                     self.progress.set(elapsed / self.active["length"] * 100)
                     self.time_text.set(f'{duration_label(elapsed)} / {duration_label(self.active["length"])}')
                     self.tracks.set_playhead(self.score['summary']['source_origin_seconds'] + elapsed * self.score['settings']['speed'])
-                    self.set_status("正在游戏中演奏 · F8 停止 · 切出游戏会自动停止", "演奏中", "teal")
+                    self.set_status('已暂停 · F7 继续 · F8 停止' if phase=='paused' else '正在演奏 · F7 暂停 · F8 停止',
+                                    '已暂停' if phase=='paused' else '演奏中','amber' if phase=='paused' else 'teal')
+                self.refresh_controls()
             except (OSError, ValueError, KeyError, TypeError):
                 pass
         elif self.preview_started is not None:
@@ -1043,7 +1297,21 @@ class App:
 
     def handle_message(self, message):
         kind = message["kind"]
-        if kind.startswith("transpose"):
+        if kind == 'dropped_file':
+            self.import_local_file(message['path'])
+        elif kind == 'drop_error':
+            self.set_status(message['text'],'拖入文件','amber')
+        elif kind == 'light_window_closed':
+            if message['window'] is self.light_window:
+                self.light_window=None
+                if self.light_audio:self.light_audio.cancel_current()
+                self.refresh_controls()
+        elif kind == 'light_status':
+            self.set_status(message['text'], '轻量转谱 Beta', 'blue')
+            self.refresh_controls()
+        elif kind == 'light_done':
+            self.accept_transcription(message['path'])
+        elif kind.startswith("transpose"):
             if message["token"] != self.recommend_token:
                 return
             self.recommend_token = None
@@ -1067,15 +1335,23 @@ class App:
             self.refresh_controls()
         elif kind == "game_done":
             result = message["result"]
+            active=self.active if isinstance(self.active,dict) else {}
+            if self.score and active:
+                if result.get('status')=='completed' and result.get('control_sequence',0)>=active.get('seek_control_sequence',0):self.remember_position(0,True)
+                elif result.get('control_sequence',0)>=active.get('seek_control_sequence',0):
+                    self.remember_position(result.get('elapsed',active.get('elapsed',self.playback_offset())),True)
             if result.get("status") == "completed":
                 self.progress.set(100)
                 self.time_text.set(f'{duration_label(self.active["length"])} / {duration_label(self.active["length"])}')
                 self.set_status("整段按键已发送完毕。", "演奏完成", "teal")
             else:
                 stopped = result.get("status") == "stopped" or message["code"] == 2
-                reason = result.get("reason") or ("权限确认已取消。" if message["code"] == 2 else f'演奏进程退出：{message["code"]}')
+                reason = result.get("reason") or ("演奏已停止。" if message["code"] == 2 else f'演奏进程退出：{message["code"]}')
                 self.set_status(reason, "已停止" if stopped else "演奏失败", "muted" if stopped else "red")
             self.active, self.stop_requested = None, False
+            if self.pending_import is not None:
+                path,self.pending_import=self.pending_import,None
+                self.accept_transcription(path)
             self.refresh_controls()
 
     def poll(self):
@@ -1086,7 +1362,12 @@ class App:
                 self.handle_message(self.messages.get_nowait())
         except queue.Empty:
             pass
+        light_busy = bool(self.light_audio and self.light_audio.busy)
+        if getattr(self,'last_light_busy',False) != light_busy:
+            self.last_light_busy = light_busy
+            self.refresh_controls()
         self.update_progress()
+        if self.mini:self.mini.refresh()
         self.poll_job = self.root.after(120, self.poll)
 
     def show_details(self):
@@ -1190,6 +1471,9 @@ class App:
         messagebox.showerror("无法完成", str(error), parent=self.root)
 
     def close(self):
+        if self.file_drop is not None:self.file_drop.close()
+        if self.light_window is not None:self.light_window.close()
+        if self.light_audio is not None:self.light_audio.close()
         if self.audio_dialog is not None:
             self.audio_dialog.close()
         self.save_preferences()
@@ -1199,4 +1483,5 @@ class App:
         self.root.after_cancel(self.poll_job)
         if self.refresh_job is not None:
             self.root.after_cancel(self.refresh_job)
+        if self.mini:self.mini.close()
         self.root.destroy()

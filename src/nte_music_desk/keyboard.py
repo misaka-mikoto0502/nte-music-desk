@@ -10,7 +10,7 @@ import sys
 import time
 
 
-def elevation_command(arguments):
+def elevation_command(arguments, *, desktop=False):
     """Frozen apps relaunch the EXE, source installs use their trusted bootstrap."""
     arguments = list(arguments)
     if "--elevated-child" not in arguments:
@@ -18,7 +18,8 @@ def elevation_command(arguments):
     if getattr(sys, "frozen", False):
         return sys.executable, arguments, str(Path(sys.executable).resolve().parent)
     bootstrap = Path(__file__).resolve().with_name("_bootstrap.py")
-    return sys.executable, ["-X", "utf8", "-I", "-S", str(bootstrap), *arguments], str(bootstrap.parent)
+    isolation=['-I'] if desktop else ['-I','-S']
+    return sys.executable, ['-X','utf8',*isolation,str(bootstrap),*arguments],str(bootstrap.parent)
 
 
 @dataclass(frozen=True)
@@ -131,9 +132,12 @@ class WindowsKeyboard:
     def cancelled(self):
         return any(self.user32.GetAsyncKeyState(vk) & 0x8000 for vk in (0x1B, 0x77))  # Esc / F8
 
+    def cancellation_reason(self):
+        return "检测到 Esc 或 F8，已停止。"
+
     def check(self):
         if self.cancelled():
-            raise PlaybackStopped("检测到 Esc 或 F8，已停止。")
+            raise PlaybackStopped(self.cancellation_reason())
         if (not self.user32.IsWindow(self.hwnd)
                 or self.window_pid(self.hwnd) != self.pid
                 or self.user32.GetForegroundWindow() != self.hwnd):
@@ -163,8 +167,21 @@ class WindowsKeyboard:
             self.up(key)
 
 
-def run_elevated_and_wait(script_path=None, arguments=None):
-    """Request normal Windows UAC consent; wait for this one playback process."""
+def is_administrator():
+    return sys.platform == 'win32' and bool(C.windll.shell32.IsUserAnAdmin())
+
+
+def run_playback_and_wait(script_path=None, arguments=None):
+    """Inherit the already elevated app token; never request UAC mid-session."""
+    if not is_administrator():
+        raise RuntimeError('软件未获得管理员权限，请重新打开并确认启动时的权限提示。')
+    executable, command_args, directory=elevation_command(arguments or [])
+    return subprocess.run([executable,*command_args],cwd=directory,
+                          creationflags=subprocess.CREATE_NO_WINDOW).returncode
+
+
+def run_elevated_and_wait(script_path=None, arguments=None, *, visible=False, wait=True):
+    """Request Windows UAC for GUI startup or a direct command-line launch."""
     shell32 = C.WinDLL("shell32", use_last_error=True)
     kernel32 = C.WinDLL("kernel32", use_last_error=True)
 
@@ -181,19 +198,27 @@ def run_elevated_and_wait(script_path=None, arguments=None):
     kernel32.GetExitCodeProcess.argtypes = [W.HANDLE, C.POINTER(W.DWORD)]
     kernel32.CloseHandle.argtypes = [W.HANDLE]
     arguments = sys.argv[1:] if arguments is None else list(arguments)
-    executable, command_args, working_directory = elevation_command(arguments)
+    executable, command_args, working_directory = elevation_command(arguments,desktop=visible)
     parameters = subprocess.list2cmdline(command_args)
     info = SHELLEXECUTEINFO()
-    info.cbSize, info.fMask = C.sizeof(info), 0x40
+    # This bootstrap has no message loop and exits after handing off to the
+    # elevated child. NOASYNC completes Shell dispatch before that exit; it
+    # does not wait for the child's GUI session to finish.
+    # https://learn.microsoft.com/windows/win32/api/shellapi/ns-shellapi-shellexecuteinfow
+    info.cbSize, info.fMask = C.sizeof(info), 0x40 | 0x100  # NOCLOSEPROCESS | NOASYNC
     info.lpVerb, info.lpFile, info.lpParameters = "runas", executable, parameters
-    info.lpDirectory, info.nShow = working_directory, 0
+    info.lpDirectory, info.nShow = working_directory, 1 if visible else 0
     if not shell32.ShellExecuteExW(C.byref(info)):
         error = C.get_last_error()
         if error == 1223:
-            print("UAC 已取消，未演奏。")
+            print("权限请求已取消。")
             return 2
         raise C.WinError(error)
+    if not info.hProcess:
+        raise RuntimeError("Windows 未返回提权进程，请重新启动软件并确认权限提示。")
     try:
+        if not wait:
+            return 0
         kernel32.WaitForSingleObject(info.hProcess, 0xFFFFFFFF)
         result = W.DWORD()
         if not kernel32.GetExitCodeProcess(info.hProcess, C.byref(result)):

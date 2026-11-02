@@ -1,6 +1,6 @@
 # 本地音乐处理与模型许可
 
-核对日期：2026-10-21。本文记录产品边界与已核对的上游声明，不是对任意歌曲、模型训练数据或发布行为的法律合规保证。
+核对日期：2026-10-22。本文记录产品边界与已核对的上游声明，不是对任意歌曲、模型训练数据或发布行为的法律合规保证。
 
 ## 本地文件方案的作用
 
@@ -21,9 +21,11 @@
 
 | 组件 | 代码声明 | 模型权重 / 当前处理 |
 |---|---|---|
-| MuScriptor 0.3.0 | [MIT](https://github.com/muscriptor/muscriptor/blob/main/LICENSE) | [small](https://huggingface.co/MuScriptor/muscriptor-small)、[medium](https://huggingface.co/MuScriptor/muscriptor-medium)、[large](https://huggingface.co/MuScriptor/muscriptor-large) 为 CC BY-NC 4.0，另有附加条件：输入及转谱须具备所需权利；需用户自行接受门控条款 |
+| 轻量 Basic Pitch 1.0.1 / TensorFlow.js 3.21.0 CPU / WASM | Apache 2.0；WASM 另含 BSD/MIT 等依赖通知，随包保留 | 使用 Spotify npm 包附带的原始模型文件，不修改权重；模型和代码约 2.33 MB 随轻量资源分发，完整通知在 assets/light_audio/licenses.txt。无需门控登录，仍要求输入素材具备必要使用权 |
+| MuScriptor 0.3.0 | [MIT](https://github.com/muscriptor/muscriptor/blob/main/LICENSE) | 当前仅开放 [small](https://huggingface.co/MuScriptor/muscriptor-small)、[medium](https://huggingface.co/MuScriptor/muscriptor-medium)，均小于 1B；权重为 CC BY-NC 4.0，另有附加条件：输入及转谱须具备所需权利；需用户自行接受门控条款。large 不在产品允许范围 |
 | GAME 1.0.3 ONNX | [MIT](https://github.com/openvpi/GAME/blob/main/LICENSE) | [1.0 系列权重](https://github.com/openvpi/GAME/releases/tag/v1.0.0)为 CC BY-NC-SA 4.0；确认条件后才下载或调用，含已缓存模型 |
 | Audio Separator | [MIT](https://github.com/nomadkaraoke/python-audio-separator/blob/main/LICENSE) | 包装程序的许可不替代其调用的每个模型的许可 |
+| Open-Unmix 1.3.0 / UMX-HQ | [MIT](https://github.com/sigsep/open-unmix-pytorch/blob/master/LICENSE) | [UMX-HQ 官方权重记录](https://zenodo.org/records/3370489)的 API metadata.license.id 为 mit-license；只获取这四份官方权重，逐份校验发布者 MD5，采用 weights_only 加载。保留来源及许可，非 UMXL 或任意镜像模型 |
 | 原 ViperX BS-RoFormer 检查点 | 不据此推定权重许可 | 在[公开下载仓库](https://github.com/TRvlvr/model_repo)中尚未核实到该权重的明确授权，暂停下载、调用及原唱分离功能；这不是对模型作者侵权的认定 |
 
 Hugging Face 是托管平台，应遵守[每个仓库自己的许可](https://huggingface.co/docs/hub/repositories-licenses)。公开可下载或没有门控，并不等于可任意使用、修改和再分发；[GitHub 也明确说明无许可证时的一般权利限制](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository)。
@@ -34,10 +36,13 @@ NC 为非商业限制，SA 涉及相同方式共享等条件，具体适用以�
 
 ## 当前程序落实
 
-音频任务记录用户选择的素材使用依据、来源说明和所确认的模型条款；每次换输入文件重新填写素材说明。模型确认默认不勾选、不替用户接受网站条款，也不保存登录令牌。记录标为未经独立核验，公开发布权限仍未核验。
+轻量音频入口只提示合法合理使用本地输入和转换结果，不再要求素材依据或来源表单；记录 local_file_provided，不声称核验授权。高级引擎仍记录所用模型要求的素材说明与模型确认；确认默认不勾选、不替用户接受网站条款，也不保存登录令牌。公开发布权限仍未核验。
 
-素材依据或模型确认缺失时，在创建转谱任务、启动引擎或下载模型前停止。许可未核实的分离模型在父流程与子进程均禁用，不能通过用户勾选放行。源码和软件包不包含权重、商业歌曲或本次商业歌曲研究的识别结果。
+高级引擎所需的素材依据或受限模型确认缺失时，在创建识别任务前停止。UMX-HQ 提供独立分离及原唱先分离后转谱，不需要网站登录。许可未核实的 ViperX 模型在父流程与子进程均禁用。源码和软件包只附明确列明的轻量 Basic Pitch 官方模型，不包含高级权重、商业歌曲或本次商业歌曲研究的识别结果。转谱前的本地短片段试听不加载模型，也不要求先确认模型条款。
 
 此前《漫长的告白》的公开试听及曲谱研究，没有建立可向粉丝或 GitHub 分发的完整授权依据，因此不将其作为发布样本，也不继续用于模型验收。后续采用自制或许可明确的样本。旧的本地研究文件保留在仓库外，不替用户删除；不将这些文件视为已获传播授权。
 
 工作台的 MIT 许可只适用于自有内容；游戏截图等素材仍有独立权利，清除 UID 并不取得素材授权。详见 [第三方说明](../THIRD_PARTY_NOTICES.md)。
+
+
+桌面音频窗口新增 Microsoft.Web.WebView2 SDK 1.0.2903.40 的 Core/WinForms/x64 Loader，NuGet 原包 SHA-256 为 `ef128016dd1e51c59178c827ed5b8aa3322c57afa8675d930f8109505542ad74`。SDK LICENSE 为 BSD 条款，LICENSE/NOTICE 全文随 assets/audio_window 分发；本项目窗口源码仍为 MIT。系统 WebView2 Runtime 与 .NET Framework 不打包，不将其许可描述为本项目 MIT，也不自动安装。输入音乐和生成结果的使用边界不因窗口形式改变。

@@ -38,6 +38,11 @@ def main():
         bundle.extractall(target)
     app = target / '异环演奏工作台'
     exe = app / '异环演奏工作台.exe'
+    source_assets = ROOT / 'src/nte_music_desk/assets'
+    expected_assets = {str(p.relative_to(source_assets)): hashlib.sha256(p.read_bytes()).hexdigest()
+                       for p in source_assets.rglob('*') if p.is_file()
+                       and '__pycache__' not in p.parts and p.suffix not in ('.pyc', '.pyo')}
+    assert hashes(app / '_internal/nte_music_desk/assets') == expected_assets, 'Frozen assets differ from current source'
     env = dict(os.environ)
     for name in ('PYTHONHOME', 'PYTHONPATH', 'TCL_LIBRARY', 'TK_LIBRARY', 'NTE_MUSIC_DESK_DATA_DIR'):
         env.pop(name, None)
@@ -64,7 +69,7 @@ def main():
     assert score['mode'] == 'faithful' and score['settings']['max_polyphony'] == 12
     assert before == hashes(app), 'Application resources were modified'
     report.update({'zip_sha256': digest, 'zip_bytes': archive.stat().st_size, 'zip_crc': 'passed',
-        'assets_read_only': True, 'frozen_excerpt_conversion': 'passed', 'exe': str(exe)})
+        'assets_read_only': True, 'assets_match_source': True, 'frozen_excerpt_conversion': 'passed', 'exe': str(exe)})
     destination = ROOT / f'.build/release-validation-{__version__}.json'
     destination.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False, indent=2))

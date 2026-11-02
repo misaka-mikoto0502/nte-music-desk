@@ -35,7 +35,7 @@ class RightsChecks(unittest.TestCase):
     def test_uncleared_separator_remains_disabled_even_after_user_statement(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);source=root/'own.wav';source.write_bytes(b'fixture')
-            request=AudioRequest(source,source_kind='original',rights_basis='original',rights_reference='self recorded',accepted_models=(MUSCRIPTOR_TERMS,))
+            request=AudioRequest(source,source_kind='original',separator='viperx',rights_basis='original',rights_reference='self recorded',accepted_models=(MUSCRIPTOR_TERMS,))
             job=AudioPipeline()
             with patch.object(job,'worker') as worker:
                 with self.assertRaisesRegex(ValueError,'权重许可尚未核实'):job.accompaniment(sys.executable,request,root)
