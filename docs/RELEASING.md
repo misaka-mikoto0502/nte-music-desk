@@ -35,6 +35,8 @@ releases/v2.0.0 中会生成“异环演奏工作台”目录、Windows x64 ZIP�
 
 Actions 在 pull_request、手动触发或推送 v* 标签时运行自包含测试、构建 EXE、运行冻结自检并保存构建产物。工作流仅有 contents:read 权限，不会自动创建公开 Release；可以下载 Actions 产物后自行发布。
 
+README、项目简介和 GitHub 首页信息需要分别维护：README 与 `pyproject.toml` 随源码提交，网站 About、Topics 和 Release 说明需单独保存。当前推荐描述、标签及对外发布清单见 [GitHub 首页与发布信息](GITHUB_PRESENTATION.md)。
+
 ## 升级版本
 
 同步修改 src/nte_music_desk/__init__.py、pyproject.toml、tools/version_info.txt 和 CHANGELOG.md。再次测试、构建，校验 ZIP 与 SHA-256。检查第三方曲谱没有被复制进资源目录。
