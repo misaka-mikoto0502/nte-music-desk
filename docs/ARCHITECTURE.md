@@ -11,7 +11,7 @@ nte-music-desk/
 │   ├── playback.py         # 暂停时钟、控制序号与按键恢复
 │   ├── appearance.py       # 四色圆角、原生按钮与下拉框皮肤
 │   ├── controls.py         # 数值步进与明音速度滑块
-│   ├── branding.py         # 中文线条艺术字
+│   ├── branding.py         # 完整中文图片字标与显示适配
 │   ├── midi.py             # 标准 MIDI 读取、节奏与音域转换
 │   ├── performance.py      # 统一按键时序与计划发声音符
 │   ├── presets.py          # 按曲谱哈希与乐器保存方案

@@ -349,7 +349,7 @@ class App:
         sidebar = tk.Frame(self.root, bg=C['paper'], width=220, padx=20, pady=24)
         sidebar.pack(side='left', fill='y')
         sidebar.pack_propagate(False)
-        self.wordmark = DeskWordmark(sidebar)
+        self.wordmark = DeskWordmark(sidebar, self.assets / 'brand-wordmark.png')
         self.wordmark.pack(anchor='w', pady=(0, 24))
         self.import_button = self.button(sidebar, '＋ 导入音乐\n点击选择，或拖入文件', self.choose_import, size=10,
             tip='点击或拖入本地曲谱与音频。MIDI / MusicXML 直接载入，音频先转成曲谱。')
