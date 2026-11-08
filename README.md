@@ -102,6 +102,7 @@ python src/nte_music_desk/_bootstrap.py --to-midi my-score.mxl --output converte
 
 ```powershell
 python -m unittest discover -s tests -v
+python tools/check_workflows.py
 node tools/light_audio_web/test.mjs
 node tools/light_audio_web/test_downloads.mjs
 python -m pip install -r requirements-build.txt

@@ -2,6 +2,8 @@
 
 ## 本地构建
 
+开发期间可先运行 `python tools/check_workflows.py` 验证内置和合成样例，再使用 `build_windows.py --output <验证目录> --work <构建目录>` 创建独立验证包。运行 `verify_release.py --archive <验证ZIP> --report <独立报告.json>` 可将证据写到单独位置，保留正式版本的验证记录。
+
 在 Windows x64 上安装带 Tcl/Tk 的 Python（推荐 python.org 的 Python 3.12），进入仓库根目录：
 
 ```powershell
