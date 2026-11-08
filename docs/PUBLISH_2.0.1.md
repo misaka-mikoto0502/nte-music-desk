@@ -1,20 +1,22 @@
 # 2.0.1 GitHub 发布操作
 
-本次发布使用统一后的 `release/2.0.1` 分支与本地 `v2.0.1` 标签。上传目录为 `releases/v2.0.1/`。发布说明使用 [RELEASE_NOTES_2.0.1.md](RELEASE_NOTES_2.0.1.md)，验证记录使用 [VALIDATION_2.0.1.md](VALIDATION_2.0.1.md)。
+本次发布使用统一后的 `release/2.0.0` 分支与本地 `v2.0.1` 标签。上传目录为 `releases/v2.0.1/`。发布说明使用 [RELEASE_NOTES_2.0.1.md](RELEASE_NOTES_2.0.1.md)，验证记录使用 [VALIDATION_2.0.1.md](VALIDATION_2.0.1.md)。
 
 ## 1. 推送当前源码和标签
+
+2.0.1 属于 2.x，复用 `release/2.0.0`；后续 2.0.2、2.1.0 也继续更新这条分支，仅使用各自版本标签。
 
 在项目根目录手动执行：
 
 ```powershell
 git status
-git push -u origin release/2.0.1
+git push -u origin release/2.0.0
 git push origin refs/tags/v2.0.1
 ```
 
 这两个 push 将发布分支和指定标签上传到 GitHub。无需推送全部历史标签，不使用强制覆盖。初始本地 2.0.1 检查点已经另行归档，不能把旧安装包当作本次附件。
 
-如需让仓库首页 README 同步当前版本，在 GitHub 将 `release/2.0.1` 合并到 `main`。Release 的源码始终以已推送的 `v2.0.1` 标签为准。
+如需让仓库首页 README 同步当前版本，在 GitHub 将 `release/2.0.0` 合并到 `main`。Release 的源码始终以已推送的 `v2.0.1` 标签为准。
 
 ## 2. 创建 GitHub Release
 

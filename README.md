@@ -114,6 +114,8 @@ python tools/package_source.py
 
 产物在 `releases/v2.0.1/`，不进入 Git。同名包默认拒绝覆盖，明确重建才使用 `--overwrite`。GitHub Actions 在 PR、手动触发或推送版本标签时检查并构建，保存产物，公开 Release 需另行发布。
 
+2.x 的源码持续维护在 `release/2.0.0`，小版本通过版本标签区分；新大版本才建立新的长期分支。协作规则见 [AGENTS.md](AGENTS.md)。
+
 [构建与发布](docs/RELEASING.md) · [项目结构](docs/ARCHITECTURE.md) · [后续计划](docs/NEXT_STEPS.md) · [界面设计](docs/APPEARANCE.md)
 
 ## 素材与许可
