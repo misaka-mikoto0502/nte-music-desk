@@ -47,7 +47,7 @@ README、项目简介和 GitHub 首页信息需要分别维护：README 与 `pyp
 
 ## v2.0.1 本地定版
 
-2026-11-08 将界面与易用性整理定为 2.0.1。更新说明使用 docs/RELEASE_NOTES_2.0.1.md，检查结果使用 docs/VALIDATION_2.0.1.md；产物独立写入 releases/v2.0.1。完成检查后在本地保存版本提交和 v2.0.1 标签，作为后续开发及回退的检查点。GitHub 推送和公开 Release 单独处理。
+2026-11-08 使用者确认界面后，将本轮全部改进统一定为最终 2.0.1，发布分支为 release/2.0.1。更新说明使用 docs/RELEASE_NOTES_2.0.1.md，检查结果使用 docs/VALIDATION_2.0.1.md；新产物写入 releases/v2.0.1。初始本地检查点保存在 archive/v2.0.1-initial-20261108 及私有备份中，最终 v2.0.1 标签指向已检查的发布提交。GitHub 推送、附件和正文操作见 [发布指南](PUBLISH_2.0.1.md)。
 
 ## v2.0.0 发布准备（历史记录）
 

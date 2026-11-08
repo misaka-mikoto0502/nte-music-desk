@@ -88,7 +88,7 @@ def main():
     shutil.copyfile(ROOT / "docs/USAGE.md", app / "使用说明.md")
     (app / "开始使用.txt").write_text(
         f"异环演奏工作台 v{__version__}\n\n双击“异环演奏工作台.exe”打开，无需安装 Python。\n"
-        "请完整解压并保留 _internal 文件夹。\n选曲 → 选择乐器与片段 → 时序试听 → 游戏试奏 → 开始演奏。\n"
+        "请完整解压并保留 _internal 文件夹。\n导入音乐（点击或拖入）→ 选择游戏乐器与方案 → 试听／原谱对照 → 进度定位 → 开始演奏。\n"
         "打开应用时手动确认一次 UAC；后续演奏继承权限。F7 暂停/继续，F8 停止。\n"
         "迷你播放器适合无边框全屏；独占全屏请用 F7/F8。切出游戏自动停止。\n"
         "个人数据在 %LOCALAPPDATA%\\NteMusicDesk；可从“文件 → 打开数据目录”查看。\n", encoding="utf-8")
