@@ -353,6 +353,7 @@ def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_poli
                          "range_policy": range_policy, "start": start, "end": end,
                          "max_polyphony": budget, "roles": role_map, "onset_group_ms": 0 if preserve else 25},
             "summary": {"source_notes": len(notes), "notes": len(events), "folded": folded,
+                        'source_duration_seconds': round(song.seconds, 6),
                         "dropped": dropped, "merged": merged, "chord_notes_removed": reduced,
                         "seconds": round((stop - start) / speed if segmented else max(e["at"] + e["duration"] for e in events), 6),
                         "source_origin_seconds": round(origin + first * speed, 6)},

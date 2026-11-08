@@ -2,6 +2,10 @@
 
 本项目的 MIT 许可适用于项目自有代码、原创图标与自行编码的示例 MIDI，不授予第三方音乐、游戏素材或外部站点内容的权利。程序图标沿用原创的琴键与音符设计，没有使用游戏截图或官方角色素材。1.3.1 的可关闭背景取自用户提供的《异环》截图，经清除 UID、相框和标注后作为 city-session.png 使用；其游戏角色和场景权利归相应权利人，不属于自有 MIT 图标素材。处理记录见 docs/APPEARANCE.md。
 
+## 明音速度滑块
+
+`src/nte_music_desk/assets/mingyin-icon.webp` 为《异环》角色明音凛头像，取自[环世全鉴角色资料页](https://wiki.mysqil.com/characters/mingyin)的[头像文件](https://wiki.mysqil.com/images/characters/mingyin-icon.webp)，获取日期 2026-11-08。原文件保留，圆形裁切与缩放仅在控件显示时进行。角色及游戏美术权利归《异环》相应权利人，不属于本项目 MIT 授权内容；社区站点对其自有内容声明 CC BY-NC-SA 4.0，不将此声明视作游戏美术的独立再授权。
+
 ## 曲谱与历史目录
 
 - 内置 twinkle.mid / twinkle.musicxml 由本项目根据传统《小星星》旋律自行编码，不包含第三方录音或编曲。

@@ -27,6 +27,7 @@ from .performance import performance_plan
 from .track_ui import TrackPanel
 from .appearance import COLORS as C, RoundedButton, RoundedPanel, CanvasLabel, style_comboboxes
 from .branding import DeskWordmark
+from .controls import NumberStepper, CharacterSpeedScale
 
 
 FONT = "Microsoft YaHei UI"
@@ -49,6 +50,12 @@ def export_name(title):
 def duration_label(seconds):
     seconds = max(0, int(seconds))
     return f"{seconds // 60:02d}:{seconds % 60:02d}"
+
+
+def position_label(seconds):
+    milliseconds = max(0, round(seconds * 1000))
+    minutes, remainder = divmod(milliseconds, 60000)
+    return f'{minutes:02d}:{remainder // 1000:02d}.{remainder % 1000:03d}'
 
 
 class Tooltip:
@@ -295,8 +302,6 @@ class App:
         style.map("TCombobox", fieldbackground=[("readonly", "white"), ("disabled", C["disabled"])],
                   background=[('readonly', C['paper']), ('disabled', C['bg'])],
                   foreground=[("readonly", C["ink"]), ("disabled", C["disabled_ink"])])
-        style.configure("Desk.Horizontal.TScale", background="white", troughcolor=C["line"], borderwidth=0,
-                        lightcolor=C["teal"], darkcolor=C["teal"])
         style.configure("Desk.Horizontal.TProgressbar", background=C["teal"], troughcolor=C["line"], borderwidth=0,
                         lightcolor=C["teal"], darkcolor=C["teal"], thickness=5)
         style.configure("Desk.Treeview", font=(FONT, 10), rowheight=30, background=C['paper'], fieldbackground=C['paper'], borderwidth=0)
@@ -418,42 +423,43 @@ class App:
         middle.columnconfigure(1, weight=1, uniform="middle")
         settings = self.card(middle)
         settings.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
-        self.label(settings, "演奏设置", 12, bold=True).pack(anchor="w")
+        settings_heading = tk.Frame(settings, bg=C['paper'])
+        settings_heading.pack(fill='x', pady=(0, 20))
+        settings_title = self.label(settings_heading, '演奏设置', 12, bold=True)
+        settings_title.pack(side='left')
         self.arrangement_label = self.label(settings, '本曲设置自动保存', 8)
-        self.arrangement_label.pack(anchor='w', pady=(4, 14))
+        Tooltip(settings_title, lambda: self.arrangement_label.cget('text'))
+        reset = self.button(settings_heading, '重置', self.reset_settings, 'nav', 9,
+            '恢复原速、零移调、全部有音高声部和默认演奏方案。')
+        reset.configure(padx=6, pady=3)
+        reset.pack(side='right')
+        self.controls.append((reset, 'normal'))
         speed_row = tk.Frame(settings, bg=C["paper"])
         speed_row.pack(fill="x")
         self.label(speed_row, "播放速度", 10).pack(side="left")
-        speed_entry = tk.Entry(speed_row, textvariable=self.speed, width=6, justify="right", relief="flat", fg=C['ink'], bg=C['bg'], font=(FONT, 14, "bold"))
-        speed_entry.pack(side="right")
-        self.label(speed_row, "×", 12, C["teal"]).pack(side="right", padx=3)
+        speed_value = RoundedPanel(speed_row, fill=C['bg'], padx=9, pady=5, radius=9)
+        speed_value.pack(side='right')
+        speed_entry = tk.Entry(speed_value, textvariable=self.speed, width=4, justify='right',
+            relief='flat', borderwidth=0, fg=C['ink'], bg=C['bg'], font=(FONT, 12, 'bold'))
+        speed_entry.pack(side='left')
+        self.label(speed_value, '×', 10).pack(side='left', padx=(4, 0))
         self.controls.append((speed_entry, "normal"))
-        self.scale = ttk.Scale(settings, variable=self.speed_slider, from_=0.25, to=2.0, command=self.slide_speed, style="Desk.Horizontal.TScale")
-        self.scale.pack(fill="x", pady=(5, 4))
+        self.scale = CharacterSpeedScale(settings, self.speed_slider, self.slide_speed, self.assets / 'mingyin-icon.webp')
+        self.scale.pack(fill='x', pady=(5, 10))
+        Tooltip(self.scale, '拖动明音头像调整速度，也可用方向键微调。双击恢复 1× 原速。')
         self.controls.append((self.scale, "normal"))
+        tk.Frame(settings, height=1, bg=C['bg']).pack(fill='x', pady=(0, 16))
         row = tk.Frame(settings, bg=C["paper"])
-        row.pack(fill="x")
-        self.label(row, "移调", 10).pack(side="left")
-        spin = tk.Spinbox(row, from_=-36, to=36, textvariable=self.transpose, width=5, justify="center", relief="solid", borderwidth=1, font=(FONT, 11))
-        spin.pack(side="left", padx=(12, 7))
-        self.label(row, "半音", 9, C["muted"]).pack(side="left")
-        Tooltip(spin, "12 个半音 = 一个八度。\n负数降低音高，正数升高音高。")
+        row.pack(fill='x')
+        self.label(row, '移调 · 半音', 10).pack(side='left')
+        spin = NumberStepper(row, self.transpose, -36, 36)
+        spin.pack(side='right')
+        Tooltip(spin, '12 个半音 = 一个八度。负数降低音高，正数升高音高。\n可直接输入，也可用减号、加号或方向键调整。')
         self.controls.append((spin, "normal"))
-        reset = self.button(row, "恢复默认", self.reset_settings, size=8, tip="恢复原速、零移调、全部有音高声部和原曲声部模式。")
-        reset.configure(padx=8, pady=5)
-        reset.pack(side="right")
-        self.controls.append((reset, "normal"))
-        self.recommend_button = self.button(settings, "推荐移调方案…", self.recommend_transpose, "preview", 9,
-            "比较音域折回、丢音、冲突和旋律走向，给出最多 3 个可试听候选；不会自动修改或开始演奏。")
-        self.recommend_button.configure(pady=6)
-        self.recommend_button.pack(fill="x", pady=(10, 0))
-        transport = tk.Frame(settings, bg=C['paper'])
-        transport.pack(fill='x', pady=(14, 0))
-        self.trial_button = self.button(transport, '试奏 20 秒', lambda: self.play(20), size=9,
-            tip='从进度条当前位置开始，在游戏中演奏最多 20 秒。')
-        self.trial_button.pack(side='left', padx=(0, 8))
-        self.restart_button = self.button(transport, '回到起点', lambda: self.seek_fraction(0), size=9)
-        self.restart_button.pack(side='left')
+        self.recommend_button = self.button(settings, '推荐移调方案  ›', self.recommend_transpose, 'nav', 9,
+            '比较 −36 至 +36 半音的全部候选，优先减少删音、折回、重合与排程延后。\n应用后需试听比较；这是规则建议。')
+        self.recommend_button.configure(padx=4, pady=5)
+        self.recommend_button.pack(anchor='e', pady=(4, 10))
 
 
         tracks_card = self.card(middle)
@@ -471,9 +477,10 @@ class App:
         self.track_preview_button.configure(pady=5)
         self.track_preview_button.pack(fill="x", pady=(7, 0))
 
-        self.advanced_button = self.button(settings, '更多演奏参数', self.toggle_advanced, size=9,
+        self.advanced_button = self.button(settings, '更多参数  ▾', self.toggle_advanced, 'nav', 9,
             tip='倒计时、按键时长、多音上限和音域处理。')
-        self.advanced_button.pack(fill='x', pady=(14, 0))
+        self.advanced_button.configure(padx=0, pady=5)
+        self.advanced_button.pack(anchor='w', pady=(2, 0))
         self.checks_card = self.card(self.adjustment_body)
         self.checks_card.pack(fill='x', pady=(12, 12))
         self.label(self.checks_card, '检查与导出', 12, bold=True).pack(anchor='w', pady=(0, 14))
@@ -519,7 +526,7 @@ class App:
             cell = tk.Frame(grid, bg=C["paper"])
             cell.grid(row=0, column=col, sticky="ew", padx=(0, 14 if col < 2 else 0))
             self.label(cell, label, 9, C["muted"]).pack(anchor="w", pady=(0, 5))
-            spin = tk.Spinbox(cell, from_=lower, to=upper, textvariable=variable, width=10, relief="solid", borderwidth=1)
+            spin = NumberStepper(cell, variable, lower, upper)
             spin.pack(fill="x")
             self.controls.append((spin, "normal"))
             Tooltip(spin, tip)
@@ -1001,16 +1008,17 @@ class App:
     def show_transpositions(self, message):
         window = tk.Toplevel(self.root)
         window.title("推荐移调方案")
-        window.geometry("700x350")
+        window.geometry("790x370")
         window.configure(bg=C["bg"])
         self.label(window, "选择一个方案应用，再试听比较", 14, bold=True, padx=18, pady=16).pack(anchor="w")
-        self.label(window, "按折回、丢音、冲突与旋律走向排序；这是规则建议，不是听感评分。", 9, C["muted"], padx=18).pack(anchor="w")
-        tree = ttk.Treeview(window, columns=("shift", "folded", "dropped", "collisions", "mixed"), show="headings", height=3, style="Desk.Treeview")
-        for col, title in (("shift", "移调 / 半音"), ("folded", "折回音"), ("dropped", "丢弃音"), ("collisions", "重合音"), ("mixed", "黑白混合组")):
+        self.label(window, "比较全部半音候选，综合音域、声部与实际排程；应用后请试听比较。", 9, C["muted"], padx=18).pack(anchor="w")
+        tree = ttk.Treeview(window, columns=("shift", "folded", "dropped", "collisions", "mixed", "delay"), show="headings", height=3, style="Desk.Treeview")
+        for col, title in (("shift", "移调 / 半音"), ("folded", "折回音"), ("dropped", "丢弃音"), ("collisions", "重合音"), ("mixed", "黑白混合组"), ('delay', '最多延后 / ms')):
             tree.heading(col, text=title)
             tree.column(col, width=125, anchor="center", stretch=True)
         for i, candidate in enumerate(message["candidates"]):
-            tree.insert("", "end", iid=str(i), values=(f'{candidate["transpose"]:+d}', candidate["folded"], candidate["dropped"], candidate["collisions"], candidate["mixed_groups"]))
+            shift = f'{candidate["transpose"]:+d}' + ('（当前）' if candidate['transpose'] == message['settings']['transpose'] else '')
+            tree.insert("", "end", iid=str(i), values=(shift, candidate["folded"], candidate["dropped"], candidate["collisions"], candidate["mixed_groups"], f'{candidate["max_timing_adjustment_ms"]:g}'))
         tree.pack(fill="x", padx=18, pady=15)
         tree.selection_set("0")
         def apply():
@@ -1119,7 +1127,7 @@ class App:
             self.advanced.pack(fill="x", before=self.checks_card, pady=(12, 0))
         else:
             self.advanced.pack_forget()
-        self.advanced_button.configure(text="收起演奏参数" if self.advanced_visible else "更多演奏参数")
+        self.advanced_button.configure(text='收起参数  ▴' if self.advanced_visible else '更多参数  ▾')
 
     def toggle_notes(self):
         self.notes_visible = not self.notes_visible
@@ -1139,7 +1147,7 @@ class App:
         audio_busy=bool((self.light_audio and self.light_audio.busy) or (self.audio_dialog and self.audio_dialog.job))
         for button in [self.import_button, *[b for b, _ in self.library_buttons]]:
             self.enabled(button, not locked and not audio_busy and not self.preview_token)
-        for button in [self.play_button, self.trial_button, self.export_button, self.details_button, self.notes_button, self.report_button]:
+        for button in [self.play_button, self.export_button, self.details_button, self.notes_button, self.report_button]:
             self.enabled(button, ready and not locked)
         self.enabled(self.preview_button, ready and not locked and not self.preview_token)
         self.enabled(self.track_preview_button, self.song is not None and not locked and not self.preview_token)
@@ -1149,7 +1157,6 @@ class App:
         self.enabled(self.stop_button, locked or bool(self.preview_token))
         caption = '从这里继续' if ready and self.playback_offset()>.05 else '开始演奏'
         self.play_button.configure(text='音频处理中' if audio_busy else caption)
-        self.enabled(self.restart_button,ready and not audio_busy)
         self.enabled(self.pause_button,locked and self.active.get('phase') in ('playing','paused') and not self.stop_requested)
         self.pause_button.configure(text='继续演奏' if locked and self.active.get('pause_requested') else '暂停')
         for button in (self.preview_button, self.play_button, self.pause_button, self.stop_button):
@@ -1168,7 +1175,6 @@ class App:
             self.play_button.grid(row=0, column=2, sticky='ew')
         if (self.audio_dialog and self.audio_dialog.job) or (self.light_audio and self.light_audio.busy):
             self.enabled(self.play_button, False)
-            self.enabled(self.trial_button, False)
         if self.mini:self.mini.refresh()
 
     def toggle_mini(self):
@@ -1488,6 +1494,10 @@ class App:
                 f'折回 {summary["folded"]}  ·  丢弃 {summary["dropped"]}  ·  重合合并 {summary.get("merged", 0)}')
         self.label(window, text, 9, C["muted"], padx=20).pack(anchor="w")
         timing = report['performance']
+        timeline = report['timeline']
+        original = duration_label(timeline['source_seconds']) if timeline['source_seconds'] is not None else '未记录'
+        self.label(window, f'原曲总长 {original}  ·  本次演奏 {duration_label(timeline["performance_seconds"])}  ·  速度 {timeline["speed"]:g}×',
+                   10, padx=20).pack(anchor='w')
         self.label(window, f'并行峰值 {timing["peak_held_keys"]} 键 · 起音最大偏差 {timing["max_onset_deviation_ms"]:.1f} ms · 混合黑白键 {timing["mixed_groups"]} 组\n以上为软件排程；游戏实际发声仍需实听。变更位置按原曲时间显示。', 9, C["muted"], padx=20, pady=8).pack(anchor="w")
         footer = tk.Frame(window, bg=C["bg"])
         footer.pack(side="bottom", fill="x", padx=20, pady=15)
@@ -1505,7 +1515,7 @@ class App:
         frame = tk.Frame(window, bg='white')
         frame.pack(fill='both', expand=True, padx=20, pady=8)
         tree = ttk.Treeview(frame, columns=('time', 'track', 'action', 'source', 'target'), show='headings', style='Desk.Treeview')
-        for key, title, width in [('time', '原曲 / 秒', 120), ('track', '音轨', 70), ('action', '处理', 140), ('source', '原音 → 移调', 175), ('target', '适配音', 100)]:
+        for key, title, width in [('time', '原曲位置（分:秒）', 145), ('track', '音轨', 65), ('action', '处理', 125), ('source', '原音 → 移调', 170), ('target', '适配音', 100)]:
             tree.heading(key, text=title)
             tree.column(key, width=width, anchor='center')
         scroll = ttk.Scrollbar(frame, command=tree.yview)
@@ -1514,7 +1524,7 @@ class App:
         tree.pack(fill='both', expand=True)
         names = {'simplified': '声部简化', 'folded': '八度折回', 'dropped': '越界丢弃', 'merged': '同音重合合并'}
         for change in report['changes']:
-            tree.insert('', 'end', values=(f'{change["source_at"]:.3f}', change['track'], names[change['action']],
+            tree.insert('', 'end', values=(position_label(change['source_at']), change['track'], names[change['action']],
                 f'{note_name(change["source_midi"])} → {note_name(change["requested_midi"])}',
                 note_name(change['midi']) if change['midi'] is not None else '—'))
 

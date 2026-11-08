@@ -141,13 +141,13 @@ def style_comboboxes(root):
     style = ttk.Style(root)
     if 'Desk.Combobox.field' not in style.element_names():
         images = {}
-        for name, border in (('normal', None), ('hover', COLORS['ink']), ('focus', COLORS['teal'])):
+        for name, border in (('normal', None), ('hover', None), ('focus', COLORS['teal'])):
             images[name] = ImageTk.PhotoImage(rounded_bitmap(64, 44, COLORS['bg'], COLORS['paper'], 10, border), master=root)
         for name, color in (('arrow', COLORS['ink']), ('arrow_focus', COLORS['teal'])):
             arrow = Image.new('RGBA', (72, 60))
             draw = ImageDraw.Draw(arrow)
             draw.line(((21, 23), (36, 38), (51, 23)), fill=color, width=5, joint='curve')
-            images[name] = ImageTk.PhotoImage(arrow.resize((24, 20), Image.Resampling.LANCZOS), master=root)
+            images[name] = ImageTk.PhotoImage(arrow.resize((18, 15), Image.Resampling.LANCZOS), master=root)
         # Tcl elements keep image names, so Python must retain their owners too.
         root._desk_combobox_images = images
         style.element_create('Desk.Combobox.field', 'image', images['normal'],
@@ -159,7 +159,7 @@ def style_comboboxes(root):
         ('Desk.Combobox.downarrow', {'side': 'right', 'sticky': 'ns'}),
         ('Combobox.padding', {'sticky': 'nsew', 'children': [
             ('Combobox.textarea', {'sticky': 'nsew'})]})]})])
-    style.configure('TCombobox', padding=(2, 4), foreground=COLORS['ink'],
+    style.configure('TCombobox', padding=(6, 5), foreground=COLORS['ink'],
                     fieldbackground=COLORS['bg'], postoffset=(0, 4, 0, 0))
     style.map('TCombobox', fieldbackground=[('readonly', COLORS['bg']), ('disabled', COLORS['bg'])])
     style.configure('ComboboxPopdownFrame', background=COLORS['paper'], bordercolor=COLORS['bg'],

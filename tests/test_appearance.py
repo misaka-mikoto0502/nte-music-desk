@@ -11,6 +11,39 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 @unittest.skipUnless(sys.platform == 'win32', 'Windows desktop')
 class AppearanceChecks(unittest.TestCase):
+    def test_numeric_controls_respect_bounds_and_disabled_state(self):
+        import tkinter as tk
+        from nte_music_desk.controls import NumberStepper, CharacterSpeedScale
+        from nte_music_desk.paths import asset_dir
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            number = tk.StringVar(value='35')
+            stepper = NumberStepper(root, number, -36, 36)
+            stepper.plus.invoke()
+            stepper.plus.invoke()
+            self.assertEqual(number.get(), '36')
+            stepper.configure(state='disabled')
+            stepper.minus.invoke()
+            self.assertEqual(number.get(), '36')
+            stepper.configure(state='normal')
+            stepper.minus.invoke()
+            self.assertEqual(number.get(), '35')
+            speed, changes = tk.DoubleVar(value=1), []
+            scale = CharacterSpeedScale(root, speed, changes.append, asset_dir() / 'mingyin-icon.webp')
+            scale.set_value(3)
+            self.assertEqual(speed.get(), 2)
+            scale.set_value(.1)
+            self.assertEqual(speed.get(), .25)
+            scale.configure(state='disabled')
+            scale.set_value(1)
+            self.assertEqual(speed.get(), .25)
+            speed.set(1.5)
+            self.assertEqual(changes, [2, .25])
+            self.assertEqual(scale.value(), 1.5)
+        finally:
+            root.destroy()
+
     def test_unified_import_and_source_comparison_follow_progress(self):
         import tkinter as tk
         from nte_music_desk import cli

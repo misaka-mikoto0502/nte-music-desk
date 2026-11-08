@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from .midi import convert, note_name
 from .instruments import get_instrument
+from .performance import performance_plan, key_schedule
 
 
 def adaptation_metrics(score):
@@ -33,24 +34,29 @@ def recommend_transpositions(song, *, tracks=None, mode="melody", speed=1, trans
                              range_policy="fold", start=0, end=None, instrument="guitar", hold_ms=300,
                              planner=None, limit=3, cancel=None, roles=None, max_polyphony=12,chord_alignment_ms=0):
     candidates = []
-    for shift in sorted(set(range(-12, 13)) | {-36, -24, 24, 36, transpose}):
+    for shift in range(-36, 37):
         if cancel is not None and cancel():
             raise ValueError("移调分析已取消。")
         try:
             score = convert(song, tracks, mode, speed, shift, range_policy, start, instrument, end, max_polyphony, roles)
             score['settings']['chord_alignment_ms']=chord_alignment_ms
-            if planner is not None:
+            plan = performance_plan(score, hold_ms)
+            if planner is not None and planner is not key_schedule:
                 planner(score, hold_ms)
             metrics = adaptation_metrics(score)
+            metrics.update(mixed_groups=plan.mixed_groups,
+                timing_adjusted_notes=plan.timing_adjusted_notes,
+                max_timing_adjustment_ms=plan.max_timing_adjustment_ms)
             cost = (metrics["dropped"] * 100 + metrics["collisions"] * 20 + metrics["folded"] * 4
                     + metrics["contour_reversals"] * 8 + metrics["interval_distortion"] / 12
-                    + metrics["mixed_groups"] * .15)
+                    + metrics["mixed_groups"] * .15
+                    + metrics['timing_adjusted_notes'] * .5 + metrics['max_timing_adjustment_ms'] / 10)
             candidates.append({"transpose": shift, **metrics, "cost": cost})
         except ValueError:
             continue
     if not candidates:
         raise ValueError("没有可演奏的移调候选，请先降低速度、减少音轨或调整音域策略。")
-    candidates.sort(key=lambda c: (c["cost"], abs(c["transpose"]), c["transpose"]))
+    candidates.sort(key=lambda c: (c['cost'], abs(c['transpose'] - transpose), abs(c['transpose']), c['transpose']))
     return candidates[:limit]
 
 
@@ -63,6 +69,10 @@ def adaptation_report(score, plan=None):
             "total_changes": score.get("adaptation", {}).get("total_changes", 0),
             "truncated": score.get("adaptation", {}).get("truncated", False),
             "voice_octaves": score.get('adaptation', {}).get('voice_octaves', {}),
+            'timeline': {'source_seconds': score['summary'].get('source_duration_seconds'),
+                         'source_origin_seconds': score['summary'].get('source_origin_seconds', 0),
+                         'performance_seconds': plan.duration if plan is not None else score['summary']['seconds'],
+                         'speed': score.get('settings', {}).get('speed', 1)},
             "note": "规则适配结果，不代表听感还原度或游戏实际发声；变更明细最多保存 2000 条，统计为完整计数。"}
     if plan is not None:
         from dataclasses import asdict
