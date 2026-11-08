@@ -230,7 +230,7 @@ class ApplicationChecks(unittest.TestCase):
                 app.start.set('0:02'); app.end.set('0:09'); app.update_score()
                 app.instrument.set('吉他 · 钢琴模式')
                 self.assertEqual(float(app.speed.get()), .75)
-                self.assertTrue(app.mode.get().startswith('和弦'))
+                self.assertEqual(app.build_score()['mode'], 'chords')
                 app.instrument.set('钢琴 · Shift 黑键')
                 self.assertEqual(float(app.speed.get()), 1.25)
                 self.assertEqual(app.hold_ms.get(), '220')

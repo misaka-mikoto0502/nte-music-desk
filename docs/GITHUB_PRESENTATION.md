@@ -1,6 +1,6 @@
 # GitHub 首页与发布信息
 
-本页提供 2.0.0 对外介绍及维护清单。README 和 Python 项目元数据随 Git 提交更新；GitHub 的 About、Topics、Release 名称与说明在网站单独维护，不会因 `git push` 自动同步。
+本页提供 2.0.1 对外介绍及维护清单。README 和 Python 项目元数据随 Git 提交更新；GitHub 的 About、Topics、Release 名称与说明在网站单独维护，不会因 `git push` 自动同步。
 
 ## About 描述
 
@@ -26,11 +26,11 @@ python
 
 没有独立官网时 Website 可留空。主页应展示 Releases，不应把本机 `127.0.0.1` 转谱链接填作网站。
 
-## 2.0.0 Release
+## 2.0.1 Release
 
-- Tag：`v2.0.0`，指向已合并并核对过的发布提交。
-- 标题：`异环演奏工作台 v2.0.0`。
-- 说明：使用 [2.0.0 更新说明](RELEASE_NOTES_2.0.0.md)，保留音频 Beta 和本轮游戏实测跳过的边界。
+- Tag：`v2.0.1`，指向已检查的版本提交；对外发布前按正常 Git 流程确认发布分支与提交。
+- 标题：`异环演奏工作台 v2.0.1`。
+- 说明：使用 [2.0.1 更新说明](RELEASE_NOTES_2.0.1.md)，保留音频 Beta 和本轮无游戏输入检查的边界。
 - 附件：Windows x64 ZIP、Source ZIP，以及各自的 `.sha256`。Windows ZIP 是普通用户的运行包，Source ZIP 用于开发和构建。
 - 发布后检查它是否为最新 Release，确认附件名称与版本一致。
 

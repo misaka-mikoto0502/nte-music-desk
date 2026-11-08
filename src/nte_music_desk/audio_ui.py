@@ -10,7 +10,7 @@ import webbrowser
 
 from .transcription import managed_python, clean_log, MODEL_PARAMETERS
 from .audio_pipeline import AudioPipeline, AudioRequest, python_engine
-from .appearance import RoundedPanel
+from .appearance import RoundedPanel, COLORS as C
 from .segments import parse_time
 from .rights import SOURCE_BASES, MUSCRIPTOR_TERMS, GAME_TERMS, validate_use
 
@@ -40,7 +40,7 @@ class AudioDialog:
         except tk.TclError:pass
         self.window.geometry('920x820')
         self.window.minsize(800,680)
-        self.window.configure(bg='#EDECE6')
+        self.window.configure(bg=C['bg'])
         self.window.protocol('WM_DELETE_WINDOW',self.close)
         self.executable=tk.StringVar(value=settings.get('executable',str(managed_python(app.directory))))
         self.source=tk.StringVar()
@@ -67,7 +67,7 @@ class AudioDialog:
         app.label(footer,textvariable=self.state,size=10,wraplength=840,justify='left').pack(anchor='w')
         self.progress=ttk.Progressbar(footer,mode='indeterminate',style='Desk.Horizontal.TProgressbar')
         self.progress.pack(fill='x',pady=(9,12))
-        actions=tk.Frame(footer,bg='#FCFBF7');actions.pack(fill='x')
+        actions=tk.Frame(footer,bg=C['paper']);actions.pack(fill='x')
         self.start_button=app.button(actions,'生成伴奏曲谱',self.transcribe,'primary',11)
         self.start_button.pack(side='right')
         self.controls.append((self.start_button,'normal'))
@@ -78,7 +78,7 @@ class AudioDialog:
         self.result_selector.pack(side='left',fill='x',expand=True,padx=(0,8))
         self.import_button=app.button(actions,'导入工作台',self.import_result,size=9,state='disabled')
         self.import_button.pack(side='left')
-        listen=tk.Frame(footer,bg='#FCFBF7');listen.pack(fill='x',pady=(9,0))
+        listen=tk.Frame(footer,bg=C['paper']);listen.pack(fill='x',pady=(9,0))
         self.original_button=app.button(listen,'♫ 音频片段',self.preview_audio,'preview',9,state='disabled')
         self.original_button.pack(side='left')
         self.stem_choice=tk.StringVar(value='原音频')
@@ -90,9 +90,9 @@ class AudioDialog:
         self.compare_button=app.button(listen,'对照试听',self.prepare_comparison,size=9,state='disabled')
         self.compare_button.pack(side='right',padx=(0,8))
 
-        outer=tk.Frame(self.window,bg='#EDECE6')
+        outer=tk.Frame(self.window,bg=C['bg'])
         outer.pack(fill='both',expand=True,padx=18,pady=(18,12))
-        self.canvas=tk.Canvas(outer,bg='#EDECE6',highlightthickness=0)
+        self.canvas=tk.Canvas(outer,bg=C['bg'],highlightthickness=0)
         scroll=ttk.Scrollbar(outer,orient='vertical',command=self.canvas.yview)
         scroll.pack(side='right',fill='y')
         self.canvas.pack(side='left',fill='both',expand=True)
@@ -103,13 +103,13 @@ class AudioDialog:
         self.canvas.bind('<Configure>',lambda e:self.canvas.itemconfigure(body_id,width=e.width))
         self.window.bind('<MouseWheel>',self.scroll_body)
         app.label(body,'把音乐带入工作台',18,bold=True).pack(anchor='w')
-        app.label(body,'考虑音乐版权风险，不提供搜曲和下载。请选择你有权处理的本地文件，音频不会上传。',10,'#738078',wraplength=780).pack(anchor='w',pady=(6,15))
+        app.label(body,'考虑音乐版权风险，不提供搜曲和下载。请选择你有权处理的本地文件，音频不会上传。',10,C['ink'],wraplength=780).pack(anchor='w',pady=(6,15))
         self.path_row(body,'音频文件',self.source,self.choose_audio)
         self.kind_box=self.combo_row(body,'音频类型',self.source_kind,list(KINDS.values()))
         self.flow_box=self.combo_row(body,'生成内容',self.flow,list(FLOWS.values()))
         self.flow_box.bind('<<ComboboxSelected>>',self.flow_changed)
 
-        row=tk.Frame(body,bg='#FCFBF7');row.pack(fill='x',pady=7)
+        row=tk.Frame(body,bg=C['paper']);row.pack(fill='x',pady=7)
         app.label(row,'音频选段',10,width=19,anchor='w').pack(side='left')
         for caption,var in [('从',self.start),('到',self.end)]:
             app.label(row,caption,9).pack(side='left',padx=(0,6))
@@ -120,8 +120,8 @@ class AudioDialog:
         whole.pack(side='left');self.controls.append((whole,'normal'))
         preview=app.button(row,'试听选段',self.prepare_preview,size=8)
         preview.pack(side='left',padx=(8,0));self.controls.append((preview,'normal'))
-        app.label(body,'支持 分:秒；终点留空为整段。试听最多 30 秒，无需模型；首次转谱建议先选 15–30 秒。',9,'#738078').pack(anchor='w',pady=(0,10))
-        row=tk.Frame(body,bg='#FCFBF7');row.pack(fill='x',pady=(3,10))
+        app.label(body,'支持 分:秒；终点留空为整段。试听最多 30 秒，无需模型；首次转谱建议先选 15–30 秒。',9,C['ink']).pack(anchor='w',pady=(0,10))
+        row=tk.Frame(body,bg=C['paper']);row.pack(fill='x',pady=(3,10))
         app.label(row,'伴奏识别',10,width=19,anchor='w').pack(side='left')
         self.model_box=ttk.Combobox(row,textvariable=self.model,values=tuple(MODEL_PARAMETERS),state='readonly',width=10)
         self.model_box.pack(side='left',padx=(0,12));self.controls.append((self.model_box,'readonly'))
@@ -129,36 +129,36 @@ class AudioDialog:
         self.device_box.pack(side='left');self.controls.append((self.device_box,'readonly'))
         self.language_box=self.combo_row(body,'旋律 Beta 语言',self.language,list(LANGUAGES.values()))
         self.description=tk.StringVar()
-        app.label(body,textvariable=self.description,size=9,color='#95620D',wraplength=780,justify='left').pack(anchor='w',pady=(3,12))
+        app.label(body,textvariable=self.description,size=9,color=C['ink'],wraplength=780,justify='left').pack(anchor='w',pady=(3,12))
 
         self.combo_row(body,'素材使用依据',self.rights_basis,list(SOURCE_BASES.values()))
-        row=tk.Frame(body,bg='#FCFBF7');row.pack(fill='x',pady=5)
+        row=tk.Frame(body,bg=C['paper']);row.pack(fill='x',pady=5)
         app.label(row,'来源 / 授权说明',10,width=19,anchor='w').pack(side='left')
         reference=ttk.Entry(row,textvariable=self.rights_reference)
         reference.pack(side='left',fill='x',expand=True);self.controls.append((reference,'normal'))
-        app.label(body,'填写原创录音说明、许可链接或授权记录。仅作来源记录，未经独立核验；公开 MIDI 或视频须另核对权限。',9,'#738078',wraplength=780,justify='left').pack(anchor='w',pady=(3,6))
+        app.label(body,'填写原创录音说明、许可链接或授权记录。仅作来源记录，未经独立核验；公开 MIDI 或视频须另核对权限。',9,C['ink'],wraplength=780,justify='left').pack(anchor='w',pady=(3,6))
         self.muscriptor_check=ttk.Checkbutton(body,text='已阅读 MuScriptor 模型条款（CC BY-NC 4.0＋附加条件），本次使用符合非商业限制',variable=self.muscriptor_terms)
         self.game_check=ttk.Checkbutton(body,text='已阅读 GAME 权重条款（CC BY-NC-SA 4.0），本次使用符合非商业限制',variable=self.game_terms)
         for check in (self.muscriptor_check,self.game_check):
             check.pack(anchor='w',pady=3);self.controls.append((check,'normal'))
-        links=tk.Frame(body,bg='#FCFBF7');links.pack(fill='x',pady=(0,10))
+        links=tk.Frame(body,bg=C['paper']);links.pack(fill='x',pady=(0,10))
         app.button(links,'MuScriptor 条款 ↗',self.open_license,size=8).pack(side='left')
         app.button(links,'GAME 条款 ↗',lambda:webbrowser.open('https://github.com/openvpi/GAME/releases/tag/v1.0.0'),size=8).pack(side='left',padx=8)
         app.button(links,'UMX-HQ 分离模型（MIT）↗',lambda:webbrowser.open('https://zenodo.org/records/3370489'),size=8).pack(side='left')
 
         self.setup_button=app.button(body,'▸ 引擎配置与检查',self.toggle_setup,size=9)
         self.setup_button.pack(anchor='w',pady=(0,8))
-        self.setup_panel=tk.Frame(body,bg='#FCFBF7')
+        self.setup_panel=tk.Frame(body,bg=C['paper'])
         self.path_row(self.setup_panel,'引擎 Python',self.executable,self.choose_engine)
-        row=tk.Frame(self.setup_panel,bg='#FCFBF7');row.pack(fill='x',pady=8)
+        row=tk.Frame(self.setup_panel,bg=C['paper']);row.pack(fill='x',pady=8)
         for caption,command in [('安装 / 更新独立引擎…',self.install),('检查环境',self.check_environment),('验证模型访问',self.check_model_access)]:
             button=app.button(row,caption,command,size=9)
             button.pack(side='left',padx=(0,8));self.controls.append((button,'normal'))
         app.button(row,'伴奏模型授权',self.open_license,size=9).pack(side='left',padx=(0,8))
         app.button(row,'配置说明',self.help,size=9).pack(side='left')
-        app.label(self.setup_panel,'分离使用 UMX-HQ 官方权重（MIT，约 143 MB），无需账号。伴奏转谱使用 MuScriptor，首次需自行接受条款并登录。\n旋律 Beta 使用 GAME（约 46 MB），确认条款后才获取。音频在本机处理，安装依赖和首次获取模型需要联网。',9,'#738078',wraplength=780,justify='left').pack(anchor='w',pady=(0,12))
+        app.label(self.setup_panel,'分离使用 UMX-HQ 官方权重（MIT，约 143 MB），无需账号。伴奏转谱使用 MuScriptor，首次需自行接受条款并登录。\n旋律 Beta 使用 GAME（约 46 MB），确认条款后才获取。音频在本机处理，安装依赖和首次获取模型需要联网。',9,C['ink'],wraplength=780,justify='left').pack(anchor='w',pady=(0,12))
         app.label(body,'处理记录',10,bold=True).pack(anchor='w',pady=(6,6))
-        self.log=tk.Text(body,height=7,wrap='word',relief='flat',bg='#F3F2EB',padx=10,pady=8,state='disabled',font=('Consolas',9))
+        self.log=tk.Text(body,height=7,wrap='word',relief='flat',bg=C['bg'],padx=10,pady=8,state='disabled',font=('Consolas',9))
         self.log.pack(fill='both',expand=True)
         self.flow_changed()
         if not Path(self.executable.get()).is_file():self.toggle_setup()
@@ -171,14 +171,14 @@ class AudioDialog:
         return 'break'
 
     def path_row(self,body,label,variable,command):
-        row=tk.Frame(body,bg='#FCFBF7');row.pack(fill='x',pady=5)
+        row=tk.Frame(body,bg=C['paper']);row.pack(fill='x',pady=5)
         self.app.label(row,label,10,width=19,anchor='w').pack(side='left')
         entry=ttk.Entry(row,textvariable=variable);entry.pack(side='left',fill='x',expand=True)
         button=self.app.button(row,'浏览…',command,size=9);button.pack(side='left',padx=(8,0))
         self.controls += [(entry,'normal'),(button,'normal')]
 
     def combo_row(self,body,label,variable,values):
-        row=tk.Frame(body,bg='#FCFBF7');row.pack(fill='x',pady=5)
+        row=tk.Frame(body,bg=C['paper']);row.pack(fill='x',pady=5)
         self.app.label(row,label,10,width=19,anchor='w').pack(side='left')
         box=ttk.Combobox(row,textvariable=variable,values=values,state='readonly')
         box.pack(side='left',fill='x',expand=True)

@@ -3,7 +3,7 @@ import ctypes as C
 from ctypes import wintypes as W
 import sys
 import tkinter as tk
-from .appearance import RoundedPanel, RoundedButton
+from .appearance import RoundedPanel, RoundedButton, COLORS as THEME
 
 
 class NonActivatingWindow:
@@ -48,25 +48,25 @@ class MiniPlayer:
         self.window.attributes('-topmost',True)
         self.window.configure(bg='#010203')
         if sys.platform=='win32':self.window.attributes('-transparentcolor','#010203')
-        panel=RoundedPanel(self.window,fill='#263A35',padx=13,pady=10,radius=18)
+        panel=RoundedPanel(self.window,fill=THEME['paper'],padx=13,pady=10,radius=18)
         panel.pack(fill='both',expand=True)
-        header=tk.Frame(panel,bg='#263A35');header.pack(fill='x')
-        branding=tk.Label(header,text='NTE  MUSIC DESK',bg='#263A35',fg='#C6D9AB',font=('Microsoft YaHei UI',8))
+        header=tk.Frame(panel,bg=THEME['paper']);header.pack(fill='x')
+        branding=tk.Label(header,text='NTE  MUSIC DESK',bg=THEME['paper'],fg=THEME['teal'],font=('Microsoft YaHei UI',8))
         branding.pack(side='left')
-        tk.Button(header,text='×',command=self.hide,bg='#263A35',fg='#BCD0C5',relief='flat',borderwidth=0,takefocus=0,padx=5,pady=0).pack(side='right')
-        self.title=tk.Label(panel,text='',bg='#263A35',fg='#FCFBF7',font=('Microsoft YaHei UI',11,'bold'),anchor='w')
+        tk.Button(header,text='×',command=self.hide,bg=THEME['paper'],fg=THEME['ink'],relief='flat',borderwidth=0,takefocus=0,padx=5,pady=0).pack(side='right')
+        self.title=tk.Label(panel,text='',bg=THEME['paper'],fg=THEME['ink'],font=('Microsoft YaHei UI',11,'bold'),anchor='w')
         self.title.pack(fill='x',pady=(2,5))
-        line=tk.Frame(panel,bg='#263A35');line.pack(fill='x')
-        self.status=tk.Label(line,text='',bg='#263A35',fg='#AEC3B7',font=('Microsoft YaHei UI',8))
+        line=tk.Frame(panel,bg=THEME['paper']);line.pack(fill='x')
+        self.status=tk.Label(line,text='',bg=THEME['paper'],fg=THEME['ink'],font=('Microsoft YaHei UI',8))
         self.status.pack(side='left')
-        tk.Label(line,textvariable=app.time_text,bg='#263A35',fg='#D5E1D5',font=('Microsoft YaHei UI',8)).pack(side='right')
-        self.progress=tk.Canvas(panel,height=12,bg='#263A35',borderwidth=0,highlightthickness=0,cursor='hand2')
+        tk.Label(line,textvariable=app.time_text,bg=THEME['paper'],fg=THEME['ink'],font=('Microsoft YaHei UI',8)).pack(side='right')
+        self.progress=tk.Canvas(panel,height=12,bg=THEME['paper'],borderwidth=0,highlightthickness=0,cursor='hand2')
         self.progress.pack(fill='x',pady=(5,7))
         app.bind_seek(self.progress)
-        controls=tk.Frame(panel,bg='#263A35');controls.pack(fill='x')
-        self.play=self.button(controls,'▶ 演奏',self.toggle,'#C6D9AB','#263A35');self.play.pack(side='left',fill='x',expand=True)
-        self.stop=self.button(controls,'■ 停止',app.stop,'#40574B','#FCFBF7');self.stop.pack(side='left',padx=6)
-        self.main=self.button(controls,'主窗',self.open_main,'#40574B','#FCFBF7');self.main.pack(side='left')
+        controls=tk.Frame(panel,bg=THEME['paper']);controls.pack(fill='x')
+        self.play=self.button(controls,'▶ 演奏',self.toggle,THEME['teal'],THEME['paper']);self.play.pack(side='left',fill='x',expand=True)
+        self.stop=self.button(controls,'■ 停止',app.stop,THEME['paper'],THEME['ink']);self.stop.pack(side='left',padx=6)
+        self.main=self.button(controls,'主窗',self.open_main,THEME['paper'],THEME['ink']);self.main.pack(side='left')
         for widget in (branding,self.title,header):
             widget.bind('<ButtonPress-1>',self.begin_drag)
             widget.bind('<B1-Motion>',self.move)
@@ -92,7 +92,8 @@ class MiniPlayer:
 
     def button(self,parent,text,command,fill,ink):
         return RoundedButton(parent,text=text,command=command,bg=fill,fg=ink,activebackground=fill,
-                             font=('Microsoft YaHei UI',9),padx=12,pady=5,takefocus=False)
+                             font=('Microsoft YaHei UI',9),padx=12,pady=5,takefocus=False,
+                             outline=None if fill==THEME['teal'] else THEME['ink'])
 
     def show(self):
         self.app.mini_visible.set(True)
@@ -140,7 +141,7 @@ class MiniPlayer:
         self.title.configure(text=title)
         self.status.configure(text=('已暂停 · F7 继续 · F8 停止' if phase=='paused' else 'F7 暂停 · F8 停止')
                               if active and phase in ('playing','paused') else ('准备演奏…' if active else '就绪 · 拖动标题可移动'))
-        self.app.paint_progress(self.progress,'#C6D9AB','#4A6055')
+        self.app.paint_progress(self.progress,THEME['teal'],THEME['bg'])
 
     def close(self):
         if self.native:self.native.close()

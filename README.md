@@ -4,13 +4,15 @@
 
 **导入本地曲谱或音频，试听后，由工具自动操控《异环》中的钢琴或吉他钢琴模式演奏。无需自己按谱弹奏。**
 
-**2.0.0 · Windows x64 · MIT**
+**2.0.1 · Windows x64 · MIT**
 
-[下载便携版](https://github.com/misaka-mikoto0502/nte-music-desk/releases) · [使用说明](docs/USAGE.md) · [2.0.0 更新说明](docs/RELEASE_NOTES_2.0.0.md) · [问题反馈](https://github.com/misaka-mikoto0502/nte-music-desk/issues)
+[下载便携版](https://github.com/misaka-mikoto0502/nte-music-desk/releases) · [使用说明](docs/USAGE.md) · [2.0.1 更新说明](docs/RELEASE_NOTES_2.0.1.md) · [问题反馈](https://github.com/misaka-mikoto0502/nte-music-desk/issues)
 
 把文件拖进工作台 → 曲谱直接载入 / 音频本机转谱 → 试听与适配 → 在游戏中自动演奏。
 
 ## 2.0 带来了什么
+
+2.0.1 重点整理使用体验：左侧曲目栏、中央“演奏／调整”页面与固定播放区各司其职；四种基础色、圆角按钮和原生下拉框统一外观，入门帮助按需打开，操作按钮随任务状态切换。
 
 | 功能 | 使用体验 |
 | --- | --- |
@@ -22,11 +24,11 @@
 | 两档识别对比 | 一次推理保留均衡版与弱音版，无需重新识别即可切换、试听并载入。弱音版可能补回细节，也可能增加误音。 |
 | 多轨与演奏适配 | 查看音轨、乐器与音符，独奏/静音声部，选择音域、移调、速度和片段；提供适配报告及可选的近同时起音对齐。 |
 
-界面支持圆角面板与可调浓度背景。普通曲谱导入和轻量音频处理均可直接使用便携版；高级分离与转谱引擎另行配置。
+界面采用纯色背景和圆角面板。普通曲谱导入和轻量音频处理均可直接使用便携版；高级分离与转谱引擎另行配置。
 
 ## 下载与开始使用
 
-1. 从 [Releases](https://github.com/misaka-mikoto0502/nte-music-desk/releases) 选择对应版本，下载 `NTE-Music-Desk-v2.0.0-Windows-x64.zip`。Source ZIP 供开发者使用。
+1. 从 [Releases](https://github.com/misaka-mikoto0502/nte-music-desk/releases) 选择对应版本，下载 `NTE-Music-Desk-v2.0.1-Windows-x64.zip`。Source ZIP 供开发者使用。尚未上传的版本可由维护者从本地 `releases/v2.0.1/` 获取。
 2. 完整解压到新目录，保留 `_internal`，双击 **异环演奏工作台.exe**，手动确认启动权限提示。升级时先关闭旧版。
 3. 将本地曲谱或音频拖入左侧区域。音频识别完成后会自动载入曲谱，可先试听，再选择乐器、声部和片段。
 4. 在游戏中进入相应的 36 键演奏界面，再点击演奏。默认倒计时 **3 秒**，**F7** 暂停/继续，**F8** 停止。
@@ -74,9 +76,9 @@
 
 ## 验证与已知边界
 
-2.0.0 已完成 **115 项 Python 回归**、独立源码复测、JavaScript 检查、8 组真实轻量转谱流程，以及 Windows 包独立解压自检、资源与校验核对。真实识别结果也验证了自动载入、两档切换和重启恢复。
+2.0.1 已通过 **118 项 Python 回归**、JavaScript 检查、Windows 包独立解压自检及一次真实轻量转谱，详情见 [本版验证记录](docs/VALIDATION_2.0.1.md)。2.0.0 已完成的 115 项回归、8 组真实轻量转谱、自动载入、两档切换和重启恢复检查另存于 [2.0 验证记录](docs/VALIDATION_2.0.md)。
 
-**本轮游戏实测按要求跳过**。新版悬浮窗按钮、拖动时的游戏前台保持、实际多音数及钢琴绝对音高仍需人工验收；系统另存框的实际点选也保留为人工项目。软件检查通过不代表所有曲目的音乐还原率已通过验证。[完整验证与待测清单](docs/VALIDATION_2.0.md)
+新版悬浮窗按钮、拖动时的游戏前台保持、实际多音数及钢琴绝对音高仍需人工验收；系统另存框的实际点选也保留为人工项目。软件检查通过不代表所有曲目的音乐还原率已通过验证。
 
 ## 从源码运行与构建
 
@@ -101,6 +103,7 @@ python src/nte_music_desk/_bootstrap.py --to-midi my-score.mxl --output converte
 ```powershell
 python -m unittest discover -s tests -v
 node tools/light_audio_web/test.mjs
+node tools/light_audio_web/test_downloads.mjs
 python -m pip install -r requirements-build.txt
 python tools/check_release.py
 python tools/build_windows.py
@@ -108,7 +111,7 @@ python tools/verify_release.py
 python tools/package_source.py
 ```
 
-产物在 `releases/v2.0.0/`，不进入 Git。同名包默认拒绝覆盖，明确重建才使用 `--overwrite`。GitHub Actions 在 PR、手动触发或推送版本标签时检查并构建，保存产物，公开 Release 需另行发布。
+产物在 `releases/v2.0.1/`，不进入 Git。同名包默认拒绝覆盖，明确重建才使用 `--overwrite`。GitHub Actions 在 PR、手动触发或推送版本标签时检查并构建，保存产物，公开 Release 需另行发布。
 
 [构建与发布](docs/RELEASING.md) · [项目结构](docs/ARCHITECTURE.md) · [后续计划](docs/NEXT_STEPS.md) · [界面设计](docs/APPEARANCE.md)
 

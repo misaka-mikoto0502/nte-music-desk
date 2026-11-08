@@ -7,21 +7,18 @@ from .appearance import RoundedPanel, RoundedButton, COLORS as C
 
 def action(parent, text, command):
     return RoundedButton(parent, text=text, command=command, bg=C['blue_light'], fg=C['ink'],
-                         activebackground='#DAE4D6', font=('Microsoft YaHei UI', 9), padx=12, pady=7)
-
-COLORS = ('#32634F', '#537766', '#A5814C', '#897A8E', '#AD7666', '#71855F')
-
+                         activebackground=C['bg'], font=('Microsoft YaHei UI', 9), padx=12, pady=7)
 
 class TrackPanel(tk.Frame):
     def __init__(self, parent):
-        super().__init__(parent, bg='#FCFBF7')
+        super().__init__(parent, bg=C['paper'])
         self.rows, self.enabled_rows, self.roles = [], set(), {}
         self.focused, self.disabled, self.song = 0, False, None
         self.views, self.window, self.timeline, self.playhead = [], None, None, 0
         self.tree = self.make_tree(self, compact=True)
 
     def make_tree(self, parent, compact=False):
-        frame = tk.Frame(parent, bg='#FCFBF7')
+        frame = tk.Frame(parent, bg=C['paper'])
         frame.pack(fill='both', expand=True)
         columns = ('enabled', 'name', 'instrument') if compact else ('enabled', 'name', 'instrument', 'channel', 'role', 'notes', 'range')
         tree = ttk.Treeview(frame, columns=columns, show='headings', height=4 if compact else 7,
@@ -35,7 +32,7 @@ class TrackPanel(tk.Frame):
         bar.pack(side='right', fill='y')
         tree.configure(yscrollcommand=bar.set)
         tree.pack(fill='both', expand=True)
-        tree.tag_configure('muted', foreground='#93A0AF')
+        tree.tag_configure('muted', foreground=C['ink'])
         tree.bind('<Button-1>', lambda event: self.click(event, tree))
         tree.bind('<<TreeviewSelect>>', lambda _: self.focus(tree))
         self.views.append((tree, columns))
@@ -136,10 +133,10 @@ class TrackPanel(tk.Frame):
         window.title('多轨工作区 · ' + self.song.title)
         window.geometry('1080x700')
         window.minsize(850, 600)
-        window.configure(bg='#EDECE6')
-        tk.Label(window, text='声部与原曲总览', font=('Microsoft YaHei UI', 18, 'bold'), bg='#EDECE6', fg='#273B36').pack(anchor='w', padx=20, pady=(18, 5))
-        tk.Label(window, text='点击启用列开关声部 · 选择一行后可独奏或指定角色 · 原轨与通道使用 1 起始编号', bg='#EDECE6', fg='#738078').pack(anchor='w', padx=20, pady=(0, 12))
-        controls = tk.Frame(window, bg='#EDECE6')
+        window.configure(bg=C['bg'])
+        tk.Label(window, text='声部与原曲总览', font=('Microsoft YaHei UI', 18, 'bold'), bg=C['bg'], fg=C['ink']).pack(anchor='w', padx=20, pady=(18, 5))
+        tk.Label(window, text='点击启用列开关声部 · 选择一行后可独奏或指定角色 · 原轨与通道使用 1 起始编号', bg=C['bg'], fg=C['ink']).pack(anchor='w', padx=20, pady=(0, 12))
+        controls = tk.Frame(window, bg=C['bg'])
         controls.pack(fill='x', padx=20, pady=(0, 10))
         def all_parts():
             self.enabled_rows = {i for i, p in enumerate(self.rows) if not p['drums']}
@@ -163,13 +160,13 @@ class TrackPanel(tk.Frame):
         self.make_tree(area)
         overview = RoundedPanel(window, padx=12, pady=12)
         overview.pack(fill='both', expand=True, padx=20, pady=(12, 8))
-        self.timeline = tk.Canvas(overview, height=190, bg='#F5F4ED', highlightthickness=0)
+        self.timeline = tk.Canvas(overview, height=190, bg=C['paper'], highlightthickness=0)
         bar = ttk.Scrollbar(overview, command=self.timeline.yview)
         bar.pack(side='right', fill='y')
         self.timeline.configure(yscrollcommand=bar.set)
         self.timeline.pack(fill='both', expand=True)
         self.timeline.bind('<Configure>', lambda _: self.draw_timeline())
-        tk.Label(window, text='彩色为启用声部，灰色为静音；总览对密集音符做显示聚合，演奏数据保持完整。', bg='#EDECE6', fg='#738078').pack(anchor='w', padx=20, pady=(0, 12))
+        tk.Label(window, text='绿色为启用声部，深色为静音；总览对密集音符做显示聚合，演奏数据保持完整。', bg=C['bg'], fg=C['ink']).pack(anchor='w', padx=20, pady=(0, 12))
         self.render()
 
     def draw_timeline(self):
@@ -179,17 +176,17 @@ class TrackPanel(tk.Frame):
         canvas.delete('all')
         width, left = max(600, canvas.winfo_width()), 175
         scale = (width - left - 20) / max(1, self.song.seconds)
-        canvas.create_text(10, 12, text='原曲时间 / 秒', anchor='w', fill='#738078')
+        canvas.create_text(10, 12, text='原曲时间 / 秒', anchor='w', fill=C['ink'])
         for step in range(6):
             x = left + (width - left - 20) * step / 5
-            canvas.create_text(x, 12, text=f'{self.song.seconds * step / 5:.1f}', fill='#738078')
-            canvas.create_line(x, 25, x, len(self.rows) * 36 + 30, fill='#DDDCD2')
+            canvas.create_text(x, 12, text=f'{self.song.seconds * step / 5:.1f}', fill=C['ink'])
+            canvas.create_line(x, 25, x, len(self.rows) * 36 + 30, fill=C['bg'])
         by_track = {}
         for note in self.song.notes:
             by_track.setdefault(note.track, []).append(note)
         for i, row in enumerate(self.rows):
             y = 30 + i * 36
-            color = COLORS[i % len(COLORS)] if i in self.enabled_rows else '#BCC5D0'
+            color = C['teal'] if i in self.enabled_rows else C['ink']
             canvas.create_text(8, y + 14, text=f'{i + 1:02d}  {row["name"][:15]}', anchor='w', fill=color)
             notes = by_track.get(row['index'], [])
             stride = max(1, (len(notes) + 1999) // 2000)
@@ -205,4 +202,4 @@ class TrackPanel(tk.Frame):
             canvas = self.timeline
             canvas.delete('playhead')
             x = 175 + (max(600, canvas.winfo_width()) - 195) * seconds / max(1, self.song.seconds)
-            canvas.create_line(x, 25, x, len(self.rows) * 36 + 30, fill='#D14D5A', width=2, tags='playhead')
+            canvas.create_line(x, 25, x, len(self.rows) * 36 + 30, fill=C['ink'], width=2, tags='playhead')

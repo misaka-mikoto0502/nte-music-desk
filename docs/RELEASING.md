@@ -15,17 +15,17 @@ python -m venv .venv
 .venv/Scripts/python.exe tools/package_source.py
 ```
 
-releases/v2.0.0 中会生成“异环演奏工作台”目录、Windows x64 ZIP、Source ZIP 及各自 SHA-256 文件。完整解压即可运行 EXE。发布时上传整个 ZIP，不能只复制 EXE 而丢掉 _internal。已有同名 ZIP 默认拒绝覆盖；确认重建才传 --overwrite。源码与应用版本、Windows 属性和随包帮助先由 check_release.py 校验。
+releases/v2.0.1 中会生成“异环演奏工作台”目录、Windows x64 ZIP、Source ZIP 及各自 SHA-256 文件。完整解压即可运行 EXE。发布时上传整个 ZIP，不能只复制 EXE 而丢掉 _internal。已有同名 ZIP 默认拒绝覆盖；确认重建才传 --overwrite。源码与应用版本、Windows 属性和随包帮助先由 check_release.py 校验。
 
 使用目录便携版以便启动提权后的界面与演奏进程共享安装资源，不使用自解压单文件管理员程序。构建方式见 [PyInstaller 目录打包说明](https://pyinstaller.org/en/stable/operating-mode.html#bundling-to-one-folder)。
 
 安全离线自检（不会提权、联网下载或发送游戏按键）：
 
 ```powershell
-& './releases/v2.0.0/异环演奏工作台/异环演奏工作台.exe' --data-dir './test-data' --self-test './self-test.json'
+& './releases/v2.0.1/异环演奏工作台/异环演奏工作台.exe' --data-dir './test-data' --self-test './self-test.json'
 ```
 
-报告应为 status=passed、frozen=true、game_input_sent=false。该检查覆盖内置资源、两种乐器与四种模式、试听、圆角控件、背景解码和隐藏 GUI 初始化；不替代真实游戏试听。
+报告应为 status=passed、frozen=true、game_input_sent=false。该检查覆盖内置资源、两种乐器与四种模式、试听、圆角控件、四种基础色和隐藏 GUI 初始化；不替代真实游戏试听。
 
 ## 上传 GitHub
 
@@ -43,9 +43,13 @@ README、项目简介和 GitHub 首页信息需要分别维护：README 与 `pyp
 
 更新 docs 中的当前使用说明后，将对应六份帮助同步到 src/nte_music_desk/assets；过期副本会阻止打包。执行 `node tools/light_audio_web/test.mjs` 检查 ETA、回退与共享参数。修改轻量页面/算法时，在 tools/light_audio_web 内 npm ci、npm run build 并提交生成资源与清单；未改页面时直接复用已校验资源，不需要把 Node 放进便携包。
 
-## v2.0.0 发布准备
+## v2.0.1 本地定版
 
-当前分支 release/2.0.0，整合之前 1.5 开发期间的全部变更。更新说明用 docs/RELEASE_NOTES_2.0.0.md，软件证据与人工待验收项用 docs/VALIDATION_2.0.md。旧分支、v1.5.0 标签和历史包保留，不挪动、不覆盖。
+2026-11-08 将界面与易用性整理定为 2.0.1。更新说明使用 docs/RELEASE_NOTES_2.0.1.md，检查结果使用 docs/VALIDATION_2.0.1.md；产物独立写入 releases/v2.0.1。完成检查后在本地保存版本提交和 v2.0.1 标签，作为后续开发及回退的检查点。GitHub 推送和公开 Release 单独处理。
+
+## v2.0.0 发布准备（历史记录）
+
+当时分支 release/2.0.0，整合之前 1.5 开发期间的全部变更。更新说明用 docs/RELEASE_NOTES_2.0.0.md，软件证据与人工待验收项用 docs/VALIDATION_2.0.md。旧分支、v1.5.0 标签和历史包保留，不挪动、不覆盖。
 
 GitHub Release 附件上传 releases/v2.0.0 下 Windows x64 ZIP、Source ZIP 和两个 SHA-256 文件。源码按正常 Git 流程提交/合并到准备发布的分支，再在该提交建立 v2.0.0 标签；不要把整个 releases 或 .build 放进源码。当前仅本地准备，不代上传或创建标签，待使用者决定发布时间。
 
