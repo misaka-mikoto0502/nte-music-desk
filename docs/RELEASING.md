@@ -1,6 +1,12 @@
 # 构建与 GitHub 发布
 
+## 大版本长期分支
+
+每个大版本维护一条长期代码分支。当前 `2.0.1`、`2.0.2`、`2.1.0` 等 2.x 版本持续提交到已有的 `release/2.0.0`；进入 3.0.0 时再创建 `release/3.0.0`。小版本不创建新发布分支，使用 `v2.0.1`、`v2.0.2` 等标签保留准确快照。通过正常提交更新同一分支的最新文件，保留历史和回退能力。协作规则同时记录于仓库根目录 `AGENTS.md`。
+
 ## 本地构建
+
+开发期间可先运行 `python tools/check_workflows.py` 验证内置和合成样例，再使用 `build_windows.py --output <验证目录> --work <构建目录>` 创建独立验证包。运行 `verify_release.py --archive <验证ZIP> --report <独立报告.json>` 可将证据写到单独位置，保留正式版本的验证记录。
 
 在 Windows x64 上安装带 Tcl/Tk 的 Python（推荐 python.org 的 Python 3.12），进入仓库根目录：
 
@@ -15,17 +21,17 @@ python -m venv .venv
 .venv/Scripts/python.exe tools/package_source.py
 ```
 
-releases/v2.0.0 中会生成“异环演奏工作台”目录、Windows x64 ZIP、Source ZIP 及各自 SHA-256 文件。完整解压即可运行 EXE。发布时上传整个 ZIP，不能只复制 EXE 而丢掉 _internal。已有同名 ZIP 默认拒绝覆盖；确认重建才传 --overwrite。源码与应用版本、Windows 属性和随包帮助先由 check_release.py 校验。
+releases/v2.0.1 中会生成“异环演奏工作台”目录、Windows x64 ZIP、Source ZIP 及各自 SHA-256 文件。完整解压即可运行 EXE。发布时上传整个 ZIP，不能只复制 EXE 而丢掉 _internal。已有同名 ZIP 默认拒绝覆盖；确认重建才传 --overwrite。源码与应用版本、Windows 属性和随包帮助先由 check_release.py 校验。
 
 使用目录便携版以便启动提权后的界面与演奏进程共享安装资源，不使用自解压单文件管理员程序。构建方式见 [PyInstaller 目录打包说明](https://pyinstaller.org/en/stable/operating-mode.html#bundling-to-one-folder)。
 
 安全离线自检（不会提权、联网下载或发送游戏按键）：
 
 ```powershell
-& './releases/v2.0.0/异环演奏工作台/异环演奏工作台.exe' --data-dir './test-data' --self-test './self-test.json'
+& './releases/v2.0.1/异环演奏工作台/异环演奏工作台.exe' --data-dir './test-data' --self-test './self-test.json'
 ```
 
-报告应为 status=passed、frozen=true、game_input_sent=false。该检查覆盖内置资源、两种乐器与四种模式、试听、圆角控件、背景解码和隐藏 GUI 初始化；不替代真实游戏试听。
+报告应为 status=passed、frozen=true、game_input_sent=false。该检查覆盖内置资源、两种乐器与四种模式、试听、圆角控件、四种基础色和隐藏 GUI 初始化；不替代真实游戏试听。
 
 ## 上传 GitHub
 
@@ -35,15 +41,21 @@ releases/v2.0.0 中会生成“异环演奏工作台”目录、Windows x64 ZIP�
 
 Actions 在 pull_request、手动触发或推送 v* 标签时运行自包含测试、构建 EXE、运行冻结自检并保存构建产物。工作流仅有 contents:read 权限，不会自动创建公开 Release；可以下载 Actions 产物后自行发布。
 
+README、项目简介和 GitHub 首页信息需要分别维护：README 与 `pyproject.toml` 随源码提交，网站 About、Topics 和 Release 说明需单独保存。当前推荐描述、标签及对外发布清单见 [GitHub 首页与发布信息](GITHUB_PRESENTATION.md)。
+
 ## 升级版本
 
 同步修改 src/nte_music_desk/__init__.py、pyproject.toml、tools/version_info.txt 和 CHANGELOG.md。再次测试、构建，校验 ZIP 与 SHA-256。检查第三方曲谱没有被复制进资源目录。
 
 更新 docs 中的当前使用说明后，将对应六份帮助同步到 src/nte_music_desk/assets；过期副本会阻止打包。执行 `node tools/light_audio_web/test.mjs` 检查 ETA、回退与共享参数。修改轻量页面/算法时，在 tools/light_audio_web 内 npm ci、npm run build 并提交生成资源与清单；未改页面时直接复用已校验资源，不需要把 Node 放进便携包。
 
-## v2.0.0 发布准备
+## v2.0.1 本地定版
 
-当前分支 release/2.0.0，整合之前 1.5 开发期间的全部变更。更新说明用 docs/RELEASE_NOTES_2.0.0.md，软件证据与人工待验收项用 docs/VALIDATION_2.0.md。旧分支、v1.5.0 标签和历史包保留，不挪动、不覆盖。
+2026-11-08 使用者确认界面后，将本轮全部改进统一定为最终 2.0.1，发布分支为 release/2.0.0。更新说明使用 docs/RELEASE_NOTES_2.0.1.md，检查结果使用 docs/VALIDATION_2.0.1.md；新产物写入 releases/v2.0.1。初始本地检查点保存在 archive/v2.0.1-initial-20261108 及私有备份中，最终 v2.0.1 标签指向已检查的发布提交。GitHub 推送、附件和正文操作见 [发布指南](PUBLISH_2.0.1.md)。
+
+## v2.0.0 发布准备（历史记录）
+
+当时分支 release/2.0.0，整合之前 1.5 开发期间的全部变更。更新说明用 docs/RELEASE_NOTES_2.0.0.md，软件证据与人工待验收项用 docs/VALIDATION_2.0.md。旧分支、v1.5.0 标签和历史包保留，不挪动、不覆盖。
 
 GitHub Release 附件上传 releases/v2.0.0 下 Windows x64 ZIP、Source ZIP 和两个 SHA-256 文件。源码按正常 Git 流程提交/合并到准备发布的分支，再在该提交建立 v2.0.0 标签；不要把整个 releases 或 .build 放进源码。当前仅本地准备，不代上传或创建标签，待使用者决定发布时间。
 

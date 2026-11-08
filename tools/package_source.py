@@ -12,7 +12,7 @@ from nte_music_desk import __version__
 from tools.check_release import check_release
 
 
-TOP_FILES=("README.md","LICENSE","THIRD_PARTY_NOTICES.md","CHANGELOG.md","pyproject.toml","requirements-build.txt",".gitignore",".gitattributes")
+TOP_FILES=("README.md","LICENSE","THIRD_PARTY_NOTICES.md","CHANGELOG.md","AGENTS.md","pyproject.toml","requirements-build.txt",".gitignore",".gitattributes")
 HOST_BINARIES={"src/nte_music_desk/assets/audio_window/"+name for name in (
     "NteAudioWindow.exe","Microsoft.Web.WebView2.Core.dll","Microsoft.Web.WebView2.WinForms.dll","WebView2Loader.dll")}
 PRIVATE_DIRS={"__pycache__","node_modules",".venv","venv",".build","build","dist","runs","arrangements",

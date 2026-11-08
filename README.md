@@ -4,13 +4,15 @@
 
 **导入本地曲谱或音频，试听后，由工具自动操控《异环》中的钢琴或吉他钢琴模式演奏。无需自己按谱弹奏。**
 
-**2.0.0 · Windows x64 · MIT**
+**2.0.1 · Windows x64 · MIT**
 
-[下载便携版](https://github.com/misaka-mikoto0502/nte-music-desk/releases) · [使用说明](docs/USAGE.md) · [2.0.0 更新说明](docs/RELEASE_NOTES_2.0.0.md) · [问题反馈](https://github.com/misaka-mikoto0502/nte-music-desk/issues)
+[下载便携版](https://github.com/misaka-mikoto0502/nte-music-desk/releases) · [使用说明](docs/USAGE.md) · [2.0.1 更新说明](docs/RELEASE_NOTES_2.0.1.md) · [问题反馈](https://github.com/misaka-mikoto0502/nte-music-desk/issues)
 
 把文件拖进工作台 → 曲谱直接载入 / 音频本机转谱 → 试听与适配 → 在游戏中自动演奏。
 
 ## 2.0 带来了什么
+
+2.0.1 重点整理使用体验：曲目栏、演奏／调整页面与固定播放区各司其职；点击和拖入共用导入入口，原谱对照位于演奏页，进度条统一定位。四种基础色、完整中文图片字标、明音速度滑块和圆角控件统一外观，入门帮助按需打开，操作按钮随任务状态切换。移调推荐覆盖全部 73 个半音，适配报告区分原曲位置与总时长。
 
 | 功能 | 使用体验 |
 | --- | --- |
@@ -20,15 +22,15 @@
 | 从中间演奏 | 主窗与迷你播放器支持点击、拖动进度；记住暂停、停止和退出时的位置，变速后也能续播。 |
 | 迷你播放器 | 置顶小窗提供演奏、暂停/继续和停止；启动时确认一次 UAC，演奏过程中继承权限。 |
 | 两档识别对比 | 一次推理保留均衡版与弱音版，无需重新识别即可切换、试听并载入。弱音版可能补回细节，也可能增加误音。 |
-| 多轨与演奏适配 | 查看音轨、乐器与音符，独奏/静音声部，选择音域、移调、速度和片段；提供适配报告及可选的近同时起音对齐。 |
+| 多轨与演奏适配 | 查看音轨、乐器与音符，独奏/静音声部，选择音域、移调与速度；提供进度定位、适配报告及可选的近同时起音对齐。 |
 
-界面支持圆角面板与可调浓度背景。普通曲谱导入和轻量音频处理均可直接使用便携版；高级分离与转谱引擎另行配置。
+界面采用纯色背景和圆角面板。普通曲谱导入和轻量音频处理均可直接使用便携版；高级分离与转谱引擎另行配置。
 
 ## 下载与开始使用
 
-1. 从 [Releases](https://github.com/misaka-mikoto0502/nte-music-desk/releases) 选择对应版本，下载 `NTE-Music-Desk-v2.0.0-Windows-x64.zip`。Source ZIP 供开发者使用。
+1. 从 [Releases](https://github.com/misaka-mikoto0502/nte-music-desk/releases) 选择对应版本，下载 `NTE-Music-Desk-v2.0.1-Windows-x64.zip`。Source ZIP 供开发者使用。尚未上传的版本可由维护者从本地 `releases/v2.0.1/` 获取。
 2. 完整解压到新目录，保留 `_internal`，双击 **异环演奏工作台.exe**，手动确认启动权限提示。升级时先关闭旧版。
-3. 将本地曲谱或音频拖入左侧区域。音频识别完成后会自动载入曲谱，可先试听，再选择乐器、声部和片段。
+3. 点击左侧“导入音乐”或将本地曲谱／音频拖入这个按钮。音频识别完成后自动载入曲谱，可先试听，选择乐器与声部，再通过进度条定位。
 4. 在游戏中进入相应的 36 键演奏界面，再点击演奏。默认倒计时 **3 秒**，**F7** 暂停/继续，**F8** 停止。
 
 首次可用内置《小星星》检查。演奏时切出游戏会自动停止；需要点击悬浮窗时推荐无边框全屏，独占全屏可使用 F7/F8。
@@ -52,7 +54,7 @@
 
 - **两种游戏乐器**：吉他钢琴模式 E3–D#6；钢琴 Shift 黑键模式暂按 C3–B5，绝对音高仍需实听校准。
 - **多声部选择**：原曲声部默认每组保留 12 音，可调 2–36；另有旋律＋低音、旧旋律与 6 音和弦模式。配置数量不等于游戏实际发声数量。
-- **曲谱与时序对照**：支持原谱、适配后的合成试听、单轨试听、20 秒游戏试奏，以及键位明细和 JSON 导出。
+- **曲谱与时序对照**：支持原谱、适配后的合成试听、单轨试听，以及键位明细和 JSON 导出；游戏演奏从进度条当前位置开始。
 - **移调与报告**：推荐最多 3 个移调候选，显示折回、合并或删音差异；报告可检查并行键峰值与计划起音偏差。
 - **设置记忆**：按曲谱内容与乐器保存演奏方案；曲目改名后可恢复，继续位置以原曲时间记录。
 
@@ -74,9 +76,9 @@
 
 ## 验证与已知边界
 
-2.0.0 已完成 **115 项 Python 回归**、独立源码复测、JavaScript 检查、8 组真实轻量转谱流程，以及 Windows 包独立解压自检、资源与校验核对。真实识别结果也验证了自动载入、两档切换和重启恢复。
+2.0.1 已通过 **124 项 Python 回归、96 组样例转换**、JavaScript 检查、真实音频自动载入与 CPU 回退，以及 Windows 包独立解压自检，详情见 [本版验证记录](docs/VALIDATION_2.0.1.md)。样例仍存在误音，具体音符对照另见 [完整工作流验证](docs/VALIDATION_WORKFLOWS_2026-11-08.md)。2.0.0 的历史证据保留于 [2.0 验证记录](docs/VALIDATION_2.0.md)。
 
-**本轮游戏实测按要求跳过**。新版悬浮窗按钮、拖动时的游戏前台保持、实际多音数及钢琴绝对音高仍需人工验收；系统另存框的实际点选也保留为人工项目。软件检查通过不代表所有曲目的音乐还原率已通过验证。[完整验证与待测清单](docs/VALIDATION_2.0.md)
+新版悬浮窗按钮、拖动时的游戏前台保持、实际多音数及钢琴绝对音高仍需人工验收；系统另存框的实际点选也保留为人工项目。软件检查通过不代表所有曲目的音乐还原率已通过验证。
 
 ## 从源码运行与构建
 
@@ -100,7 +102,9 @@ python src/nte_music_desk/_bootstrap.py --to-midi my-score.mxl --output converte
 
 ```powershell
 python -m unittest discover -s tests -v
+python tools/check_workflows.py
 node tools/light_audio_web/test.mjs
+node tools/light_audio_web/test_downloads.mjs
 python -m pip install -r requirements-build.txt
 python tools/check_release.py
 python tools/build_windows.py
@@ -108,7 +112,9 @@ python tools/verify_release.py
 python tools/package_source.py
 ```
 
-产物在 `releases/v2.0.0/`，不进入 Git。同名包默认拒绝覆盖，明确重建才使用 `--overwrite`。GitHub Actions 在 PR、手动触发或推送版本标签时检查并构建，保存产物，公开 Release 需另行发布。
+产物在 `releases/v2.0.1/`，不进入 Git。同名包默认拒绝覆盖，明确重建才使用 `--overwrite`。GitHub Actions 在 PR、手动触发或推送版本标签时检查并构建，保存产物，公开 Release 需另行发布。
+
+2.x 的源码持续维护在 `release/2.0.0`，小版本通过版本标签区分；新大版本才建立新的长期分支。协作规则见 [AGENTS.md](AGENTS.md)。
 
 [构建与发布](docs/RELEASING.md) · [项目结构](docs/ARCHITECTURE.md) · [后续计划](docs/NEXT_STEPS.md) · [界面设计](docs/APPEARANCE.md)
 

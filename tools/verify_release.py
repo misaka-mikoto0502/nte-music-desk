@@ -22,6 +22,7 @@ def hashes(folder):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--archive', type=Path, default=ROOT / f'releases/v{__version__}/NTE-Music-Desk-v{__version__}-Windows-x64.zip')
+    parser.add_argument('--report', type=Path, help='Write evidence to a separate path for development builds')
     args = parser.parse_args()
     archive = args.archive.resolve()
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
@@ -70,7 +71,8 @@ def main():
     assert before == hashes(app), 'Application resources were modified'
     report.update({'zip_sha256': digest, 'zip_bytes': archive.stat().st_size, 'zip_crc': 'passed',
         'assets_read_only': True, 'assets_match_source': True, 'frozen_excerpt_conversion': 'passed', 'exe': str(exe)})
-    destination = ROOT / f'.build/release-validation-{__version__}.json'
+    destination = args.report.resolve() if args.report else ROOT / f'.build/release-validation-{__version__}.json'
+    destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False, indent=2))
 

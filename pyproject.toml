@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nte-music-desk"
-version = "2.0.0"
-description = "Windows MIDI performance desk for NTE in-game guitar and piano"
+version = "2.0.1"
+description = "Windows music desk for NTE: local scores, on-device audio-to-MIDI, and automatic in-game piano performance"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
@@ -17,6 +17,13 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Topic :: Multimedia :: Sound/Audio :: MIDI",
 ]
+
+[project.urls]
+Homepage = "https://github.com/misaka-mikoto0502/nte-music-desk"
+Documentation = "https://github.com/misaka-mikoto0502/nte-music-desk/blob/main/docs/USAGE.md"
+Issues = "https://github.com/misaka-mikoto0502/nte-music-desk/issues"
+Changelog = "https://github.com/misaka-mikoto0502/nte-music-desk/blob/main/CHANGELOG.md"
+Releases = "https://github.com/misaka-mikoto0502/nte-music-desk/releases"
 
 [project.gui-scripts]
 nte-music-desk = "nte_music_desk.cli:entrypoint"

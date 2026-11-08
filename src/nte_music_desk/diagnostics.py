@@ -53,8 +53,9 @@ def run_self_test(engine, destination):
         assert app.mini is not None and app.mini.window.attributes('-topmost')
         assert app.mini.native.user32.GetWindowLongPtrW(app.mini.native.hwnd,-20)&0x08000000
         assert not hasattr(app, 'open_online')
-        assert app.artwork._image is not None, 'Background asset could not be decoded'
-        assert app.artwork._image.width > 0
+        assert app.heading_canvas.type(app.heading_label.item) == 'text'
+        from .appearance import COLORS
+        assert len(set(COLORS.values())) == 4
         app.instrument.set("钢琴 · Shift 黑键")
         app.mode.set("和弦版（最多 6 音）")
         assert app.update_score()["mode"] == "chords"
@@ -65,7 +66,9 @@ def run_self_test(engine, destination):
         app.instrument.set("吉他 · 钢琴模式")
         assert float(app.speed.get()) == 1
         app.instrument.set("钢琴 · Shift 黑键")
-        assert float(app.speed.get()) == .8 and float(app.end.get()) == 3
+        assert float(app.speed.get()) == .8 and app.end.get() == '' and float(app.start.get()) == 0
+        backup = app.preset_store.path(app.song_fingerprint, 'piano').with_suffix('.excerpt.backup.json')
+        assert json.loads(backup.read_text(encoding='utf-8'))['settings']['end'] == 3
         assert app.assets != app.directory
         assert app.open_path(engine.ASSETS / "scores/twinkle.musicxml")
         app.tracks.show_workspace()
@@ -146,7 +149,7 @@ def run_self_test(engine, destination):
               "desktop_audio_window":"passed_host_resource_hashes; runtime_inference_checked_separately",
               "desktop_file_drop":"passed_native_widget_registration; physical_drag_not_run",
               "mini_player": "passed", "interactive_uac_and_game_overlay": "not_run_requires_user_desktop_test",
-              "rounded_controls": "passed", "background_asset": "passed",
+              "rounded_controls": "passed", "workspace_palette": "passed_four_colors",
               "performance_preview": "passed", "game_input_sent": False}
     destination = Path(destination).resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)

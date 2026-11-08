@@ -230,11 +230,15 @@ class ApplicationChecks(unittest.TestCase):
                 app.start.set('0:02'); app.end.set('0:09'); app.update_score()
                 app.instrument.set('吉他 · 钢琴模式')
                 self.assertEqual(float(app.speed.get()), .75)
-                self.assertTrue(app.mode.get().startswith('和弦'))
+                self.assertEqual(app.build_score()['mode'], 'chords')
                 app.instrument.set('钢琴 · Shift 黑键')
                 self.assertEqual(float(app.speed.get()), 1.25)
                 self.assertEqual(app.hold_ms.get(), '220')
-                self.assertEqual(float(app.end.get()), 9)
+                self.assertEqual(app.end.get(), '')
+                self.assertEqual(float(app.start.get()), 0)
+                backup = app.preset_store.path(app.song_fingerprint, 'piano').with_suffix('.excerpt.backup.json')
+                original = json.loads(backup.read_text(encoding='utf-8'))['settings']
+                self.assertEqual((original['start'], original['end']), (2, 9))
             finally:
                 app.close()
             renamed = score.rename(Path(directory) / 'renamed.mid')
@@ -244,8 +248,9 @@ class ApplicationChecks(unittest.TestCase):
                 self.assertTrue(app.open_path(renamed))
                 self.assertEqual(float(app.speed.get()), 1.25)
                 self.assertEqual(app.hold_ms.get(), '220')
-                self.assertEqual(float(app.start.get()), 2)
-                self.assertEqual(float(app.end.get()), 9)
+                self.assertEqual(float(app.start.get()), 0)
+                self.assertEqual(app.end.get(), '')
+                self.assertEqual(json.loads(backup.read_text(encoding='utf-8'))['settings'], original)
             finally:
                 app.close()
 
