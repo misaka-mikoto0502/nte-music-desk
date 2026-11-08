@@ -4,12 +4,56 @@ import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 
 @unittest.skipUnless(sys.platform == 'win32', 'Windows desktop')
 class AppearanceChecks(unittest.TestCase):
+    def test_unified_import_and_source_comparison_follow_progress(self):
+        import tkinter as tk
+        from nte_music_desk import cli
+        from nte_music_desk.ui import App
+        from nte_music_desk.paths import asset_dir
+        with tempfile.TemporaryDirectory() as directory:
+            root = tk.Tk()
+            root.withdraw()
+            app = App(root, SimpleNamespace(ROOT=Path(directory), ASSETS=asset_dir(), key_schedule=cli.key_schedule))
+            try:
+                source = asset_dir() / 'scores/twinkle.musicxml'
+                with patch('nte_music_desk.ui.filedialog.askopenfilename', return_value=str(source)):
+                    app.import_button.invoke()
+                self.assertEqual(app.current_path, source.resolve())
+                self.assertEqual(app.file_drop.hwnd, app.import_button.winfo_id())
+                audio = Path(directory) / 'local.wav'
+                audio.write_bytes(b'local routing fixture')
+                with patch.object(app, 'open_light_audio') as open_audio:
+                    with patch('nte_music_desk.ui.filedialog.askopenfilename', return_value=str(audio)):
+                        app.import_button.invoke()
+                    open_audio.assert_called_once_with(audio)
+                app.speed.set('1.25')
+                app.transpose.set('2')
+                app.update_score()
+                app.seek_fraction(.4)
+                origin, speed, _ = app.position_frame()
+                raw_position = origin + app.playback_offset() * speed
+                with patch.object(app, 'start_preview') as preview:
+                    app.source_preview_button.invoke()
+                    options = preview.call_args.kwargs['options']
+                    self.assertAlmostEqual(options['start'], raw_position)
+                    self.assertEqual((options['speed'], options['transpose'], options['end']), (1.25, 2, None))
+                    self.assertIs(preview.call_args.kwargs['source'], app.song)
+                app.preview_token = 'preview-fixture'
+                app.refresh_controls()
+                self.assertEqual(str(app.import_button.cget('state')), 'disabled')
+                with patch('nte_music_desk.ui.filedialog.askopenfilename') as choose:
+                    app.import_button.invoke()
+                    choose.assert_not_called()
+            finally:
+                app.preview_token = None
+                app.close()
+
     def test_native_button_disable_invoke_and_round_panel_geometry(self):
         import tkinter as tk
         from nte_music_desk.appearance import RoundedPanel, RoundedButton

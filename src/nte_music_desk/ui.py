@@ -26,6 +26,7 @@ from .analysis import recommend_transpositions, adaptation_report
 from .performance import performance_plan
 from .track_ui import TrackPanel
 from .appearance import COLORS as C, RoundedButton, RoundedPanel, CanvasLabel, style_comboboxes
+from .branding import DeskWordmark
 
 
 FONT = "Microsoft YaHei UI"
@@ -160,7 +161,7 @@ class App:
         for variable in (self.speed, self.transpose, self.start, self.end, self.mode, self.max_polyphony, self.range_policy, self.countdown, self.hold_ms, self.instrument,self.chord_align):
             variable.trace_add("write", self.queue_refresh)
         self.tracks.bind("<<ListboxSelect>>", self.queue_refresh)
-        root.bind("<Control-o>", lambda _: self.open_file())
+        root.bind("<Control-o>", lambda _: self.choose_import())
         root.bind("<Control-Return>", lambda _: self.play(None))
         root.bind("<F8>", lambda _: self.stop())
         root.bind('<F7>',lambda _: self.toggle_pause())
@@ -181,7 +182,7 @@ class App:
     def build_menu(self):
         menu = tk.Menu(self.root)
         files = tk.Menu(menu, tearoff=False)
-        files.add_command(label="导入曲谱…", command=self.open_file, accelerator="Ctrl+O")
+        files.add_command(label="导入音乐…", command=self.choose_import, accelerator="Ctrl+O")
         files.add_command(label="轻量音频转谱（Beta）…", command=self.open_light_audio)
         files.add_command(label="轻量转谱（浏览器兼容）…", command=lambda:self.open_light_audio(browser=True))
         files.add_command(label="高级音频处理（独立引擎）…", command=self.open_audio)
@@ -343,11 +344,13 @@ class App:
         sidebar = tk.Frame(self.root, bg=C['paper'], width=220, padx=20, pady=24)
         sidebar.pack(side='left', fill='y')
         sidebar.pack_propagate(False)
-        self.label(sidebar, 'NTE', 24, bold=True).pack(anchor='w')
-        self.label(sidebar, '演奏工作台', 10).pack(anchor='w', pady=(2, 28))
-        self.import_button = self.button(sidebar, '＋ 导入音乐', self.choose_import, size=10,
-            tip='选择本地曲谱或音频。MIDI / MusicXML 直接载入，音频先转成曲谱。')
+        self.wordmark = DeskWordmark(sidebar)
+        self.wordmark.pack(anchor='w', pady=(0, 24))
+        self.import_button = self.button(sidebar, '＋ 导入音乐\n点击选择，或拖入文件', self.choose_import, size=10,
+            tip='点击或拖入本地曲谱与音频。MIDI / MusicXML 直接载入，音频先转成曲谱。')
+        self.import_button.configure(pady=14)
         self.import_button.pack(fill='x', pady=(0, 26))
+        self.drop_zone = self.import_button
         self.label(sidebar, '曲目', 10, bold=True).pack(anchor='w', pady=(0, 10))
         nav_area = tk.Frame(sidebar, bg=C['paper'])
         nav_area.pack(fill='both', expand=True)
@@ -369,12 +372,7 @@ class App:
         self.shelf_content = tk.Frame(self.nav_content, bg=C['paper'])
         self.shelf_content.pack(fill='x')
         self.refresh_library()
-        self.drop_zone = tk.Label(sidebar, text='拖入曲谱或音频', bg=C['bg'], fg=C['ink'],
-                                  font=(FONT, 9), pady=18, cursor='hand2')
-        self.drop_zone.pack(fill='x', pady=(20, 12))
-        self.drop_zone.bind('<Button-1>', lambda _: self.choose_import())
-        Tooltip(self.drop_zone, '支持 MIDI、MusicXML、MP3、WAV 等本地文件。')
-        self.button(sidebar, '使用引导', self.show_quick_start, 'nav', 9).pack(anchor='w')
+        self.button(sidebar, '使用引导', self.show_quick_start, 'nav', 9).pack(anchor='w', pady=(20, 0))
 
         main = tk.Frame(self.root, bg=C['bg'])
         main.pack(side='left', fill='both', expand=True)
@@ -452,7 +450,7 @@ class App:
         transport = tk.Frame(settings, bg=C['paper'])
         transport.pack(fill='x', pady=(14, 0))
         self.trial_button = self.button(transport, '试奏 20 秒', lambda: self.play(20), size=9,
-            tip='在游戏中演奏当前片段的前 20 秒。')
+            tip='从进度条当前位置开始，在游戏中演奏最多 20 秒。')
         self.trial_button.pack(side='left', padx=(0, 8))
         self.restart_button = self.button(transport, '回到起点', lambda: self.seek_fraction(0), size=9)
         self.restart_button.pack(side='left')
@@ -472,24 +470,6 @@ class App:
             "试听最后点选的音轨，保留原始声部，不折回音域、不删减和弦；不会改变演奏选轨。")
         self.track_preview_button.configure(pady=5)
         self.track_preview_button.pack(fill="x", pady=(7, 0))
-
-        segment = self.card(self.adjustment_body)
-        segment.pack(fill="x", before=middle, pady=(0, 12))
-        self.label(segment, "演奏片段", 11, bold=True).pack(side="left", padx=(0, 12))
-        for label, variable in (("从", self.start), ("到", self.end)):
-            self.label(segment, label, 9, C["muted"]).pack(side="left", padx=(4, 5))
-            entry = tk.Entry(segment, textvariable=variable, width=8, relief="solid", borderwidth=1)
-            entry.pack(side="left", ipady=5)
-            self.controls.append((entry, "normal"))
-            Tooltip(entry, "按原曲时间输入秒数或 分:秒；终点留空表示到曲末。\n片段内的休止和跨越起点的长音会保留。")
-        whole = self.button(segment, "整首", self.reset_segment, size=8)
-        whole.configure(padx=7, pady=5)
-        whole.pack(side="left", padx=8)
-        self.controls.append((whole, "normal"))
-        self.source_preview_button = self.button(segment, "♫ 原谱对照", self.preview_source, "preview", 9,
-            "试听所选音轨的原始声部；与电脑试听使用相同片段、速度和移调，保留完整音域及和弦。")
-        self.source_preview_button.configure(padx=8, pady=5)
-        self.source_preview_button.pack(side="right")
 
         self.advanced_button = self.button(settings, '更多演奏参数', self.toggle_advanced, size=9,
             tip='倒计时、按键时长、多音上限和音域处理。')
@@ -597,7 +577,11 @@ class App:
         self.mode_box = ttk.Combobox(arrangement, textvariable=self.mode, values=list(MODES.values()), state='readonly')
         self.mode_box.pack(fill='x')
         self.controls.append((self.mode_box, 'readonly'))
-        Tooltip(self.mode_box, '默认保留丰富声部。想减少和弦，可以选择“旋律更清楚”。\n更多声部和片段设置在“调整”页。')
+        Tooltip(self.mode_box, '默认保留丰富声部。想减少和弦，可以选择“旋律更清楚”。\n更多声部设置在“调整”页。')
+        self.source_preview_button = self.button(panel, '♫ 原谱对照', self.preview_source, 'nav', 9,
+            '从进度条当前位置试听所选声部，最多 20 秒。\n应用速度和移调，保留原始音域及和弦，可与底部试听比较。')
+        self.source_preview_button.configure(padx=10, pady=6)
+        self.source_preview_button.pack(anchor='e', pady=(18, 0))
 
     def load_demo(self):
         if not self.import_local_file(self.assets / 'scores/twinkle.mid'):
@@ -623,7 +607,7 @@ class App:
         self.label(window, '跟着这三步，用内置《小星星》熟悉一次完整演奏。', 10, C['muted']).pack(anchor='w', padx=26, pady=(0, 18))
         for number, title, description in (
                 ('01', '选好曲目和乐器', '载入《小星星》，在主界面选择钢琴或吉他钢琴模式。\n这里的选择要与游戏中打开的乐器一致。'),
-                ('02', '先在电脑上听一听', '点击底部「试听」听旋律；播放时可点击「停止试听」。\n速度、声部和片段设置集中在「调整」页。'),
+                ('02', '先在电脑上听一听', '点击底部「试听」听旋律，拖动进度条选择开始位置。\n「原谱对照」在演奏页，速度和声部设置在「调整」页。'),
                 ('03', '打开游戏乐器，开始演奏', '在游戏中打开 36 键演奏界面，再回到工具点击「开始演奏」。\n倒计时期间切回游戏并松开键鼠，保持游戏在前台。')):
             card = RoundedPanel(window, padx=15, pady=11)
             card.pack(fill='x', padx=26, pady=(0, 9))
@@ -677,7 +661,7 @@ class App:
         actions.rowconfigure(0, minsize=48)
         self.label(actions, 'F7 暂停 / 继续   ·   F8 停止', 8).grid(row=0, column=0, sticky='w')
         self.preview_button = self.button(actions, '试听', self.preview, size=10,
-            tip='在电脑上试听当前片段，最多 20 秒。')
+            tip='从进度条当前位置试听适配后的效果，最多 20 秒。')
         self.preview_button.configure(min_width=112, min_height=48)
         self.preview_button.grid(row=0, column=1, padx=(12, 12), sticky='ew')
         self.play_button = self.button(actions, '开始演奏', lambda: self.play(None), 'primary', 12,
@@ -823,7 +807,9 @@ class App:
             self.open_path(path)
 
     def choose_import(self):
-        if self.active:return
+        if self.active or self.preview_token or (self.light_audio and self.light_audio.busy) or (self.audio_dialog and self.audio_dialog.job):
+            self.set_status('请先停止演奏、试听或当前转谱任务，再导入文件。', '暂时无法导入', 'amber')
+            return
         path=filedialog.askopenfilename(parent=self.root,title='选择音频或曲谱',filetypes=[
             ('音频或曲谱','*.mid *.midi *.kar *.rmi *.musicxml *.xml *.mxl *.wav *.mp3 *.flac *.ogg *.m4a *.aac *.wma *.opus *.webm'),
             ('所有文件','*.*')])
@@ -932,7 +918,20 @@ class App:
             saved = self.preset_store.load(self.song_fingerprint, self.applied_instrument,
                 [p['index'] for p in self.tracks.rows if not p['drums']], self.song.part_sources)
             if saved:
-                settings = saved
+                settings = dict(saved)
+                if saved['start'] or saved['end'] is not None:
+                    # Preserve the old range before the full-song desk autosaves.
+                    import shutil
+                    path = self.preset_store.path(self.song_fingerprint, self.applied_instrument)
+                    backup = path.with_suffix('.excerpt.backup.json')
+                    if not backup.exists():
+                        shutil.copyfile(path, backup)
+                    settings.update(start=0.0, end=None)
+                    positions = self.preferences.get('playback_positions', {})
+                    if not isinstance(positions, dict):
+                        positions = {}
+                    positions.setdefault(self.song_fingerprint, saved['start'])
+                    self.preferences['playback_positions'] = positions
                 message = "已恢复本曲方案 · 钢琴与吉他独立保存"
         except (OSError, ValueError):
             message = "原方案读取失败，原文件已保留；点击恢复默认可重建方案"
@@ -1114,11 +1113,6 @@ class App:
         self.arrangement_label.configure(text='已恢复默认方案 · 修改后自动保存')
         self.update_score(quiet=True)
 
-    def reset_segment(self):
-        self.start.set("0")
-        self.end.set("")
-        self.update_score(quiet=True)
-
     def toggle_advanced(self):
         self.advanced_visible = not self.advanced_visible
         if self.advanced_visible:
@@ -1144,7 +1138,7 @@ class App:
             self.enabled(widget, not locked, normal)
         audio_busy=bool((self.light_audio and self.light_audio.busy) or (self.audio_dialog and self.audio_dialog.job))
         for button in [self.import_button, *[b for b, _ in self.library_buttons]]:
-            self.enabled(button, not locked and not audio_busy)
+            self.enabled(button, not locked and not audio_busy and not self.preview_token)
         for button in [self.play_button, self.trial_button, self.export_button, self.details_button, self.notes_button, self.report_button]:
             self.enabled(button, ready and not locked)
         self.enabled(self.preview_button, ready and not locked and not self.preview_token)

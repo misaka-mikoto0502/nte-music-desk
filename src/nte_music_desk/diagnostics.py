@@ -66,7 +66,9 @@ def run_self_test(engine, destination):
         app.instrument.set("吉他 · 钢琴模式")
         assert float(app.speed.get()) == 1
         app.instrument.set("钢琴 · Shift 黑键")
-        assert float(app.speed.get()) == .8 and float(app.end.get()) == 3
+        assert float(app.speed.get()) == .8 and app.end.get() == '' and float(app.start.get()) == 0
+        backup = app.preset_store.path(app.song_fingerprint, 'piano').with_suffix('.excerpt.backup.json')
+        assert json.loads(backup.read_text(encoding='utf-8'))['settings']['end'] == 3
         assert app.assets != app.directory
         assert app.open_path(engine.ASSETS / "scores/twinkle.musicxml")
         app.tracks.show_workspace()
