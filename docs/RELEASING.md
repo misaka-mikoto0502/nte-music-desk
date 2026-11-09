@@ -6,6 +6,10 @@
 
 ## 本地构建
 
+当前预览统一输出 `.build/current/`，工具下载和中间构建统一写入 `.build/cache/`，样例及验证记录统一写入 `.build/validation/`。原生组件准备、Windows 打包和独立验证的默认工作目录已经按此分类。历史文档中的旧时间戳目录仅用于追溯；当前入口见 `.build/README.md`。
+
+2.0.2 正式包含完整离线转谱。先运行 `python tools/prepare_offline_audio.py`，在构建机准备固定模型、本机 CPU 引擎、解码器、源码及声明；用户不执行此步骤。构建机需 Visual Studio C++/CMake，支持 `--vs-root`。当前应用使用 `build_windows.py --output .build/current`，正式包不传 `--label offline-preview`。`verify_offline_audio.py` 验证完整 EXE 的真实模型转谱，详见 [完整离线转谱](OFFLINE_AUDIO.md)。
+
 开发期间可先运行 `python tools/check_workflows.py` 验证内置和合成样例，再使用 `build_windows.py --output <验证目录> --work <构建目录>` 创建独立验证包。运行 `verify_release.py --archive <验证ZIP> --report <独立报告.json>` 可将证据写到单独位置，保留正式版本的验证记录。
 
 在 Windows x64 上安装带 Tcl/Tk 的 Python（推荐 python.org 的 Python 3.12），进入仓库根目录：
@@ -21,19 +25,29 @@ python -m venv .venv
 .venv/Scripts/python.exe tools/package_source.py
 ```
 
-releases/v2.0.1 中会生成“异环演奏工作台”目录、Windows x64 ZIP、Source ZIP 及各自 SHA-256 文件。完整解压即可运行 EXE。发布时上传整个 ZIP，不能只复制 EXE 而丢掉 _internal。已有同名 ZIP 默认拒绝覆盖；确认重建才传 --overwrite。源码与应用版本、Windows 属性和随包帮助先由 check_release.py 校验。
+releases/v2.0.2 中会生成“异环演奏工作台”目录、Windows x64 ZIP、Source ZIP 及各自 SHA-256 文件。完整解压即可运行 EXE。发布时上传整个 ZIP，不能只复制 EXE 而丢掉 _internal。已有同名 ZIP 默认拒绝覆盖；确认重建才传 --overwrite。源码与应用版本、Windows 属性和随包帮助先由 check_release.py 校验。
 
 使用目录便携版以便启动提权后的界面与演奏进程共享安装资源，不使用自解压单文件管理员程序。构建方式见 [PyInstaller 目录打包说明](https://pyinstaller.org/en/stable/operating-mode.html#bundling-to-one-folder)。
+
+构建前以进程映像绝对路径检查目标应用目录是否仍被工作台或其转谱子进程使用，`--overwrite` 不绕过该检查。目标仍在运行时，在 `.build/cache/` 临时输出并完成验证；使用者正常关闭当前实例后再替换到 `.build/current/`，随后清理临时展开副本。不要在运行目录直接执行 PyInstaller 的清理步骤，它可能先删除未占用资源再因 EXE／DLL 占用而失败。
+
+源码包完成后，以打包时相同版本的 Python 运行 `python tools/verify_current.py --folder .build/current --report .build/validation/current-identity.json`。它逐文件比较源码包与工作区、Windows ZIP 与展开应用、资源与源码，并比较 EXE 内嵌代码与当前源码编译结果；只看版本号和文件日期不足以证明使用的是最新实现。不要在检查完成后继续修改待发布源码而沿用旧包。
+
+场景验证可运行 `python tools/verify_mini_playback.py --work .build/validation/mini-scenarios`，验证真实播放子进程的换曲、暂停、停止取消及自然播完复位；它只使用记录按键的后端。后台真实转谱由 `tools/verify_background_audio.py` 验证，人工游戏操作仍单独验收。
+
+每次发布均保留 README、`docs/USAGE.md`、随包帮助与“开始使用.txt”中的管理员权限说明：申请权限是为兼容向高权限游戏窗口发送模拟按键；当前主界面启动时统一请求 UAC，取消则不启动，演奏和音频等子进程继承权限。读谱、转谱和本地试听本身不需要提权，命令行分析、转换及离线自检仍可普通权限运行。说明应与实际权限行为保持一致，并在用户下载和首次启动前可读；正文见 [管理员权限说明](USAGE.md#管理员权限说明)。
 
 安全离线自检（不会提权、联网下载或发送游戏按键）：
 
 ```powershell
-& './releases/v2.0.1/异环演奏工作台/异环演奏工作台.exe' --data-dir './test-data' --self-test './self-test.json'
+& './.build/current/异环演奏工作台/异环演奏工作台.exe' --data-dir './test-data' --self-test './self-test.json'
 ```
 
 报告应为 status=passed、frozen=true、game_input_sent=false。该检查覆盖内置资源、两种乐器与四种模式、试听、圆角控件、四种基础色和隐藏 GUI 初始化；不替代真实游戏试听。
 
 ## 上传 GitHub
+
+使用者确认界面／排版并完成上传后，执行一次发布收尾：核对 `main` 已包含该轮提交、远端标签与发布附件校验值、私有归档；删除已合并的临时功能／文档分支及过期构建副本。保留 `main`、大版本 `release/*`、正式版本标签、正式发布包和当前未发布工作。详细规则见 `AGENTS.md`；2026-11-08 的执行记录见 [构建与分支清理](history/maintenance-2026-11-08.md)。
 
 源码目录包含 README、MIT 许可、第三方说明、pyproject.toml、构建依赖、src、tests、tools、docs 和 .github。可把这些内容作为仓库根目录，或解压 Source 源码包后上传。不要上传父目录的 outputs/work。
 
@@ -49,7 +63,11 @@ README、项目简介和 GitHub 首页信息需要分别维护：README 与 `pyp
 
 更新 docs 中的当前使用说明后，将对应六份帮助同步到 src/nte_music_desk/assets；过期副本会阻止打包。执行 `node tools/light_audio_web/test.mjs` 检查 ETA、回退与共享参数。修改轻量页面/算法时，在 tools/light_audio_web 内 npm ci、npm run build 并提交生成资源与清单；未改页面时直接复用已校验资源，不需要把 Node 放进便携包。
 
-## v2.0.1 本地定版
+## v2.0.2 本地定版
+
+2026-11-09 使用者确认将稳定的离线转谱与后台演奏版本定为 2.0.2。继续使用 `release/2.0.0`，以 `v2.0.2` 标签保留本次提交，上传步骤见 [PUBLISH_2.0.2.md](PUBLISH_2.0.2.md)。当前应用统一放在 `.build/current`，发布目录 `releases/v2.0.2` 仅保留压缩附件、校验值、发布正文及验证报告，不再长期保留第二套展开应用。GitHub 推送、合并与公开发布由维护者执行。
+
+## v2.0.1 本地定版（历史记录）
 
 2026-11-08 使用者确认界面后，将本轮全部改进统一定为最终 2.0.1，发布分支为 release/2.0.0。更新说明使用 docs/RELEASE_NOTES_2.0.1.md，检查结果使用 docs/VALIDATION_2.0.1.md；新产物写入 releases/v2.0.1。初始本地检查点保存在 archive/v2.0.1-initial-20261108 及私有备份中，最终 v2.0.1 标签指向已检查的发布提交。GitHub 推送、附件和正文操作见 [发布指南](PUBLISH_2.0.1.md)。
 

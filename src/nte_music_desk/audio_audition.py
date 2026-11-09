@@ -1,9 +1,10 @@
 """Local Windows WAV comparison with a shared position; no game input."""
-import ctypes as C
+import ctypes as CT
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk
 import uuid
+from .appearance import COLORS as C
 
 
 class WaveComparison:
@@ -12,16 +13,16 @@ class WaveComparison:
         self.opened=self.playing=False
         self.limit=int(limit*1000);self.length=self.limit
         if send is None:
-            self.winmm=C.WinDLL('winmm')
-            self.winmm.mciSendStringW.argtypes=[C.c_wchar_p,C.c_wchar_p,C.c_uint,C.c_void_p]
-            self.winmm.mciSendStringW.restype=C.c_uint
-            self.winmm.mciGetErrorStringW.argtypes=[C.c_uint,C.c_wchar_p,C.c_uint]
-            self.winmm.mciGetErrorStringW.restype=C.c_bool
+            self.winmm=CT.WinDLL('winmm')
+            self.winmm.mciSendStringW.argtypes=[CT.c_wchar_p,CT.c_wchar_p,CT.c_uint,CT.c_void_p]
+            self.winmm.mciSendStringW.restype=CT.c_uint
+            self.winmm.mciGetErrorStringW.argtypes=[CT.c_uint,CT.c_wchar_p,CT.c_uint]
+            self.winmm.mciGetErrorStringW.restype=CT.c_bool
             send=self.native_send
         self.send=send
 
     def native_send(self,command):
-        result=C.create_unicode_buffer(1024)
+        result=CT.create_unicode_buffer(1024)
         code=self.winmm.mciSendStringW(command,result,len(result),None)
         if code:
             self.winmm.mciGetErrorStringW(code,result,len(result))
@@ -40,10 +41,10 @@ class WaveComparison:
             # The legacy waveaudio driver can reject long element names even
             # through the Unicode API. Use Windows' existing short path only;
             # no file renaming, cwd changes or system setting changes.
-            kernel=C.WinDLL('kernel32',use_last_error=True)
-            kernel.GetShortPathNameW.argtypes=[C.c_wchar_p,C.c_wchar_p,C.c_uint]
-            kernel.GetShortPathNameW.restype=C.c_uint
-            short=C.create_unicode_buffer(32768)
+            kernel=CT.WinDLL('kernel32',use_last_error=True)
+            kernel.GetShortPathNameW.argtypes=[CT.c_wchar_p,CT.c_wchar_p,CT.c_uint]
+            kernel.GetShortPathNameW.restype=CT.c_uint
+            short=CT.create_unicode_buffer(32768)
             size=kernel.GetShortPathNameW(str(path),short,len(short))
             if 0<size<len(short):path=short.value
         self.send(f'open "{path}" type waveaudio alias {self.alias}')
@@ -90,11 +91,11 @@ class AuditionWindow:
         try:self.window.iconbitmap(str(app.assets/'icon.ico'))
         except tk.TclError:pass
         self.window.geometry('650x300');self.window.minsize(600,290)
-        self.window.configure(bg='#FCFBF7')
+        self.window.configure(bg=C['paper'])
         self.window.protocol('WM_DELETE_WINDOW',self.close)
-        body=tk.Frame(self.window,bg='#FCFBF7',padx=22,pady=18);body.pack(fill='both',expand=True)
+        body=tk.Frame(self.window,bg=C['paper'],padx=22,pady=18);body.pack(fill='both',expand=True)
         app.label(body,'在同一位置比较',16,bold=True).pack(anchor='w')
-        app.label(body,'原录音 / 分离音频 / 曲谱合成音；合成音只用于核对音高与节奏。\n最多试听选段前 30 秒，切换音源保持位置。',9,'#738078',justify='left').pack(anchor='w',pady=(5,12))
+        app.label(body,'切换音源时保持同一位置。合成音用于核对音高与节奏，不还原原曲音色。\n最多试听选段前 30 秒。',9,C['ink'],justify='left').pack(anchor='w',pady=(5,12))
         self.choice=tk.StringVar(value=next(iter(paths)))
         choice=ttk.Combobox(body,textvariable=self.choice,values=list(paths),state='readonly')
         choice.pack(fill='x');choice.bind('<<ComboboxSelected>>',self.switch)
@@ -105,7 +106,7 @@ class AuditionWindow:
         self.slider.bind('<ButtonRelease-1>',self.seek)
         self.time=tk.StringVar()
         app.label(body,textvariable=self.time,size=9).pack(anchor='w',pady=(3,8))
-        row=tk.Frame(body,bg='#FCFBF7');row.pack(fill='x')
+        row=tk.Frame(body,bg=C['paper']);row.pack(fill='x')
         self.button=app.button(row,'▶ 播放',self.toggle,'preview',9);self.button.pack(side='left')
         self.loop=tk.BooleanVar(value=False)
         ttk.Checkbutton(row,text='循环当前片段',variable=self.loop).pack(side='left',padx=14)

@@ -5,6 +5,15 @@ import sys
 from . import __version__
 
 
+def wave_output_available():
+    """Hosted Windows runners may have no wave device; report that explicitly."""
+    if sys.platform != 'win32':return False
+    import ctypes
+    winmm=ctypes.WinDLL('winmm')
+    winmm.waveOutGetNumDevs.restype=ctypes.c_uint
+    return winmm.waveOutGetNumDevs()>0
+
+
 def run_self_test(engine, destination):
     from .midi import read_midi, convert
     from .ui import App
@@ -56,6 +65,14 @@ def run_self_test(engine, destination):
         assert app.heading_canvas.type(app.heading_label.item) == 'text'
         from .appearance import COLORS
         assert len(set(COLORS.values())) == 4
+        from .offline_audio import verify_bundle
+        offline_resources = None
+        if getattr(sys, 'frozen', False) or (engine.ASSETS/'offline_audio/manifest.json').is_file():
+            offline_resources = verify_bundle(engine.ASSETS/'offline_audio', hashes=True)
+            app.open_offline_audio()
+            root.update_idletasks()
+            assert app.offline_dialog.profile in ('piano', 'song')
+            app.offline_dialog.close()
         app.instrument.set("钢琴 · Shift 黑键")
         app.mode.set("和弦版（最多 6 音）")
         assert app.update_score()["mode"] == "chords"
@@ -84,11 +101,17 @@ def run_self_test(engine, destination):
         app.audio_dialog.close()
         from .audio_audition import WaveComparison
         engine.render_song_preview(song,preview,seconds=1)
-        comparison=WaveComparison()
+        comparison=None
+        audio_comparison='not_run_no_wave_output_device'
         try:
-            comparison.switch(preview);comparison.seek(500,playing=False)
-            assert abs(comparison.position()-500)<=1 and not comparison.playing
-        finally:comparison.close();preview.unlink(missing_ok=True)
+            if wave_output_available():
+                comparison=WaveComparison()
+                comparison.switch(preview);comparison.seek(500,playing=False)
+                assert abs(comparison.position()-500)<=1 and not comparison.playing
+                audio_comparison='passed_silent_open_and_seek'
+        finally:
+            if comparison:comparison.close()
+            preview.unlink(missing_ok=True)
         from .light_audio import LightAudioSession
         from urllib.request import urlopen
         app.light_audio = LightAudioSession(engine.ROOT, app.messages.put, assets=engine.ASSETS/'light_audio')
@@ -140,7 +163,7 @@ def run_self_test(engine, destination):
               "arrangement_memory": "passed", "excerpt": "passed", "recommendations": "passed",
               "multitrack_gui": "passed", "audio_setup_gui": "passed", "audio_model_inference": "not_run_requires_authorized_weights",
               "music_download_feature": "removed", "model_terms_defaults": "unchecked", "audio_worker_resources": "passed",
-              "separation_backend":"umxhq", "audio_comparison":"passed_silent_open_and_seek",
+              "separation_backend":"umxhq", "audio_comparison":audio_comparison,
               "light_audio":"passed_resources_and_local_http", "light_audio_bytes":light_bytes,
               "light_saved_variants":"passed_offline_switch_and_workbench_handoff",
               "seek_resume":"passed_saved_position_bindings_and_mid_score_preview; no_game_input",
@@ -150,6 +173,8 @@ def run_self_test(engine, destination):
               "desktop_file_drop":"passed_native_widget_registration; physical_drag_not_run",
               "mini_player": "passed", "interactive_uac_and_game_overlay": "not_run_requires_user_desktop_test",
               "rounded_controls": "passed", "workspace_palette": "passed_four_colors",
+              "bundled_offline_audio": 'passed_model_runtime_hashes_and_native_gui' if offline_resources else 'not_staged_source_build',
+              "offline_model_inference": 'checked_separately_by_verify_offline_audio',
               "performance_preview": "passed", "game_input_sent": False}
     destination = Path(destination).resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)

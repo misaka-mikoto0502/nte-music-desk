@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 from .keyboard import is_administrator, run_elevated_and_wait
 
-TASK_FLAGS = {'--play', '--inspect', '--convert', '--to-midi', '--self-test', '--version', '--help', '-h'}
+TASK_FLAGS = {'--play', '--inspect', '--convert', '--to-midi', '--self-test', '--offline-audio-worker', '--version', '--help', '-h'}
 
 
 def is_task(arguments):

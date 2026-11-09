@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "models": [
+    {
+      "file": "models/muscriptor/muscriptor-small-f16.gguf",
+      "bytes": 209425152,
+      "sha256": "925f55af65a20ebc4f8b45ceaf095a12b72493d436cb112623cd0041a1af23d4",
+      "url": "https://huggingface.co/DamRsn/muscriptor-gguf/resolve/d7045f94e8b19427f4ff9542975035e66596e51c/v1/muscriptor-small-f16.gguf?download=true"
+    },
+    {
+      "file": "models/transkun/transkun.onnx",
+      "bytes": 53391226,
+      "sha256": "6d6960ecbce5c3d51051ebc1ebdeec4d3018ea6cfd360fb1ae96359aa7a075a3",
+      "url": "https://huggingface.co/TuesdayCrowd/transkun-onnx/resolve/b44598166715a50d863973a8ecbbdbbb392f08d6/transkun.onnx?download=true"
+    },
+    {
+      "file": "models/transkun/transkun-heads.onnx",
+      "bytes": 3422740,
+      "sha256": "f609f53fbb4df0a2165f941aff1d5a1c1063ba40aaa699365448dca5d9f3544d",
+      "url": "https://huggingface.co/TuesdayCrowd/transkun-onnx/resolve/b44598166715a50d863973a8ecbbdbbb392f08d6/transkun-heads.onnx?download=true"
+    },
+    {
+      "file": "models/transkun/freq2mels.f32",
+      "bytes": 1876884,
+      "sha256": "449f2a5269cde41f6705cfde7157240ce7c8930f20b50909d57e633395bbf0f4",
+      "url": "https://huggingface.co/TuesdayCrowd/transkun-onnx/resolve/b44598166715a50d863973a8ecbbdbbb392f08d6/freq2mels.f32?download=true"
+    },
+    {
+      "file": "models/transkun/windows.f32",
+      "bytes": 98304,
+      "sha256": "b059ebf1e5550a8186b120ddf3f068dd9075e72338051bcd0349c1f436ddb14f",
+      "url": "https://huggingface.co/TuesdayCrowd/transkun-onnx/resolve/b44598166715a50d863973a8ecbbdbbb392f08d6/windows.f32?download=true"
+    },
+    {
+      "file": "models/transkun/symbols.i32",
+      "bytes": 360,
+      "sha256": "cd2920adac71c7495a8fbf9586d04c2737a9440d280fdc4a619f636837b98fee",
+      "url": "https://huggingface.co/TuesdayCrowd/transkun-onnx/resolve/b44598166715a50d863973a8ecbbdbbb392f08d6/symbols.i32?download=true"
+    },
+    {
+      "file": "models/transkun/params.json",
+      "bytes": 237,
+      "sha256": "4d52da9e78782329be6119a68fe4f0a2f98561d2874782e2bb17426620aed065",
+      "url": "https://huggingface.co/TuesdayCrowd/transkun-onnx/resolve/b44598166715a50d863973a8ecbbdbbb392f08d6/params.json?download=true"
+    }
+  ],
+  "sources": {
+    "muscriptor": {
+      "repo": "DamRsn/muscriptor.cpp",
+      "revision": "8589219cc3b584bce970f95aec2ec4a04e53b280"
+    },
+    "ggml": {
+      "repo": "DamRsn/ggml",
+      "revision": "b01bbb837ebb3a211e133566324fa7631ee723de"
+    },
+    "transkun_adapter": {
+      "repo": "TuesdayCrowd/audio-claudio",
+      "revision": "1866753d4fbe36d472ef1b684f4ed26d1ca1726c"
+    }
+  },
+  "decoder_source": {
+    "url": "https://codeload.github.com/FFmpeg/FFmpeg/tar.gz/refs/tags/n7.1",
+    "sha256": "7ddad2d992bd250a6c56053c26029f7e728bebf0f37f80cf3f8a0e6ec706431a"
+  },
+  "decoder_toolchain": {
+    "url": "https://github.com/skeeto/w64devkit/releases/download/v2.11.0/w64devkit-x64-2.11.0.7z.exe",
+    "sha256": "54c2bb9962e8a30c8270e34c5efc3d5fee579f53087fa7d435b95fbba2af7b2b"
+  },
+  "vocal_model": {
+    "url": "https://github.com/openvpi/GAME/releases/download/v1.0.3/GAME-1.0.3-small-onnx.zip",
+    "sha256": "00ba0c64115b6b874d9ea4afd3e6cf822abda2a04e52569233b0a044fd40e4e8",
+    "files": [
+      {
+        "file": "bd2dur.onnx",
+        "bytes": 4569,
+        "sha256": "6672d56b00f27a20e9bfaa92801c15e394bb520e49031d3ed2515b0a6cf27402"
+      },
+      {
+        "file": "config.json",
+        "bytes": 198,
+        "sha256": "60dfe7e7b57db29475604eeea9b2abf5f8cd2a49326f1f4bc0e1c14ed151a55e"
+      },
+      {
+        "file": "dur2bd.onnx",
+        "bytes": 2632,
+        "sha256": "49d10d1ea186e43c51fd2c51cedb01a3852d363f1c7056ae77df50f7e8dd0996"
+      },
+      {
+        "file": "encoder.onnx",
+        "bytes": 10805372,
+        "sha256": "a6868a702d9c88ccc06b19e54f49d88b7f8cba4a68517f20806bd81ef6f94e06"
+      },
+      {
+        "file": "estimator.onnx",
+        "bytes": 19335163,
+        "sha256": "a84738b2504472a1f22773cc6b0eccad1353a8f36229ad490b8fea85388bb5e1"
+      },
+      {
+        "file": "segmenter.onnx",
+        "bytes": 20906659,
+        "sha256": "7724db4ba59a388fff5aba2f08f0ac025d4ca59caef80e7f474053a1455c88e5"
+      }
+    ]
+  }
+}

@@ -7,7 +7,7 @@ SDK_SHA256='ef128016dd1e51c59178c827ed5b8aa3322c57afa8675d930f8109505542ad74'
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--sdk',type=Path);args=parser.parse_args()
-    cache=ROOT/'.build/webview-sdk';cache.mkdir(parents=True,exist_ok=True)
+    cache=ROOT/'.build/cache/webview-sdk';cache.mkdir(parents=True,exist_ok=True)
     sdk=args.sdk or cache/'sdk.nupkg'
     if not sdk.is_file():
         urllib.request.urlretrieve(f'https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/{VERSION}/microsoft.web.webview2.{VERSION}.nupkg',sdk)

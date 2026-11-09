@@ -17,7 +17,7 @@ import sys
 
 from .midi import convert, note_name, save_score, validate_score, write_midi
 from .notation import read_score
-from .local_library import local_title
+from .local_library import local_title, shelf_customizations
 from .instruments import INSTRUMENTS, score_instrument
 from . import APP_NAME, __version__
 from .presets import PresetStore, fingerprint, DEFAULTS
@@ -102,12 +102,16 @@ class App:
         self.directory.mkdir(parents=True, exist_ok=True)
         self.assets = getattr(engine, "ASSETS", self.directory)
         self.audio_dialog = None
+        self.offline_dialog = None
         self.file_drop = None
         self.light_audio = None
         self.light_window = None
         self.task_lock=threading.RLock()
         self.audio_audition = None
         self.song, self.score, self.active = None, None, None
+        self.current_path = None
+        self.song_revision = 0
+        self.library_menu, self.rename_window = None, None
         self.track_ids, self.controls, self.library_buttons = [], [], []
         self.pending_import = None
         self.seek_drag=None
@@ -122,7 +126,7 @@ class App:
                                     and self.preferences.get('show_adjustments') is True)
         self.guide_window = None
         self.mini=None
-        self.mini_visible=tk.BooleanVar(value=self.preferences.get('mini_player_visible',True) is True)
+        self.mini_visible=tk.BooleanVar(value=False)
         self.preset_store = PresetStore(self.directory)
         self.song_fingerprint, self.syncing_settings = None, False
         self.invalid_presets = set()
@@ -143,6 +147,11 @@ class App:
         self.notice = tk.StringVar(value="")
         self.time_text, self.progress = tk.StringVar(value="00:00 / 00:00"), tk.DoubleVar(value=0)
         self.root.title(f"{APP_NAME} · v{__version__}"+(' · 源码运行' if not getattr(sys,'frozen',False) else ''))
+        if getattr(sys, 'frozen', False):
+            try:
+                info = json.loads((Path(sys.executable).parent/'build-info.json').read_text(encoding='utf-8'))
+                if info.get('preview'):self.root.title(self.root.title()+' · 离线转谱开发预览')
+            except (OSError, ValueError):pass
         try:
             root.iconbitmap(str(self.assets / "icon.ico"))
         except tk.TclError:
@@ -176,13 +185,13 @@ class App:
         root.report_callback_exception = self.callback_error
         last = self.preferences.get("last_file", "")
         candidate = Path(last) if isinstance(last, str) and last else self.assets / "scores/twinkle.mid"
-        if not candidate.is_file():
-            candidate = self.assets / "scores/twinkle.mid"
-        if candidate.is_file():
+        _, hidden = shelf_customizations(self.preferences)
+        if not candidate.is_file() or candidate.resolve() in hidden:
+            candidate = next((path for _, path in self.library_buttons), None)
+        if candidate is not None:
             self.open_path(candidate)
         from .mini_player import MiniPlayer
         self.mini=MiniPlayer(self)
-        if self.mini_visible.get() and root.state()!='withdrawn':self.mini.show()
         self.refresh_controls()
         self.poll_job = root.after(120, self.poll)
 
@@ -190,9 +199,12 @@ class App:
         menu = tk.Menu(self.root)
         files = tk.Menu(menu, tearoff=False)
         files.add_command(label="导入音乐…", command=self.choose_import, accelerator="Ctrl+O")
-        files.add_command(label="轻量音频转谱（Beta）…", command=self.open_light_audio)
-        files.add_command(label="轻量转谱（浏览器兼容）…", command=lambda:self.open_light_audio(browser=True))
-        files.add_command(label="高级音频处理（独立引擎）…", command=self.open_audio)
+        files.add_command(label="本地音频转谱…", command=self.open_offline_audio)
+        legacy = tk.Menu(files, tearoff=False)
+        legacy.add_command(label="旧版轻量转谱（Basic Pitch）…", command=self.open_light_audio)
+        legacy.add_command(label="旧版浏览器兼容…", command=lambda:self.open_light_audio(browser=True))
+        legacy.add_command(label="高级音频处理（独立引擎）…", command=self.open_audio)
+        files.add_cascade(label='其他音频工具', menu=legacy)
         files.add_command(label="另存原曲为 MIDI…", command=self.export_midi)
         files.add_separator()
         files.add_command(label="打开数据目录", command=lambda: os.startfile(self.directory))
@@ -211,8 +223,30 @@ class App:
         menu.add_cascade(label="帮助", menu=help_menu)
         self.root.configure(menu=menu)
 
+    def audio_busy(self):
+        return self.exclusive_audio_busy() or bool(getattr(getattr(self, 'offline_dialog', None), 'job', None))
+
+    def exclusive_audio_busy(self):
+        """Legacy engines retain their playback lock; bundled workers are isolated."""
+        return bool(getattr(getattr(self, 'audio_dialog', None), 'job', None)) or bool(
+                   getattr(self, 'light_audio', None) and self.light_audio.busy)
+
+    def playback_busy(self):
+        return bool(self.active or self.preview_token or
+                    (self.audio_audition and not self.audio_audition.closed))
+
+    def open_offline_audio(self, source=None):
+        dialog = getattr(self, 'offline_dialog', None)
+        if dialog and not dialog.closed:
+            if source is not None and not dialog.job: dialog.choose_source(source)
+            dialog.window.deiconify(); dialog.window.lift()
+            return
+        if self.audio_busy(): return
+        from .offline_audio_ui import OfflineAudioDialog
+        self.offline_dialog = OfflineAudioDialog(self, source)
+
     def open_audio(self):
-        if self.active or (self.light_audio and self.light_audio.busy): return
+        if self.active or self.audio_busy(): return
         if self.audio_dialog:
             self.audio_dialog.window.lift()
             return
@@ -220,12 +254,12 @@ class App:
         self.audio_dialog = AudioDialog(self)
 
     def open_light_audio(self, source=None, *, browser=False):
-        if self.active or (self.audio_dialog and self.audio_dialog.job):return
+        if self.active or (self.audio_dialog and self.audio_dialog.job) or (getattr(self,'offline_dialog',None) and self.offline_dialog.job):return
         try:
             from .light_audio import LightAudioSession
             if self.light_audio is None:
                 self.light_audio = LightAudioSession(self.directory, self.messages.put,
-                    can_start=lambda: not self.closed and not self.active and not (self.audio_dialog and self.audio_dialog.job),gate=self.task_lock)
+                    can_start=lambda: not self.closed and not self.active and not (self.audio_dialog and self.audio_dialog.job) and not (getattr(self,'offline_dialog',None) and self.offline_dialog.job),gate=self.task_lock)
             if source is not None:self.light_audio.select_desktop_audio(source)
             if browser:
                 import webbrowser
@@ -256,28 +290,167 @@ class App:
         if path is not None:
             self.open_path(path)
 
-    def refresh_library(self):
+    def library_entries(self):
         from .local_library import shelf_entries
+        names, hidden = shelf_customizations(self.preferences)
+        example = (self.assets / 'scores/twinkle.mid').resolve()
+        entries = [('小星星', example, '自制离线示例')] if example.is_file() else []
+        entries.extend(item for item in shelf_entries(self.directory, self.preferences.get('shelf_files', []))
+                       if item[1] != example)
+        return [(names.get(path, title), path, caption) for title, path, caption in entries if path not in hidden]
+
+    def highlight_library(self):
+        for button, path in self.library_buttons:
+            selected = path == self.current_path
+            button.palette = (C['bg'] if selected else C['paper'], C['teal'] if selected else C['ink'], C['bg'])
+            button.configure(highlightbackground=C['mint'] if selected else C['nav'], bg=button.palette[0], fg=button.palette[1])
+
+    def refresh_library(self):
         for widget in self.shelf_content.winfo_children():widget.destroy()
         self.library_buttons=[]
-        entries=[('小星星',self.assets/'scores/twinkle.mid','自制离线示例')]
-        entries.extend(shelf_entries(self.directory,self.preferences.get('shelf_files',[])))
-        for name,path,caption in entries:
-            title=re.sub(r'(?:_轻量Beta|\s*[·•]\s*轻量转谱\s*Beta)$','',name,flags=re.IGNORECASE).strip() or name
-            title=' '.join(title.split(' - ',1)[0].split())
+        names, _ = shelf_customizations(self.preferences)
+        for name,path,caption in self.library_entries():
+            title = name
+            if path not in names:
+                title=re.sub(r'(?:_轻量Beta|\s*[·•]\s*轻量转谱\s*Beta)$','',name,flags=re.IGNORECASE).strip() or name
+                title=' '.join(title.split(' - ',1)[0].split())
             display=title if len(title)<=17 else title[:16]+'…'
-            if path == self.assets / 'scores/twinkle.mid':
+            if path == (self.assets / 'scores/twinkle.mid').resolve() and path not in names:
                 display = '小星星 · 示例'
             button=self.button(self.shelf_content,display,lambda n=name,p=path:self.choose_library(n,p),
                 'nav',10,f'{name}\n{caption}\n{path}',anchor='w',justify='left')
             button.configure(pady=9,padx=10)
             button.pack(fill='x',pady=(0,5))
+            for event in ('<Button-3>', '<Shift-F10>', '<KeyPress-Menu>'):
+                button.bind(event, lambda e, p=path: self.show_library_menu(e, p), add='+')
             self.library_buttons.append((button,path))
+        self.highlight_library()
 
-    def accept_transcription(self, path):
+    def library_edit_allowed(self):
+        if self.active or self.preview_token or self.exclusive_audio_busy():
+            self.set_status('请先停止演奏、试听或当前转谱任务，再整理曲目。', '任务进行中', 'amber')
+            return False
+        return True
+
+    def show_library_menu(self, event, path):
+        if not self.library_edit_allowed():return 'break'
+        if self.library_menu is not None:self.library_menu.destroy()
+        menu = self.library_menu = tk.Menu(self.root, tearoff=False, font=(FONT, 10),
+            bg=C['paper'], fg=C['ink'], activebackground=C['bg'], activeforeground=C['teal'])
+        menu.add_command(label='重命名…', command=lambda: self.rename_library(path))
+        menu.add_separator()
+        menu.add_command(label='从列表移除', command=lambda: self.remove_library(path))
+        keyboard = getattr(event, 'num', None) != 3
+        x = event.widget.winfo_rootx() + 12 if keyboard else event.x_root
+        y = event.widget.winfo_rooty() + event.widget.winfo_height() if keyboard else event.y_root
+        try:menu.tk_popup(x, y)
+        finally:menu.grab_release()
+        return 'break'
+
+    def rename_library(self, path):
+        if not self.library_edit_allowed():return
+        path = Path(path).resolve()
+        title = next((name for name, entry, _ in self.library_entries() if entry == path), None)
+        if title is None:return
+        if self.rename_window is not None and self.rename_window.winfo_exists():
+            self.rename_window.lift()
+            return
+        window = self.rename_window = tk.Toplevel(self.root)
+        window.title('重命名曲目')
+        window.configure(bg=C['paper'])
+        window.resizable(False, False)
+        window.transient(self.root)
+        self.label(window, '重命名曲目', 15, bold=True).pack(anchor='w', padx=22, pady=(20, 8))
+        self.label(window, '修改工具台中的显示名称，原文件名保留。', 9).pack(anchor='w', padx=22)
+        value = tk.StringVar(value=title)
+        entry = tk.Entry(window, textvariable=value, font=(FONT, 11), width=34, relief='flat',
+                         bg=C['bg'], fg=C['ink'], highlightthickness=1, highlightbackground=C['bg'], highlightcolor=C['teal'])
+        entry.pack(fill='x', padx=22, pady=(16, 5), ipady=9)
+        error = tk.StringVar(value='')
+        self.label(window, textvariable=error, size=9).pack(anchor='w', padx=22, pady=(0, 8))
+        actions = tk.Frame(window, bg=C['paper'])
+        actions.pack(fill='x', padx=22, pady=(0, 20))
+        def save(_=None):
+            try:
+                if self.set_library_name(path, value.get()):window.destroy()
+            except ValueError as failure:error.set(str(failure))
+        self.button(actions, '保存名称', save, 'primary').pack(side='right')
+        self.button(actions, '取消', window.destroy).pack(side='right', padx=(0, 10))
+        window.bind('<Return>', save)
+        window.bind('<Escape>', lambda _: window.destroy())
+        window.update_idletasks()
+        x = self.root.winfo_rootx() + max(0, (self.root.winfo_width() - window.winfo_reqwidth()) // 2)
+        y = self.root.winfo_rooty() + max(0, (self.root.winfo_height() - window.winfo_reqheight()) // 2)
+        window.geometry(f'+{x}+{y}')
+        window.grab_set()
+        entry.focus_set()
+        entry.selection_range(0, 'end')
+
+    def set_library_name(self, path, name):
+        if not self.library_edit_allowed():return False
+        path = Path(path).resolve()
+        if not isinstance(name, str) or not name.strip():raise ValueError('请输入曲目名称。')
+        name = name.strip()
+        if len(name) > 180:raise ValueError('曲目名称最多 180 个字符。')
+        if re.search(r'[\x00-\x1f\x7f]', name):raise ValueError('曲目名称不能包含换行或控制字符。')
+        name = ' '.join(name.split())
+        if path not in {entry for _, entry, _ in self.library_entries()}:return False
+        names, _ = shelf_customizations(self.preferences)
+        names[path] = name
+        self.preferences['shelf_names'] = {str(entry): title for entry, title in names.items()}
+        if path == self.current_path:self.title.set(name)
+        self.refresh_library()
+        self.refresh_controls()
+        self.save_preferences()
+        self.set_status('已保存曲目显示名称。')
+        return True
+
+    def remove_library(self, path):
+        if not self.library_edit_allowed():return False
+        path = Path(path).resolve()
+        paths = [entry for _, entry, _ in self.library_entries()]
+        if path not in paths:return False
+        index = paths.index(path)
+        _, hidden = shelf_customizations(self.preferences)
+        hidden.add(path)
+        self.preferences['shelf_hidden'] = sorted(str(entry) for entry in hidden)
+        if path == self.current_path:
+            self.save_arrangement()
+            self.clear_current_song()
+            remaining = self.library_entries()
+            if remaining:self.open_path(remaining[min(index, len(remaining) - 1)][1])
+        self.refresh_library()
+        self.refresh_controls()
+        self.save_preferences()
+        self.set_status('已从曲目列表移除，原文件和演奏设置保留；可重新导入。')
+        return True
+
+    def clear_current_song(self):
+        if self.refresh_job is not None:self.root.after_cancel(self.refresh_job)
+        self.refresh_job, self.recommend_token, self.seek_drag = None, None, None
+        self.song, self.score, self.current_path, self.song_fingerprint = None, None, None, None
+        self.song_revision += 1
+        self.track_ids = []
+        self.ready_duration = 0
+        self.tracks.load_song(None)
+        self.title.set('选择一首曲子')
+        self.subtitle.set('从左侧曲目架开始，或导入本地曲谱')
+        self.notice.set('')
+        self.progress.set(0)
+        self.time_text.set('00:00 / 00:00')
+        self.arrangement_label.configure(text='本曲设置自动保存')
+        for label in self.metric_values:label.configure(text='—')
+        for detail in self.metric_details:detail.set('')
+        for key, note in self.key_cells:
+            key.configure(text='—')
+            note.configure(text='')
+
+    def accept_transcription(self, path, *, auto_load=True):
         path=Path(path).resolve()
         self.refresh_library()
-        if self.active:
+        if not auto_load:
+            state='saved';text='曲谱已保存并加入曲目列表，当前曲目保持不变。'
+        elif self.active:
             self.pending_import=path
             state='queued';text='已加入曲目架，当前演奏结束后自动载入。'
         elif self.open_path(path):
@@ -288,6 +461,7 @@ class App:
         else:
             state='failed';text='曲谱已保存，自动载入未完成，请在曲目架重试。'
         if self.light_audio:self.light_audio.acknowledge_import(path,state,text)
+        if state=='saved' and not self.playback_busy():self.set_status(text,'曲谱已加入','blue')
         if state=='queued':self.set_status(text,'曲谱已加入','blue')
         self.refresh_controls()
         return state
@@ -745,7 +919,9 @@ class App:
 
     def move_seek(self,event):
         if not self.seek_drag:return
-        canvas=self.seek_drag['canvas'];fraction=min(1,max(0,event.x/max(1,canvas.winfo_width())))
+        canvas=self.seek_drag['canvas']
+        fraction=(canvas.fraction_at(event.x) if hasattr(canvas,'fraction_at')
+                  else min(1,max(0,event.x/max(1,canvas.winfo_width()))))
         self.seek_drag['fraction']=fraction
         length=self.seek_drag['frame'][2]
         self.progress.set(fraction*100);self.time_text.set(f'{duration_label(fraction*length)} / {duration_label(length)}')
@@ -788,10 +964,12 @@ class App:
 
     def save_preferences(self):
         try:
-            values = {"last_file": str(self.current_path), "recent": self.preferences.get("recent", []),
+            values = {"last_file": str(self.current_path) if self.current_path else '', "recent": self.preferences.get("recent", []),
                       'show_adjustments': self.adjustments_visible,
                       'workspace_layout': 2,
                       'shelf_files':self.preferences.get('shelf_files',[]),
+                      'shelf_names':self.preferences.get('shelf_names',{}),
+                      'shelf_hidden':self.preferences.get('shelf_hidden',[]),
                       'countdown':self.countdown.get(),
                       'playback_positions':self.preferences.get('playback_positions',{}),
                       "speed": self.speed.get(), "transpose": self.transpose.get(), "instrument": self.current_instrument().id,
@@ -805,7 +983,7 @@ class App:
             pass  # A read-only folder must not prevent playing a selected score.
 
     def open_file(self):
-        if self.active or (self.light_audio and self.light_audio.busy) or (self.audio_dialog and self.audio_dialog.job):
+        if self.active or self.exclusive_audio_busy():
             self.set_status('请先完成或取消当前任务，再导入另一份曲谱。','任务进行中','amber')
             return
         path = filedialog.askopenfilename(parent=self.root, title="导入曲谱", filetypes=[("支持的曲谱", "*.mid *.midi *.kar *.rmi *.musicxml *.xml *.mxl"),
@@ -814,7 +992,7 @@ class App:
             self.open_path(path)
 
     def choose_import(self):
-        if self.active or self.preview_token or (self.light_audio and self.light_audio.busy) or (self.audio_dialog and self.audio_dialog.job):
+        if self.active or self.preview_token or self.exclusive_audio_busy():
             self.set_status('请先停止演奏、试听或当前转谱任务，再导入文件。', '暂时无法导入', 'amber')
             return
         path=filedialog.askopenfilename(parent=self.root,title='选择音频或曲谱',filetypes=[
@@ -825,7 +1003,7 @@ class App:
     def import_local_file(self,path):
         from .file_drop import SCORE_EXTENSIONS
         from .light_audio import AUDIO_EXTENSIONS
-        if self.active or self.preview_token or (self.audio_dialog and self.audio_dialog.job) or (self.light_audio and self.light_audio.busy):
+        if self.active or self.preview_token or self.exclusive_audio_busy():
             self.set_status('请先停止演奏、试听或当前转谱任务，再导入文件。','暂时无法导入','amber')
             return False
         path=Path(path)
@@ -834,7 +1012,11 @@ class App:
             return False
         if path.suffix.lower() in SCORE_EXTENSIONS:return self.open_path(path)
         if path.suffix.lower() in AUDIO_EXTENSIONS:
-            self.open_light_audio(path)
+            if self.audio_busy():
+                self.open_offline_audio()
+                self.set_status('本地转谱正在后台进行，可以继续选曲和演奏；新音频请在任务完成或取消后导入。','后台转谱中','blue')
+                return False
+            self.open_offline_audio(path)
             return True
         self.set_status('支持 MIDI、MusicXML 及 WAV、MP3、FLAC 等本地音频。','格式不支持','amber')
         return False
@@ -853,22 +1035,23 @@ class App:
             examples = {self.assets / "scores/twinkle.mid": "小星星"}
             song.title = examples.get(path, local_title(path, self.directory) or song.title)
             self.song, self.current_path = song, path
+            self.song_revision += 1
             self.song_fingerprint = digest
+            names, hidden = shelf_customizations(self.preferences)
+            hidden.discard(path)
+            self.preferences['shelf_hidden'] = sorted(str(entry) for entry in hidden)
             if path!=self.assets/'scores/twinkle.mid':
                 saved=self.preferences.get('shelf_files',[])
                 saved=[item for item in saved if isinstance(item,dict) and item.get('path')!=str(path)] if isinstance(saved,list) else []
                 self.preferences['shelf_files']=[{'path':str(path),'title':song.title},*saved]
-                self.refresh_library()
-            self.title.set(song.title)
+            self.refresh_library()
+            self.title.set(names.get(path, song.title))
             kind = "MusicXML" if path.suffix.lower() in (".xml",".musicxml",".mxl") else "MIDI"
             self.subtitle.set(f"{kind} 曲谱  ·  {path.name}")
             self.tracks.load_song(song)
             self.track_ids = [p['index'] for p in self.tracks.rows]
             self.restore_arrangement()
-            for button, preset in self.library_buttons:
-                selected = path == preset
-                button.palette = (C['bg'] if selected else C['paper'], C['teal'] if selected else C['ink'], C['bg'])
-                button.configure(highlightbackground=C["mint"] if selected else C["nav"], bg=button.palette[0])
+            self.highlight_library()
             self.update_score(quiet=True)
             self.save_preferences()
             return True
@@ -1144,7 +1327,7 @@ class App:
         ready, locked = self.score is not None, self.active is not None
         for widget, normal in self.controls:
             self.enabled(widget, not locked, normal)
-        audio_busy=bool((self.light_audio and self.light_audio.busy) or (self.audio_dialog and self.audio_dialog.job))
+        audio_busy=self.exclusive_audio_busy()
         for button in [self.import_button, *[b for b, _ in self.library_buttons]]:
             self.enabled(button, not locked and not audio_busy and not self.preview_token)
         for button in [self.play_button, self.export_button, self.details_button, self.notes_button, self.report_button]:
@@ -1173,7 +1356,7 @@ class App:
             else:
                 self.preview_button.grid(row=0, column=1, padx=(12, 12), sticky='ew')
             self.play_button.grid(row=0, column=2, sticky='ew')
-        if (self.audio_dialog and self.audio_dialog.job) or (self.light_audio and self.light_audio.busy):
+        if audio_busy:
             self.enabled(self.play_button, False)
         if self.mini:self.mini.refresh()
 
@@ -1281,7 +1464,7 @@ class App:
         with self.task_lock:return self._play_locked(seconds)
 
     def _play_locked(self, seconds):
-        if self.active or (self.audio_dialog and self.audio_dialog.job) or (self.light_audio and self.light_audio.busy):
+        if self.active or self.exclusive_audio_busy():
             return
         if self.light_audio:self.light_audio.cancel_current()
         self.recommend_token = None
@@ -1327,7 +1510,8 @@ class App:
             self.refresh_controls()
             self.show_error(error)
 
-    def stop(self):
+    def stop(self, *, switching_song=False):
+        if not switching_song and getattr(self,'mini',None):self.mini.cancel_song_change()
         self.stop_preview()
         if self.active:
             self.update_progress()
@@ -1347,6 +1531,9 @@ class App:
             try:
                 data = json.loads(self.active["progress"].read_text(encoding="utf-8"))
                 phase = data.get("phase")
+                if data.get('game_focused') and phase in ('focused', 'countdown', 'playing', 'paused') and not self.active.get('mini_shown'):
+                    self.active['mini_shown'] = True
+                    if self.mini:self.mini.show()
                 if phase == "countdown":
                     self.active['phase']='countdown'
                     self.set_status(f'请保持游戏在前台，{data["remaining"]} 秒后开始。', f'{data["remaining"]} 秒后开始', "amber")
@@ -1432,7 +1619,10 @@ class App:
                 reason = result.get("reason") or ("演奏已停止。" if message["code"] == 2 else f'演奏进程退出：{message["code"]}')
                 self.set_status(reason, "已停止" if stopped else "演奏失败", "muted" if stopped else "red")
             self.active, self.stop_requested = None, False
-            if self.pending_import is not None:
+            mini=getattr(self,'mini',None)
+            if mini and mini.pending_song is not None:
+                mini.finish_song_change(message)
+            elif self.pending_import is not None:
                 path,self.pending_import=self.pending_import,None
                 self.accept_transcription(path)
             self.refresh_controls()
@@ -1558,6 +1748,7 @@ class App:
         messagebox.showerror("无法完成", str(error), parent=self.root)
 
     def close(self):
+        if self.offline_dialog is not None:self.offline_dialog.close()
         if self.file_drop is not None:self.file_drop.close()
         if self.light_window is not None:self.light_window.close()
         if self.light_audio is not None:self.light_audio.close()

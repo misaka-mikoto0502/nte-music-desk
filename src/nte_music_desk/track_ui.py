@@ -50,10 +50,12 @@ class TrackPanel(tk.Frame):
 
     def load_song(self, song):
         self.song = song
-        self.rows = song.track_info(include_drums=True)
+        self.rows = song.track_info(include_drums=True) if song else []
         self.enabled_rows = {i for i, row in enumerate(self.rows) if not row['drums']}
         self.roles = {str(row['index']): row['role'] for row in self.rows}
         self.focused = 0
+        self.playhead = 0
+        if song is None and self.window is not None and self.window.winfo_exists():self.window.destroy()
         self.render()
 
     def curselection(self):

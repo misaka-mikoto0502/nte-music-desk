@@ -17,7 +17,7 @@ class TranscriptionHandoffChecks(unittest.TestCase):
     def test_dropped_local_midi_is_on_shelf_once_and_survives_restart(self):
         import tkinter as tk
         with tempfile.TemporaryDirectory() as d:
-            directory=Path(d);source=directory/'普通导入.mid'
+            directory=Path(d).resolve();source=directory/'普通导入.mid'
             source.write_bytes((asset_dir()/'scores/twinkle.mid').read_bytes())
             engine=SimpleNamespace(ROOT=directory,ASSETS=asset_dir(),key_schedule=cli.key_schedule)
             root=tk.Tk();root.withdraw();app=App(root,engine)
@@ -46,7 +46,7 @@ class TranscriptionHandoffChecks(unittest.TestCase):
     def test_http_completion_loads_hidden_workbench_and_survives_restart(self):
         import tkinter as tk
         with tempfile.TemporaryDirectory() as d:
-            directory=Path(d);engine=SimpleNamespace(ROOT=directory,ASSETS=asset_dir(),key_schedule=cli.key_schedule)
+            directory=Path(d).resolve();engine=SimpleNamespace(ROOT=directory,ASSETS=asset_dir(),key_schedule=cli.key_schedule)
             root=tk.Tk();root.withdraw();app=App(root,engine)
             try:
                 session=LightAudioSession(directory,app.messages.put,gate=app.task_lock)

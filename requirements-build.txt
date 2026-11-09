@@ -7,3 +7,5 @@ packaging==26.3
 pefile==2024.8.26
 pywin32-ctypes==0.2.3
 setuptools==84.0.0
+numpy==2.2.6
+onnxruntime==1.22.1

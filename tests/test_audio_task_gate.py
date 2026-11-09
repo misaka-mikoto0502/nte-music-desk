@@ -12,7 +12,7 @@ class AudioTaskGateChecks(unittest.TestCase):
         dialog.app=SimpleNamespace(active=None,task_lock=threading.RLock(),light_audio=SimpleNamespace(busy=True),stop_preview=MagicMock())
         operation=MagicMock();dialog.begin(operation,'start')
         self.assertIsNone(dialog.job);operation.assert_not_called();dialog.app.stop_preview.assert_not_called()
-        self.assertIn('轻量转谱',dialog.state.set.call_args.args[0])
+        self.assertIn('转谱',dialog.state.set.call_args.args[0])
 
     def test_http_claim_and_application_gate_are_atomic(self):
         gate=threading.RLock();checks=[]

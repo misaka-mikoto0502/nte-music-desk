@@ -1,10 +1,10 @@
-import {RemainingTime, timeLabel} from './eta.js';
+import {ConversionEstimate, timeLabel} from './eta.js';
 import {automaticDownload,midiUrl,saveMidi} from './downloads.js';
 const el = id => document.getElementById(id), base = new URL('.', location.href);
 let task, job, audioUrl, selectedFile, lastResult, lastDesktopId, closed = false, running = false;
 let pulseFailures = 0, pulsing = false, generation = 0, selectionVersion = 0, startedAt = 0, phase = 'idle';
 let selectingResult = false;
-const eta = new RemainingTime(), now = () => performance.now() / 1000;
+const eta = new ConversionEstimate(), now = () => performance.now() / 1000;
 const status = text => {el('status').textContent = text;};
 const api = async (route, data) => {
   const response = await fetch(new URL(route, base), {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
@@ -31,14 +31,11 @@ function progress(value) {
   value = Math.max(0, Math.min(100, value));
   el('progress').value = value; el('percent').textContent = `${Math.floor(value)}%`;
 }
-function setPhase(value, caption) { phase = value; el('phase').textContent = caption; }
+function setPhase(value, caption) { phase = value; eta.update({phase:value},now()); el('phase').textContent = caption; }
 function timing() {
   if (!startedAt) return;
   if (running) el('elapsed').textContent = '已用时 ' + timeLabel(now() - startedAt);
-  if (phase === 'inference') {
-    const seconds = eta.remaining(now());
-    el('eta').textContent = seconds === null ? '预计剩余：正在测速…' : '预计剩余：约 ' + timeLabel(seconds);
-  } else if (running) el('eta').textContent = phase === 'saving' ? '预计剩余：正在保存…' : phase === 'postprocess' ? '预计剩余：正在整理音符…' : '预计剩余：准备中…';
+  if (running) el('eta').textContent = eta.label(now());
 }
 function setFile(file) {
   if (running || selectingResult || closed) return;
@@ -118,18 +115,20 @@ el('cancel').onclick = cancel;
 el('form').onsubmit = async event => {
   event.preventDefault(); if (running || selectingResult || closed) return;
   const current = ++generation, active = {controller:new AbortController()}; task = active;
-  controls(true); startedAt = now(); progress(0); panel(true); timing();
+  controls(true); startedAt = now(); eta.reset(startedAt); progress(0); panel(true); timing();
   const onEvent = data => {
     if (current !== generation || closed) return;
     if (data.phase === 'preparing') {setPhase('preparing','读取音频'); status('正在本机读取音频…');}
     else if (data.phase === 'loading') {setPhase('loading','加载模型'); status('正在加载本机计算组件，首次测速后会显示剩余时间。');}
     else if (data.phase === 'inference') {
-      if (phase !== 'inference') eta.reset(now());
       setPhase('inference', data.backend === 'wasm' ? 'CPU 加速识别' : 'CPU 识别');
-      eta.update(data.progress,now()); progress(2+data.progress*94);
+      eta.update(data,now()); progress(2+data.progress*94);
       status('正在识别旋律与和弦。可以先处理其他事情，请保持工作台和转谱窗口打开。');
       if (!pulsing) heartbeat();
-    } else if (data.phase === 'postprocess') {setPhase('postprocess','整理音符'); progress(97); status('识别完成，正在整理音符与和弦。');}
+    } else if (data.phase === 'postprocess') {
+      setPhase('postprocess','整理曲谱'); eta.update(data,now()); progress(97+Math.max(0,Math.min(1,data.progress || 0))*2);
+      status('识别已完成，正在整理音符、和弦及两档曲谱；预计剩余时间包含整理与保存。');
+    }
     else if (data.phase === 'fallback') {setPhase('loading','兼容模式'); status('加速组件不可用，已自动改用兼容 CPU 模式。');}
     else if (data.phase === 'saving') {setPhase('saving','保存 MIDI'); progress(99); el('cancel').disabled=true; status('正在保存 MIDI，保存完成后可继续选择下一首。');}
     timing();

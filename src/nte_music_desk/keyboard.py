@@ -80,6 +80,11 @@ class WindowsKeyboard:
         self.user32.GetWindowTextW.argtypes = [W.HWND, W.LPWSTR, C.c_int]
         self.user32.GetWindowThreadProcessId.argtypes = [W.HWND, C.POINTER(W.DWORD)]
         self.user32.SetForegroundWindow.argtypes = [W.HWND]
+        self.user32.SetForegroundWindow.restype = W.BOOL
+        self.user32.IsIconic.argtypes = [W.HWND]
+        self.user32.IsIconic.restype = W.BOOL
+        self.user32.ShowWindow.argtypes = [W.HWND, C.c_int]
+        self.user32.ShowWindow.restype = W.BOOL
         self.user32.GetAsyncKeyState.argtypes = [C.c_int]
         self.user32.GetAsyncKeyState.restype = C.c_short
         self.user32.keybd_event.argtypes = [W.BYTE, W.BYTE, W.DWORD, C.c_size_t]
@@ -128,6 +133,27 @@ class WindowsKeyboard:
         if len(matches) != 1:
             raise RuntimeError(f"需要一个打开的《异环》游戏窗口，当前找到 {len(matches)} 个。")
         return matches[0]
+
+    def focus_game(self, timeout=.5):
+        """A user-initiated handoff; respect Windows' foreground restrictions."""
+        if self.cancelled():
+            raise PlaybackStopped('演奏已取消。')
+        if not self.user32.IsWindow(self.hwnd) or self.window_pid(self.hwnd) != self.pid:
+            raise PlaybackStopped('游戏窗口已关闭或发生变化。')
+        if self.user32.IsIconic(self.hwnd):
+            self.user32.ShowWindow(self.hwnd, 9)  # SW_RESTORE
+        self.user32.SetForegroundWindow(self.hwnd)
+        deadline = time.perf_counter() + timeout
+        while True:
+            if self.cancelled():
+                raise PlaybackStopped('演奏已取消。')
+            if not self.user32.IsWindow(self.hwnd) or self.window_pid(self.hwnd) != self.pid:
+                raise PlaybackStopped('游戏窗口已关闭或发生变化。')
+            if self.user32.GetForegroundWindow() == self.hwnd:
+                return
+            if time.perf_counter() >= deadline:
+                raise RuntimeError('Windows 未允许切换到游戏窗口；请先打开游戏演奏界面，再从工作台重试。')
+            time.sleep(.01)
 
     def cancelled(self):
         return any(self.user32.GetAsyncKeyState(vk) & 0x8000 for vk in (0x1B, 0x77))  # Esc / F8

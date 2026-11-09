@@ -102,9 +102,10 @@ def play_file(args):
         if backend.cancelled():
             raise PlaybackStopped("演奏已取消。")
         print(f"请进入 {score_instrument(score).title} 的 36 键界面。F8 / Esc 停止；切出游戏也会停止。", flush=True)
-        backend.user32.SetForegroundWindow(backend.hwnd)
+        backend.focus_game()
+        write_progress(destination, 'focused', game_focused=True)
         for remaining in range(args.countdown, 0, -1):
-            write_progress(destination, "countdown", remaining=remaining)
+            write_progress(destination, "countdown", remaining=remaining, game_focused=True)
             print(f"{remaining} 秒后开始……", flush=True)
             deadline = time.perf_counter() + 1
             while time.perf_counter() < deadline:
@@ -117,13 +118,17 @@ def play_file(args):
         def progress(phase,elapsed,sequence):
             nonlocal last_elapsed,last_sequence
             last_elapsed,last_sequence=elapsed,sequence
-            write_progress(destination,phase,elapsed=elapsed,seconds=duration,control_sequence=sequence)
+            write_progress(destination,phase,elapsed=elapsed,seconds=duration,control_sequence=sequence,game_focused=True)
         report["sent_notes"] = play_timed(score, backend, args.hold_ms,control=control,on_progress=progress,start_at=start_at)
         report["status"] = "completed"
         print("演奏按键已发送完毕。实际发声请在游戏中确认。", flush=True)
     except (PlaybackStopped, KeyboardInterrupt) as error:
         code = 2
-        report.update({"status": "stopped", "reason": str(error) or "键盘中断"})
+        reason = str(error) or "键盘中断"
+        workbench_stop = bool(args.cancel_file and Path(args.cancel_file).is_file() and reason in (
+            "收到工作台停止指令，已停止。", "演奏已取消。", "倒计时期间取消。"))
+        report.update(status="stopped", reason=reason,
+                      stop_origin="workbench" if workbench_stop else "safety")
         print(report["reason"], flush=True)
     except Exception as error:
         code = 1
@@ -205,6 +210,7 @@ def main(argv=None):
     parser.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
     parser.add_argument("--data-dir", type=Path, default=ROOT, help="个人设置、曲库与运行记录目录")
     parser.add_argument("--self-test", type=Path, help="离线自检并写入 JSON；不会发送游戏按键")
+    parser.add_argument('--offline-audio-worker', type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--inspect", metavar="SCORE", help="只读分析 MIDI/MusicXML，不激活窗口、不发键")
     parser.add_argument("--convert", metavar="SCORE", help="转换 MIDI/MusicXML 为游戏曲谱，不激活窗口、不发键")
     parser.add_argument("--to-midi", metavar="SCORE", help="将原曲全部声部另存为标准 MIDI")
@@ -228,6 +234,9 @@ def main(argv=None):
     parser.add_argument("--elevated-child", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     ROOT = ensure_data_dir(args.data_dir)
+    if args.offline_audio_worker:
+        from .offline_audio import worker
+        return worker(args.offline_audio_worker)
     if sum(bool(value) for value in (args.inspect, args.convert, args.play,args.to_midi)) > 1:
         parser.error("--inspect、--convert、--to-midi、--play 只能选择一个。")
     if not 0 <= args.countdown <= 60 or not 20 <= args.hold_ms <= 400:

@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import shutil
 import os
 from pathlib import Path
 import subprocess
@@ -15,40 +16,50 @@ from nte_music_desk import __version__
 
 
 def hashes(folder):
-    return {str(p.relative_to(folder)): hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in folder.rglob('*') if p.is_file()}
+    return {str(p.relative_to(folder)): file_hash(p) for p in folder.rglob('*') if p.is_file()}
+
+
+def file_hash(path):
+    with path.open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--archive', type=Path, default=ROOT / f'releases/v{__version__}/NTE-Music-Desk-v{__version__}-Windows-x64.zip')
     parser.add_argument('--report', type=Path, help='Write evidence to a separate path for development builds')
+    parser.add_argument('--work', type=Path, default=ROOT / '.build/validation', help='Independent extraction workspace')
+    parser.add_argument('--keep-extracted', action='store_true', help='Keep the second application copy for additional debugging')
     args = parser.parse_args()
     archive = args.archive.resolve()
-    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+    digest = file_hash(archive)
     assert archive.with_suffix('.zip.sha256').read_text(encoding='ascii').split()[0] == digest
-    target = ROOT / '.build' / ('独立 验证 ' + __version__ + ' ' + uuid.uuid4().hex[:8])
+    target = args.work.resolve() / ('独立 验证 ' + __version__ + ' ' + uuid.uuid4().hex[:8])
     target.mkdir(parents=True)
     with zipfile.ZipFile(archive) as bundle:
         assert bundle.testzip() is None
         for item in bundle.infolist():
             resolved = (target / item.filename).resolve()
             assert resolved.is_relative_to(target.resolve())
-            assert resolved.suffix.lower() not in ('.safetensors', '.pt', '.onnx', '.ckpt', '.pth')
+            if resolved.suffix.lower() in ('.safetensors', '.pt', '.onnx', '.ckpt', '.pth', '.gguf'):
+                relative = Path(item.filename).as_posix()
+                assert '/assets/offline_audio/models/' in relative
             assert not {'__pycache__', 'catalogs', 'audio-models', 'transcriptions', 'downloaded_midis', 'audio-engine'} & set(Path(item.filename).parts)
         bundle.extractall(target)
     app = target / '异环演奏工作台'
     exe = app / '异环演奏工作台.exe'
     source_assets = ROOT / 'src/nte_music_desk/assets'
-    expected_assets = {str(p.relative_to(source_assets)): hashlib.sha256(p.read_bytes()).hexdigest()
+    expected_assets = {str(p.relative_to(source_assets)): file_hash(p)
                        for p in source_assets.rglob('*') if p.is_file()
                        and '__pycache__' not in p.parts and p.suffix not in ('.pyc', '.pyo')}
     assert hashes(app / '_internal/nte_music_desk/assets') == expected_assets, 'Frozen assets differ from current source'
+    assert archive.stat().st_size < 1_000_000_000, 'Complete portable archive exceeds 1 GB'
+    assert sum(p.stat().st_size for p in app.rglob('*') if p.is_file()) < 1_000_000_000, 'Extracted application exceeds 1 GB'
     env = dict(os.environ)
     for name in ('PYTHONHOME', 'PYTHONPATH', 'TCL_LIBRARY', 'TK_LIBRARY', 'NTE_MUSIC_DESK_DATA_DIR'):
         env.pop(name, None)
     env['PATH'] = str(Path(env.get('SYSTEMROOT', 'C:/Windows')) / 'System32')
-    temp = ROOT / '.build/test-temp'
+    temp = args.work.resolve() / 'test-temp'
     temp.mkdir(exist_ok=True)
     env['TEMP'] = env['TMP'] = str(temp)
     report_path = target / 'frozen-report.json'
@@ -71,7 +82,11 @@ def main():
     assert before == hashes(app), 'Application resources were modified'
     report.update({'zip_sha256': digest, 'zip_bytes': archive.stat().st_size, 'zip_crc': 'passed',
         'assets_read_only': True, 'assets_match_source': True, 'frozen_excerpt_conversion': 'passed', 'exe': str(exe)})
-    destination = args.report.resolve() if args.report else ROOT / f'.build/release-validation-{__version__}.json'
+    if not args.keep_extracted:
+        assert app.resolve().is_relative_to(args.work.resolve())
+        shutil.rmtree(app)
+    report['extracted_application_retained'] = args.keep_extracted
+    destination = args.report.resolve() if args.report else args.work.resolve() / f'release-validation-{__version__}.json'
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False, indent=2))
