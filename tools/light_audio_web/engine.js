@@ -12,8 +12,9 @@ export async function transcribe(samples, modelOrUrl, profile, progress = () => 
   const model = typeof modelOrUrl === 'string' ? await loadGraphModel(modelOrUrl) : modelOrUrl;
   const windowSize = 43844, overlap = 7680, hop = windowSize - overlap;
   const frames = [], onsets = [];
+  const seconds = samples.length / 22050;
   const frameLimit = Math.floor(samples.length * 86 / 22050);
-  progress(0, {phase: 'inference', backend});
+  progress(0, {phase: 'inference', backend, audioSeconds: seconds});
   try {
     for (let offset = 0; offset < samples.length + overlap / 2 && frames.length < frameLimit; offset += hop) {
       const window = new Float32Array(windowSize);
@@ -35,19 +36,22 @@ export async function transcribe(samples, modelOrUrl, profile, progress = () => 
       progress(Math.min(1, frames.length / frameLimit), {phase: 'inference', backend});
       await new Promise(resolve => setTimeout(resolve, 0));
     }
-    progress(1, {phase: 'postprocess', backend});
+    progress(0, {phase: 'postprocess', backend});
     const detailed = profile === 'detail';
     const raw = noteFramesToTime(outputToNotesPoly(frames, onsets, .5, .3, detailed ? 7 : 11, true, null, null, true));
+    progress(1 / 3, {phase: 'postprocess', backend});
     // Decode both choices from the same model activations. This adds no second
     // inference pass; lower thresholds are a comparison, not a quality claim.
     const balanced = noteFramesToTime(outputToNotesPoly(frames, onsets, .7, .4, 11, true, null, null, false));
+    progress(2 / 3, {phase: 'postprocess', backend});
     const weak = noteFramesToTime(outputToNotesPoly(frames, onsets, .55, .3, 7, true, null, null, false));
     const notes = (detailed ? weak : balanced).filter(note => profile !== 'melody' || note.amplitude >= .55);
-    const seconds = samples.length / 22050;
     const clip = list => list.map(n => ({...n, startTimeSeconds: Math.max(0, n.startTimeSeconds),
       durationSeconds: Math.min(seconds, n.startTimeSeconds + n.durationSeconds) - Math.max(0, n.startTimeSeconds)}))
       .filter(n => n.durationSeconds > 0 && n.startTimeSeconds < seconds);
-    return {notes: clip(notes), raw_notes: clip(raw), alternate_notes: clip(detailed ? balanced : weak),
+    const result = {notes: clip(notes), raw_notes: clip(raw), alternate_notes: clip(detailed ? balanced : weak),
       tensors_after_windows: tf.memory().numTensors};
+    progress(1, {phase: 'postprocess', backend});
+    return result;
   } finally { model.dispose(); }
 }

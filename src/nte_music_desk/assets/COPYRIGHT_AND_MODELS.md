@@ -1,5 +1,7 @@
 # 本地音乐处理与模型许可
 
+2.0.2 默认离线包分发未修改的 Transkun 2 ONNX、MuScriptor small GGUF 与 GAME small ONNX，以及 NumPy/ONNX Runtime、精简 LGPL 解码器与本机 CPU 程序。MuScriptor 与 GAME 权重分别受 CC BY-NC 4.0（附上游使用条件）和 CC BY-NC-SA 4.0 约束。完整许可、署名和模型卡随包保留；详见 OFFLINE_AUDIO.md。下文关于“用户自行下载／认证”的段落仅适用于仍保留的旧高级工具。
+
 核对日期：2026-10-22。本文记录产品边界与已核对的上游声明，不是对任意歌曲、模型训练数据或发布行为的法律合规保证。
 
 ## 本地文件方案的作用

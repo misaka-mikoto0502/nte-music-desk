@@ -56,6 +56,14 @@ def run_self_test(engine, destination):
         assert app.heading_canvas.type(app.heading_label.item) == 'text'
         from .appearance import COLORS
         assert len(set(COLORS.values())) == 4
+        from .offline_audio import verify_bundle
+        offline_resources = None
+        if getattr(sys, 'frozen', False) or (engine.ASSETS/'offline_audio/manifest.json').is_file():
+            offline_resources = verify_bundle(engine.ASSETS/'offline_audio', hashes=True)
+            app.open_offline_audio()
+            root.update_idletasks()
+            assert app.offline_dialog.profile in ('piano', 'song')
+            app.offline_dialog.close()
         app.instrument.set("钢琴 · Shift 黑键")
         app.mode.set("和弦版（最多 6 音）")
         assert app.update_score()["mode"] == "chords"
@@ -150,6 +158,8 @@ def run_self_test(engine, destination):
               "desktop_file_drop":"passed_native_widget_registration; physical_drag_not_run",
               "mini_player": "passed", "interactive_uac_and_game_overlay": "not_run_requires_user_desktop_test",
               "rounded_controls": "passed", "workspace_palette": "passed_four_colors",
+              "bundled_offline_audio": 'passed_model_runtime_hashes_and_native_gui' if offline_resources else 'not_staged_source_build',
+              "offline_model_inference": 'checked_separately_by_verify_offline_audio',
               "performance_preview": "passed", "game_input_sent": False}
     destination = Path(destination).resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)

@@ -16,15 +16,19 @@ TOP_FILES=("README.md","LICENSE","THIRD_PARTY_NOTICES.md","CHANGELOG.md","AGENTS
 HOST_BINARIES={"src/nte_music_desk/assets/audio_window/"+name for name in (
     "NteAudioWindow.exe","Microsoft.Web.WebView2.Core.dll","Microsoft.Web.WebView2.WinForms.dll","WebView2Loader.dll")}
 PRIVATE_DIRS={"__pycache__","node_modules",".venv","venv",".build","build","dist","runs","arrangements",
-              "light-transcriptions","transcriptions","audio-models","downloaded_midis","catalog_cache"}
+              "light-transcriptions","transcriptions","offline-transcriptions","audio-models","downloaded_midis","catalog_cache",
+              ".eggs",".tox",".nox",".pytest_cache",".mypy_cache",".ruff_cache",".hypothesis","htmlcov",".idea",".vs"}
 
 def collect_files(root=ROOT):
     files=[root/name for name in TOP_FILES]
     for directory in ("src","tests","tools","docs",".github"):
         for path in (root/directory).rglob("*"):
             relative=path.relative_to(root)
+            if relative.as_posix().startswith('src/nte_music_desk/assets/offline_audio/'):continue
             if (not path.is_file() or path.is_symlink() or any(part in PRIVATE_DIRS or part.endswith('.egg-info') for part in relative.parts)
-                or path.suffix in ('.pyc','.pyo','.log') or path.name in ('midi_ui_settings.json','audio-engine.json','.env') or path.name.startswith('.env.')):continue
+                or path.suffix in ('.pyc','.pyo','.log','.lnk','.spec','.tmp','.bak')
+                or path.name in ('midi_ui_settings.json','audio-engine.json','.env','.coverage','coverage.xml','.DS_Store','Thumbs.db','desktop.ini')
+                or path.name.startswith(('.env.','.coverage.')) or path.name.endswith('~')):continue
             if path.suffix.lower() in ('.exe','.dll','.cmd','.bat') and relative.as_posix() not in HOST_BINARIES:
                 raise ValueError(f'Unexpected executable in source tree: {relative}')
             files.append(path)

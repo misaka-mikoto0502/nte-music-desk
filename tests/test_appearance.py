@@ -61,7 +61,7 @@ class AppearanceChecks(unittest.TestCase):
                 self.assertEqual(app.file_drop.hwnd, app.import_button.winfo_id())
                 audio = Path(directory) / 'local.wav'
                 audio.write_bytes(b'local routing fixture')
-                with patch.object(app, 'open_light_audio') as open_audio:
+                with patch.object(app, 'open_offline_audio') as open_audio:
                     with patch('nte_music_desk.ui.filedialog.askopenfilename', return_value=str(audio)):
                         app.import_button.invoke()
                     open_audio.assert_called_once_with(audio)

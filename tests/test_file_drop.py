@@ -12,13 +12,13 @@ class ImportRoutingChecks(unittest.TestCase):
     def test_audio_scores_busy_and_unsupported_drops(self):
         app=App.__new__(App)
         app.active=app.preview_token=app.audio_dialog=app.light_audio=None
-        app.set_status=MagicMock();app.open_path=MagicMock(return_value=True);app.open_light_audio=MagicMock()
+        app.set_status=MagicMock();app.open_path=MagicMock(return_value=True);app.open_offline_audio=MagicMock()
         with tempfile.TemporaryDirectory() as d:
             score=Path(d)/'自己的 乐谱.MID';score.touch()
             audio=Path(d)/'自己的 音频.FLAC';audio.touch()
             other=Path(d)/'readme.txt';other.touch()
             self.assertTrue(app.import_local_file(score));app.open_path.assert_called_once_with(score)
-            self.assertTrue(app.import_local_file(audio));app.open_light_audio.assert_called_once_with(audio)
+            self.assertTrue(app.import_local_file(audio));app.open_offline_audio.assert_called_once_with(audio)
             self.assertFalse(app.import_local_file(other));self.assertFalse(app.import_local_file(Path(d)))
             app.active={'phase':'playing'}
             self.assertFalse(app.import_local_file(score));self.assertEqual(app.open_path.call_count,1)

@@ -242,8 +242,8 @@ class AudioDialog:
     def begin(self,operation,caption):
         with self.app.task_lock:
             if self.job or self.app.active:return
-            if self.app.light_audio and self.app.light_audio.busy:
-                self.state.set('轻量转谱正在处理，请完成或取消后再执行高级处理。');return
+            if (self.app.light_audio and self.app.light_audio.busy) or (getattr(self.app,'offline_dialog',None) and self.app.offline_dialog.job):
+                self.state.set('本地转谱正在处理，请完成或取消后再执行高级处理。');return
             if self.app.light_audio:self.app.light_audio.cancel_current()
             self.job=AudioPipeline();job=self.job
         self.app.stop_preview()

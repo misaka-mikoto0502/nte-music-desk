@@ -6,6 +6,42 @@ from PIL import Image, ImageDraw, ImageOps, ImageTk
 from .appearance import COLORS as C, RoundedButton, RoundedPanel
 
 
+def character_thumb(master, path, size=36):
+    """Render the existing portrait without changing the bundled artwork."""
+    with Image.open(Path(path)) as source:
+        portrait = ImageOps.fit(source.convert('RGBA'), (96, 96), method=Image.Resampling.LANCZOS)
+    mask = Image.new('L', portrait.size)
+    ImageDraw.Draw(mask).ellipse((0, 0, 95, 95), fill=255)
+    face = Image.new('RGBA', portrait.size, C['paper'])
+    face.alpha_composite(portrait); face.putalpha(mask)
+    return ImageTk.PhotoImage(face.resize((size, size), Image.Resampling.LANCZOS), master=master)
+
+
+class CharacterProgress(tk.Canvas):
+    """A compact portrait thumb; seek coordinates include its end margins."""
+    inset = 18
+    def __init__(self, parent, avatar):
+        super().__init__(parent, height=36, width=320, bg=C['paper'], borderwidth=0,
+                         highlightthickness=0, cursor='hand2', takefocus=False)
+        self.avatar = character_thumb(self, avatar, 26)
+        self.fraction = 0
+        self.bind('<Configure>', lambda _: self.draw(self.fraction))
+
+    def fraction_at(self, x):
+        return min(1, max(0, (x-self.inset)/max(1, self.winfo_width()-2*self.inset)))
+
+    def draw(self, fraction):
+        self.fraction = min(1, max(0, fraction))
+        width = self.winfo_width() if self.winfo_width()>1 else int(self.cget('width'))
+        left, right, y = self.inset, max(self.inset+1, width-self.inset), 18
+        x = left+(right-left)*self.fraction
+        self.delete('all')
+        self.create_line(left,y,right,y,fill=C['bg'],width=5,capstyle='round',tags='track')
+        self.create_line(left,y,x,y,fill=C['teal'],width=5,capstyle='round',tags='track')
+        self.create_oval(x-15,y-15,x+15,y+15,fill=C['paper'],outline=C['teal'],tags='thumb')
+        self.create_image(x,y,image=self.avatar,tags='portrait')
+
+
 class NumberStepper(RoundedPanel):
     """A direct-entry number with separate, keyboard-accessible minus/plus keys."""
     def __init__(self, parent, variable, minimum, maximum):
@@ -63,14 +99,7 @@ class CharacterSpeedScale(tk.Canvas):
         self.variable, self.command = variable, command
         self._focused = False
         # The original artwork is retained; this mask is only the widget's view.
-        with Image.open(Path(avatar)) as source:
-            portrait = ImageOps.fit(source.convert('RGBA'), (96, 96), method=Image.Resampling.LANCZOS)
-        mask = Image.new('L', portrait.size)
-        ImageDraw.Draw(mask).ellipse((0, 0, 95, 95), fill=255)
-        face = Image.new('RGBA', portrait.size, C['paper'])
-        face.alpha_composite(portrait)
-        face.putalpha(mask)
-        self.avatar = ImageTk.PhotoImage(face.resize((36, 36), Image.Resampling.LANCZOS), master=self)
+        self.avatar = character_thumb(self, avatar)
         self._trace = variable.trace_add('write', self.draw)
         self.bind('<Configure>', self.draw)
         self.bind('<Button-1>', self.drag)

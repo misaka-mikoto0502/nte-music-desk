@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nte-music-desk"
-version = "2.0.1"
+version = "2.0.2"
 description = "Windows music desk for NTE: local scores, on-device audio-to-MIDI, and automatic in-game piano performance"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [{name = "NTE Music Desk contributors"}]
-dependencies = ["Pillow>=10.3,<14"]
+dependencies = ["Pillow>=10.3,<14", "numpy==2.2.6", "onnxruntime==1.22.1"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Operating System :: Microsoft :: Windows",

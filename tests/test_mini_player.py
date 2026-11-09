@@ -6,6 +6,7 @@ import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch, MagicMock
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'))
 
@@ -19,6 +20,63 @@ class MiniPlayerChecks(unittest.TestCase):
         from nte_music_desk.paths import asset_dir
         root=tk.Tk();root.withdraw()
         return App(root,SimpleNamespace(ROOT=Path(directory),ASSETS=asset_dir(),key_schedule=cli.key_schedule))
+
+    def test_focus_confirmation_auto_shows_once_per_play_even_after_hiding(self):
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d)/'midi_ui_settings.json').write_text(json.dumps({'mini_player_visible':True}))
+            app=self.create(d)
+            try:
+                self.assertFalse(app.mini_visible.get())
+                self.assertFalse(app.mini.native.user32.IsWindowVisible(app.mini.native.hwnd))
+                with patch('nte_music_desk.ui.threading.Thread'), patch.object(app.mini,'show',wraps=app.mini.show) as show:
+                    app.play(None)
+                    app.update_progress()
+                    show.assert_not_called()
+                    app.active['progress'].write_text(json.dumps({'phase':'countdown','remaining':3}))
+                    app.update_progress()
+                    show.assert_not_called()
+                    app.active['progress'].write_text(json.dumps({'phase':'countdown','remaining':3,'game_focused':True}))
+                    app.update_progress()
+                    show.assert_called_once()
+                    self.assertTrue(app.mini_visible.get())
+                    app.mini.hide()
+                    app.update_progress()
+                    self.assertEqual(show.call_count,1)
+                    self.assertFalse(app.mini_visible.get())
+                    app.active=None
+                    app.play(None)
+                    app.active['progress'].write_text(json.dumps({'phase':'playing','elapsed':0,'control_sequence':0,'game_focused':True}))
+                    app.update_progress()
+                    self.assertEqual(show.call_count,2)
+                    self.assertTrue(app.mini_visible.get())
+            finally:app.close()
+
+    def test_native_show_does_not_change_foreground_and_hide_removes_window(self):
+        with tempfile.TemporaryDirectory() as d:
+            app=self.create(d)
+            try:
+                native=app.mini.native;u=native.user32
+                u.GetForegroundWindow.restype=W.HWND
+                foreground=u.GetForegroundWindow()
+                app.mini.show();app.root.update_idletasks()
+                self.assertTrue(u.IsWindowVisible(native.hwnd))
+                self.assertTrue(app.mini.window.winfo_ismapped())
+                self.assertEqual(u.GetForegroundWindow(),foreground)
+                app.mini.hide();app.root.update_idletasks()
+                self.assertFalse(u.IsWindowVisible(native.hwnd))
+                app.mini.show();app.root.update_idletasks()
+                self.assertTrue(u.IsWindowVisible(native.hwnd))
+                self.assertEqual(u.GetForegroundWindow(),foreground)
+            finally:app.close()
+
+    def test_computer_preview_does_not_open_the_game_player(self):
+        with tempfile.TemporaryDirectory() as d:
+            app=self.create(d)
+            try:
+                with patch.object(app,'start_preview') as preview,patch.object(app.mini,'show') as show:
+                    app.preview()
+                    preview.assert_called_once();show.assert_not_called()
+            finally:app.close()
 
     def test_own_window_topmost_noactivate_message_and_saved_position(self):
         with tempfile.TemporaryDirectory() as d:

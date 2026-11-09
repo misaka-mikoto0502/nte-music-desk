@@ -241,7 +241,7 @@ def real_audio_handoff(audio, expected, output, reference=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output', type=Path, default=ROOT / '.build' / ('workflow-check-' + uuid.uuid4().hex[:8]))
+    parser.add_argument('--output', type=Path, default=ROOT / '.build/validation' / ('workflow-check-' + uuid.uuid4().hex[:8]))
     parser.add_argument('--audio', type=Path, help='Optional local synthetic WAV for real WebView2 inference and workbench handoff')
     parser.add_argument('--expected-notes', type=int, help='Optional model regression count, not an accuracy score')
     parser.add_argument('--reference-midi', type=Path, help='Known matching reference; report pitch/onset quality separately')

@@ -4,9 +4,11 @@
 
 **导入本地曲谱或音频，试听后，由工具自动操控《异环》中的钢琴或吉他钢琴模式演奏。无需自己按谱弹奏。**
 
-**2.0.1 · Windows x64 · MIT**
+**2.0.2 · Windows x64 · 自有代码 MIT**
 
-[下载便携版](https://github.com/misaka-mikoto0502/nte-music-desk/releases) · [使用说明](docs/USAGE.md) · [2.0.1 更新说明](docs/RELEASE_NOTES_2.0.1.md) · [问题反馈](https://github.com/misaka-mikoto0502/nte-music-desk/issues)
+**2.0.2 将完整离线转谱、后台处理和迷你播放器改进整合为正式版本。** 模型与 CPU 环境一并打包，完整解压即可使用，无需额外配置或首次联网下载。既有版本标签与附件保留供回退。[近期更新](CHANGELOG.md) · [使用与构建](docs/OFFLINE_AUDIO.md) · [本版验证](docs/VALIDATION_2.0.2.md)。
+
+[下载便携版](https://github.com/misaka-mikoto0502/nte-music-desk/releases) · [使用说明](docs/USAGE.md) · [2.0.2 更新说明](docs/RELEASE_NOTES_2.0.2.md) · [问题反馈](https://github.com/misaka-mikoto0502/nte-music-desk/issues)
 
 把文件拖进工作台 → 曲谱直接载入 / 音频本机转谱 → 试听与适配 → 在游戏中自动演奏。
 
@@ -14,30 +16,40 @@
 
 2.0.1 重点整理使用体验：曲目栏、演奏／调整页面与固定播放区各司其职；点击和拖入共用导入入口，原谱对照位于演奏页，进度条统一定位。四种基础色、完整中文图片字标、明音速度滑块和圆角控件统一外观，入门帮助按需打开，操作按钮随任务状态切换。移调推荐覆盖全部 73 个半音，适配报告区分原曲位置与总时长。
 
+2.0.2 进一步加入钢琴专用离线识别、演唱旋律与伴奏分轨、后台转谱、曲目重命名／移除，以及自动显示的迷你播放器、明音进度条与曲名下拉换曲。
+
 | 功能 | 使用体验 |
 | --- | --- |
-| 本地音频转 MIDI · Beta | 独立桌面窗口，本机 CPU 处理；轻量模式无需安装 Python、GPU 或登录账号。显示处理进度与预计剩余时间。 |
-| 拖入与曲目架 | 拖入曲谱直接载入，拖入音频打开转谱窗口。导入与生成的曲谱加入曲目架，重启后继续使用。 |
-| 自动保存与载入 | 识别完成自动保存 MIDI 到系统下载目录，并交给工作台；手动点“下载 MIDI”可另选目录和文件名。 |
+| 本地音频转 MIDI · Beta | 钢琴采用 Transkun 2 ONNX，歌曲采用 GAME small＋MuScriptor small；完整包自带环境，无需额外配置或联网。显示真实阶段和动态剩余时间。 |
+| 拖入与曲目架 | 曲谱直接载入，音频打开原生转谱窗口。曲目跨重启保留，右键可重命名显示名称或从列表移除，原文件与方案保留。 |
+| 自动保存与载入 | MIDI、原始预测和对照试听保存在个人数据目录。普通前台任务完成后载入，后台任务只入库，保留当前曲目和播放。 |
 | 从中间演奏 | 主窗与迷你播放器支持点击、拖动进度；记住暂停、停止和退出时的位置，变速后也能续播。 |
-| 迷你播放器 | 置顶小窗提供演奏、暂停/继续和停止；启动时确认一次 UAC，演奏过程中继承权限。 |
-| 两档识别对比 | 一次推理保留均衡版与弱音版，无需重新识别即可切换、试听并载入。弱音版可能补回细节，也可能增加误音。 |
+| 迷你播放器 | 置顶小窗提供演奏、暂停/继续和停止，明音进度滑块与曲名下拉换曲；启动时确认一次 UAC，演奏过程中继承权限。 |
+| 后台转谱 | 转谱时继续选曲、演奏与试听；停止播放和取消转谱互不影响。“文件 → 本地音频转谱”可重新查看进度。 |
 | 多轨与演奏适配 | 查看音轨、乐器与音符，独奏/静音声部，选择音域、移调与速度；提供进度定位、适配报告及可选的近同时起音对齐。 |
 
-界面采用纯色背景和圆角面板。普通曲谱导入和轻量音频处理均可直接使用便携版；高级分离与转谱引擎另行配置。
+界面采用纯色背景和圆角面板。默认原生转谱可直接使用完整便携包；旧轻量工具和需要另配环境的高级工具保留在兼容菜单。
 
 ## 下载与开始使用
 
-1. 从 [Releases](https://github.com/misaka-mikoto0502/nte-music-desk/releases) 选择对应版本，下载 `NTE-Music-Desk-v2.0.1-Windows-x64.zip`。Source ZIP 供开发者使用。尚未上传的版本可由维护者从本地 `releases/v2.0.1/` 获取。
+1. 从 GitHub [Releases](https://github.com/misaka-mikoto0502/nte-music-desk/releases) 下载 `NTE-Music-Desk-v2.0.2-Windows-x64.zip`。维护者待上传附件位于 `releases/v2.0.2/`，本地当前启动入口在 `.build/current/异环演奏工作台/异环演奏工作台.exe`。Source ZIP 供开发者使用，不含模型和运行环境。
 2. 完整解压到新目录，保留 `_internal`，双击 **异环演奏工作台.exe**，手动确认启动权限提示。升级时先关闭旧版。
 3. 点击左侧“导入音乐”或将本地曲谱／音频拖入这个按钮。音频识别完成后自动载入曲谱，可先试听，选择乐器与声部，再通过进度条定位。
 4. 在游戏中进入相应的 36 键演奏界面，再点击演奏。默认倒计时 **3 秒**，**F7** 暂停/继续，**F8** 停止。
 
-首次可用内置《小星星》检查。演奏时切出游戏会自动停止；需要点击悬浮窗时推荐无边框全屏，独占全屏可使用 F7/F8。
+首次可用内置《小星星》检查。点击“开始演奏”后自动聚焦游戏并显示迷你播放器，无需手动打开，小窗不抢游戏焦点。演奏时切出游戏会自动停止；需要点击悬浮窗时推荐无边框全屏，独占全屏可使用 F7/F8。
 
-轻量转谱窗口复用系统 **WebView2 Runtime** 与 **.NET Framework 4.6.2+**，不捆绑浏览器内核。缺少组件时可使用“文件 → 轻量转谱（浏览器兼容）”。[轻量模式说明](docs/LIGHT_AUDIO.md)
+默认原生转谱不依赖 WebView2。兼容菜单中的旧轻量窗口复用系统 **WebView2 Runtime** 与 **.NET Framework 4.6.2+**，其浏览器入口也保留。[轻量模式说明](docs/LIGHT_AUDIO.md)
 
 个人设置、曲目架和转换结果位于 `%LOCALAPPDATA%\NteMusicDesk`，升级不需要删除该目录。发布附件提供 SHA-256 校验文件。
+
+## 为什么请求管理员权限
+
+工具台通过 Windows 键盘输入接口模拟演奏按键。当游戏以管理员权限运行时，普通权限工具的模拟输入可能受到 Windows 权限隔离的限制，因此工具台申请管理员权限以兼容这类游戏窗口。演奏采用系统模拟按键，不通过修改游戏内存、注入游戏进程或修改游戏文件实现。[权限机制与使用说明](docs/USAGE.md#管理员权限说明)
+
+**当前版本在打开主界面时统一请求一次 UAC 授权**，需用户手动确认；取消则不启动主界面。授权作用于整个程序，从界面启动的演奏、音频处理等子进程也会继承权限。
+
+读谱、音频转谱和本地试听本身不需要管理员权限；命令行分析、转换与离线自检可在普通权限下运行。请从本项目 Releases 获取便携包，并按随包 SHA-256 文件核对下载内容。
 
 ## 支持哪些输入
 
@@ -45,10 +57,10 @@
 | --- | --- |
 | `.mid` / `.midi` / `.kar` / `.rmi` | 直接读取曲谱，选择声部并适配游戏键位。 |
 | `.musicxml` / `.xml` / `.mxl` | 读取 MusicXML 曲谱，也可将全部原声部另存为标准 MIDI。复杂反复与装饰记号有支持边界，见使用说明。 |
-| MP3、WAV、FLAC 等本地音频 | 先通过轻量转谱 Beta 识别为 MIDI，再试听与适配；具体格式取决于系统 WebView2 的解码支持。 |
+| MP3、WAV、FLAC 等本地音频 | 使用自带解码器与本地模型识别为 MIDI，再试听和适配；不依赖浏览器解码。 |
 | PDF、乐谱图片 | 需先用外部 OMR 工具识别、校对并导出 MusicXML 或 MIDI。 |
 
-音频识别更适合清晰单乐器。复杂混音、人声、弱音和快速重复音可能有错漏；弱音版与起音对齐供用户比较，不代表必然更接近原曲。轻量组件资源约 **2.34 MB**，不会附带高级模型或 GPU 环境。[质量说明与基准](docs/AUDIO_BENCHMARK.md)
+完整 Windows ZIP 约 **355 MB**，解压约 **461 MB**。钢琴专用识别在受控短句上优于旧轻量方案；歌曲会分别保留演唱旋律与其他声部，但密集混音、人声滑音、混响和快速重复音仍可能有错漏，不能承诺任意歌曲准确率。[当前质量验证](docs/VALIDATION_OFFLINE_AUDIO.md) · [旧轻量基准](docs/AUDIO_BENCHMARK.md)
 
 ## 演奏与试听
 
@@ -64,7 +76,7 @@
 
 ## 可选高级音频处理
 
-需要分离原唱或尝试其他识别方式时，可在文件菜单打开高级配置。这些能力**不包含在默认轻量转谱环境内**，需要独立安装依赖，并遵守对应模型许可。
+需要分离原唱或尝试其他识别方式时，可从“文件 → 其他音频工具”打开高级配置。下表为独立的历史高级流程，需要另配环境；默认原生转谱已自带 GAME small 与 MuScriptor small，但不包含人声分离。
 
 | 引擎 | 用途 |
 | --- | --- |
@@ -76,13 +88,17 @@
 
 ## 验证与已知边界
 
-2.0.1 已通过 **124 项 Python 回归、96 组样例转换**、JavaScript 检查、真实音频自动载入与 CPU 回退，以及 Windows 包独立解压自检，详情见 [本版验证记录](docs/VALIDATION_2.0.1.md)。样例仍存在误音，具体音符对照另见 [完整工作流验证](docs/VALIDATION_WORKFLOWS_2026-11-08.md)。2.0.0 的历史证据保留于 [2.0 验证记录](docs/VALIDATION_2.0.md)。
+2.0.2 的发布检查见 [本版验证](docs/VALIDATION_2.0.2.md)，钢琴／歌声样例评分、整首性能、后台转谱与换曲过程见 [详细验证记录](docs/VALIDATION_OFFLINE_AUDIO.md)。独立检查分别验证源码回归、真实模型、便携环境和产物一致性，不把端到端跑通当作识别准确率。
+
+2026-11-09 复核：176 项 Python 检查、96 组样例转换及 JavaScript 检查通过。完整便携包处理 288.301 秒歌曲实测 149.813 秒，输出与已认可基准逐字节一致；后台转谱、换曲、取消及失败重试另行验证，不能以这一首样例推断所有硬件和曲目的耗时。
+
+已发布 2.0.1 的 124 项回归、96 组转换等历史证据保留于 [发布版验证](docs/VALIDATION_2.0.1.md)，2.0.0 记录见 [2.0 验证](docs/VALIDATION_2.0.md)。
 
 新版悬浮窗按钮、拖动时的游戏前台保持、实际多音数及钢琴绝对音高仍需人工验收；系统另存框的实际点选也保留为人工项目。软件检查通过不代表所有曲目的音乐还原率已通过验证。
 
 ## 从源码运行与构建
 
-需要 Windows 和带 Tcl/Tk 的 Python 3.10 或更高版本。界面依赖 Pillow，高级音频引擎独立安装：
+需要 Windows 和带 Tcl/Tk 的 Python（构建推荐 3.12）。项目安装 Pillow、NumPy 和 ONNX Runtime；默认转谱的模型与本机组件需由开发者另行准备，完整 Windows 包的使用者无需这些步骤：
 
 ```powershell
 python -m pip install -e .
@@ -107,12 +123,14 @@ node tools/light_audio_web/test.mjs
 node tools/light_audio_web/test_downloads.mjs
 python -m pip install -r requirements-build.txt
 python tools/check_release.py
-python tools/build_windows.py
-python tools/verify_release.py
-python tools/package_source.py
+python tools/prepare_offline_audio.py
+python tools/build_windows.py --output .build/current
+python tools/verify_release.py --archive .build/current/NTE-Music-Desk-v2.0.2-Windows-x64.zip --report .build/current/verification.json
+python tools/package_source.py --output .build/current/NTE-Music-Desk-v2.0.2-Source.zip
+python tools/verify_current.py --folder .build/current --report .build/validation/current-identity.json
 ```
 
-产物在 `releases/v2.0.1/`，不进入 Git。同名包默认拒绝覆盖，明确重建才使用 `--overwrite`。GitHub Actions 在 PR、手动触发或推送版本标签时检查并构建，保存产物，公开 Release 需另行发布。
+本地当前应用在 `.build/current/`，不进入 Git；默认发布构建输出 `releases/v2.0.2/`。同名包默认拒绝覆盖，当前程序须正常关闭后才可明确使用 `--overwrite`；运行时应先在 `.build/cache/` 临时构建并验证，再替换当前入口。`verify_current.py` 使用与打包相同版本的 Python，检查源码包逐文件内容、EXE 内嵌代码、资源及 Windows ZIP。GitHub Actions 保存构建产物，公开 Release 需另行发布。
 
 2.x 的源码持续维护在 `release/2.0.0`，小版本通过版本标签区分；新大版本才建立新的长期分支。协作规则见 [AGENTS.md](AGENTS.md)。
 
@@ -122,4 +140,4 @@ python tools/package_source.py
 
 项目自有代码采用 [MIT](LICENSE)，仅附自行编码的《小星星》示例。**不提供在线搜曲或音乐下载**，请自行提供本地文件，并合法合理使用输入与转换结果。音频在本机处理；可选引擎安装或首次获取模型可能联网。
 
-代码、第三方依赖、模型和音乐素材分别适用各自许可。来源说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 与 [许可边界](docs/COPYRIGHT_AND_MODELS.md)。本工具与游戏官方无关联。
+代码、第三方依赖、模型和音乐素材分别适用各自许可。自带 MuScriptor／GAME 权重含非商业使用限制，工作台 MIT 许可不替代模型许可。来源说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 与 [许可边界](docs/COPYRIGHT_AND_MODELS.md)。本工具与游戏官方无关联。
