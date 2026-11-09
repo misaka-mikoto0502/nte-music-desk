@@ -9,7 +9,7 @@ from tools import build_windows
 class BuildOutputGuardChecks(unittest.TestCase):
     def test_running_app_and_native_child_block_but_sibling_directory_does_not(self):
         with tempfile.TemporaryDirectory() as folder:
-            output=Path(folder);application=output/'异环演奏工作台'
+            output=Path(folder).resolve();application=output/'异环演奏工作台'
             application.mkdir();marker=application/'keep.txt';marker.write_text('unchanged')
             for image in (application/'app.exe',application/'_internal/bin/nte-audio.exe'):
                 with patch.object(build_windows.sys,'platform','win32'),patch.object(build_windows,'running_windows_images',return_value=iter([image])):

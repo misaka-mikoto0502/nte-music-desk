@@ -5,6 +5,15 @@ import sys
 from . import __version__
 
 
+def wave_output_available():
+    """Hosted Windows runners may have no wave device; report that explicitly."""
+    if sys.platform != 'win32':return False
+    import ctypes
+    winmm=ctypes.WinDLL('winmm')
+    winmm.waveOutGetNumDevs.restype=ctypes.c_uint
+    return winmm.waveOutGetNumDevs()>0
+
+
 def run_self_test(engine, destination):
     from .midi import read_midi, convert
     from .ui import App
@@ -92,11 +101,17 @@ def run_self_test(engine, destination):
         app.audio_dialog.close()
         from .audio_audition import WaveComparison
         engine.render_song_preview(song,preview,seconds=1)
-        comparison=WaveComparison()
+        comparison=None
+        audio_comparison='not_run_no_wave_output_device'
         try:
-            comparison.switch(preview);comparison.seek(500,playing=False)
-            assert abs(comparison.position()-500)<=1 and not comparison.playing
-        finally:comparison.close();preview.unlink(missing_ok=True)
+            if wave_output_available():
+                comparison=WaveComparison()
+                comparison.switch(preview);comparison.seek(500,playing=False)
+                assert abs(comparison.position()-500)<=1 and not comparison.playing
+                audio_comparison='passed_silent_open_and_seek'
+        finally:
+            if comparison:comparison.close()
+            preview.unlink(missing_ok=True)
         from .light_audio import LightAudioSession
         from urllib.request import urlopen
         app.light_audio = LightAudioSession(engine.ROOT, app.messages.put, assets=engine.ASSETS/'light_audio')
@@ -148,7 +163,7 @@ def run_self_test(engine, destination):
               "arrangement_memory": "passed", "excerpt": "passed", "recommendations": "passed",
               "multitrack_gui": "passed", "audio_setup_gui": "passed", "audio_model_inference": "not_run_requires_authorized_weights",
               "music_download_feature": "removed", "model_terms_defaults": "unchecked", "audio_worker_resources": "passed",
-              "separation_backend":"umxhq", "audio_comparison":"passed_silent_open_and_seek",
+              "separation_backend":"umxhq", "audio_comparison":audio_comparison,
               "light_audio":"passed_resources_and_local_http", "light_audio_bytes":light_bytes,
               "light_saved_variants":"passed_offline_switch_and_workbench_handoff",
               "seek_resume":"passed_saved_position_bindings_and_mid_score_preview; no_game_input",

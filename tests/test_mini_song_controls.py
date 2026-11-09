@@ -17,7 +17,7 @@ class MiniSongControlsChecks(unittest.TestCase):
     def setUp(self):
         import tkinter as tk
         temp=tempfile.TemporaryDirectory();self.addCleanup(temp.cleanup)
-        self.folder=Path(temp.name);root=tk.Tk();root.withdraw()
+        self.folder=Path(temp.name).resolve();root=tk.Tk();root.withdraw()
         self.app=App(root,SimpleNamespace(ROOT=self.folder,ASSETS=asset_dir(),key_schedule=cli.key_schedule))
         self.addCleanup(self.app.close)
         self.mini=self.app.mini

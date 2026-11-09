@@ -4,11 +4,13 @@ import unittest
 import sys
 import wave
 from nte_music_desk.audio_audition import WaveComparison
+from nte_music_desk.diagnostics import wave_output_available
 
 
 class ComparisonChecks(unittest.TestCase):
     @unittest.skipUnless(sys.platform=='win32','Windows MCI API')
     def test_real_mci_opens_and_seeks_own_silent_wav_without_playback(self):
+        if not wave_output_available():self.skipTest('No Windows wave output device is installed')
         with tempfile.TemporaryDirectory() as d:
             folder=Path(d)/('中文 长路径测试'*12)
             folder.mkdir()
@@ -22,6 +24,28 @@ class ComparisonChecks(unittest.TestCase):
                 self.assertAlmostEqual(player.position(),500,delta=1)
                 self.assertFalse(player.playing)
             finally:player.close()
+
+    @unittest.skipUnless(sys.platform=='win32','Windows self-test')
+    def test_self_test_reports_missing_audio_device_without_opening_mci(self):
+        import json
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from nte_music_desk import cli
+        from nte_music_desk.paths import asset_dir
+        from nte_music_desk.diagnostics import run_self_test
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d).resolve()
+            engine=SimpleNamespace(ROOT=root,ASSETS=asset_dir(),key_schedule=cli.key_schedule,
+                render_preview=cli.render_preview,render_song_preview=cli.render_song_preview)
+            with patch('nte_music_desk.diagnostics.wave_output_available',return_value=False), \
+                 patch('nte_music_desk.audio_audition.WaveComparison') as comparison:
+                report=root/'self-test.json'
+                self.assertEqual(run_self_test(engine,report),0)
+                comparison.assert_not_called()
+            result=json.loads(report.read_text(encoding='utf-8'))
+            self.assertEqual(result['status'],'passed')
+            self.assertEqual(result['audio_comparison'],'not_run_no_wave_output_device')
+            self.assertFalse(result['game_input_sent'])
 
     def test_switch_retains_position_and_play_state_and_close_is_idempotent(self):
         commands=[]

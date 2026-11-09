@@ -21,7 +21,7 @@ class BackgroundTranscriptionChecks(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = tk.Tk(); root.withdraw()
-        app = App(root, SimpleNamespace(ROOT=Path(temporary.name), ASSETS=asset_dir(),
+        app = App(root, SimpleNamespace(ROOT=Path(temporary.name).resolve(), ASSETS=asset_dir(),
                                         key_schedule=cli.key_schedule))
         def close():
             app.active = None
