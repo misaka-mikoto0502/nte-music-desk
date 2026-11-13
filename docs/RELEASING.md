@@ -50,9 +50,9 @@ python -m venv .venv
 
 使用者确认界面／排版并完成上传后，执行一次发布收尾：核对 `main` 已包含该轮提交、远端标签与发布附件校验值、私有归档；删除已合并的临时功能／文档分支及过期构建副本。保留 `main`、大版本 `release/*`、正式版本标签、正式发布包和当前未发布工作。详细规则见 `AGENTS.md`。
 
-源码目录包含 README、MIT 许可、第三方说明、pyproject.toml、构建依赖、src、tests、tools、docs 和 .github。可把这些内容作为仓库根目录，或解压 Source 源码包后上传。不要上传父目录的 outputs/work。
+在本仓库用 Git 提交并推送 `release/2.0.0`。源码、构建与测试脚本、必要文档、随包运行资源和 GitHub Actions 配置都保留在仓库中。
 
-.gitignore 已排除 releases 二进制、构建环境、缓存、下载、运行记录、个人设置和日志。个人曲谱、绝对文件路径与账号信息不应加入源码仓库。release 可执行文件作为 GitHub Release 附件分发，不作为源码提交。
+发布包、构建缓存、模型、个人数据、录制素材和本地归档由 `.gitignore` 排除。日常素材放在仓库外或 `work/`、`recordings/` 等忽略目录。提交前用 `git status --short` 核对变更，用 `git ls-files -ci --exclude-standard` 查找已经跟踪但匹配忽略规则的文件。忽略规则只对未跟踪文件的常规添加生效，通过网页手动上传时仍需自己筛选。
 
 Actions 在 pull_request、手动触发或推送 v* 标签时运行自包含测试、构建 EXE、运行冻结自检并保存构建产物。工作流仅有 contents:read 权限，不会自动创建公开 Release；可以下载 Actions 产物后自行发布。
 

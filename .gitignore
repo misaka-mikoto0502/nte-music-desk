@@ -20,16 +20,51 @@ dist/
 /releases/
 *.spec
 *.log
+*.exe
+*.dll
+
+# Prebuilt host required by the legacy lightweight transcription window.
+!/src/nte_music_desk/assets/audio_window/NteAudioWindow.exe
+!/src/nte_music_desk/assets/audio_window/Microsoft.Web.WebView2.Core.dll
+!/src/nte_music_desk/assets/audio_window/Microsoft.Web.WebView2.WinForms.dll
+!/src/nte_music_desk/assets/audio_window/WebView2Loader.dll
 
 # Local workspace outputs; source and build recipes stay versioned
 /work/
 /outputs/
 /logs/
 /test-data*/
-/*.zip
-/*.7z
-/*.rar
-/*.whl
+/archive/
+/archives/
+/docs/history/
+/docs/local/
+/docs/DEMO_2.0.2.md
+/docs/GITHUB_PRESENTATION.md
+*.zip
+*.zip.sha256
+*.7z
+*.rar
+*.tar.gz
+*.tar.xz
+*.whl
+
+# Personal scores, media, and video projects. Keep fixtures in tests or src.
+/video/
+/recordings/
+/*.mid
+/*.midi
+/*.musicxml
+/*.mxl
+/*.wav
+/*.mp3
+/*.flac
+/*.m4a
+/*.mp4
+*.prproj
+*_本地转谱.mid
+*_轻量Beta.mid
+/*.piano.json
+/*.guitar.json
 
 # Test, coverage, and static-analysis caches
 .pytest_cache/
@@ -77,7 +112,13 @@ transcriptions/
 light-transcriptions/
 offline-transcriptions/
 node_modules/
-src/nte_music_desk/assets/offline_audio/
+/src/nte_music_desk/assets/offline_audio/
+*.onnx
+*.gguf
+*.safetensors
+*.ckpt
+*.pt
+*.pth
 
 # Keep docs/, tests/, tools/, .github/, lockfiles, and required assets versioned.
-# Runtime .exe/.dll/.bin/.wasm files under assets are not generic build garbage.
+# Bundled .bin and .wasm files are runtime resources, so keep them versioned.
