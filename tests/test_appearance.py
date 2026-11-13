@@ -313,11 +313,6 @@ class AppearanceChecks(unittest.TestCase):
                 app.refresh_controls()
                 self.assertEqual(app.pause_button.winfo_manager(), 'grid')
                 app.active = None
-                app.light_audio = SimpleNamespace(busy=True)
-                app.refresh_controls()
-                self.assertEqual(app.play_button.cget('text'), '音频处理中')
-                self.assertEqual(str(app.play_button.cget('state')), 'disabled')
-                app.light_audio = None
                 app.refresh_controls()
                 self.assertEqual(app.play_button.winfo_manager(), 'grid')
                 self.assertEqual(app.stop_button.winfo_manager(), '')
@@ -326,5 +321,4 @@ class AppearanceChecks(unittest.TestCase):
             finally:
                 app.preview_token = None
                 app.active = None
-                app.light_audio = None
                 app.close()

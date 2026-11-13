@@ -62,7 +62,7 @@ README 与 `pyproject.toml` 随源码提交。网站 About、Topics 和 Release 
 
 同步修改 src/nte_music_desk/__init__.py、pyproject.toml、tools/version_info.txt 和 CHANGELOG.md。再次测试、构建，校验 ZIP 与 SHA-256。检查第三方曲谱没有被复制进资源目录。
 
-更新 docs 中的使用说明后，将对应帮助同步到 src/nte_music_desk/assets，过期副本会阻止打包。执行 `node tools/light_audio_web/test.mjs` 检查 ETA、回退与共享参数。修改轻量页面或算法时，在 tools/light_audio_web 内 npm ci、npm run build 并提交生成资源与清单。
+更新 docs 中的使用说明后，将对应帮助同步到 src/nte_music_desk/assets，过期副本会阻止打包。
 
 ## v2.1.0 本地定版
 

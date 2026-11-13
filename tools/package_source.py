@@ -13,8 +13,6 @@ from tools.check_release import check_release
 
 
 TOP_FILES=("README.md","LICENSE","THIRD_PARTY_NOTICES.md","CHANGELOG.md","AGENTS.md","pyproject.toml","requirements-build.txt",".gitignore",".gitattributes")
-HOST_BINARIES={"src/nte_music_desk/assets/audio_window/"+name for name in (
-    "NteAudioWindow.exe","Microsoft.Web.WebView2.Core.dll","Microsoft.Web.WebView2.WinForms.dll","WebView2Loader.dll")}
 PRIVATE_DIRS={"__pycache__","node_modules",".venv","venv",".build","build","dist","runs","arrangements",
               "light-transcriptions","transcriptions","offline-transcriptions","audio-models","downloaded_midis","catalog_cache",
               ".eggs",".tox",".nox",".pytest_cache",".mypy_cache",".ruff_cache",".hypothesis","htmlcov",".idea",".vs"}
@@ -29,7 +27,7 @@ def collect_files(root=ROOT):
                 or path.suffix in ('.pyc','.pyo','.log','.lnk','.spec','.tmp','.bak')
                 or path.name in ('midi_ui_settings.json','audio-engine.json','.env','.coverage','coverage.xml','.DS_Store','Thumbs.db','desktop.ini')
                 or path.name.startswith(('.env.','.coverage.')) or path.name.endswith('~')):continue
-            if path.suffix.lower() in ('.exe','.dll','.cmd','.bat') and relative.as_posix() not in HOST_BINARIES:
+            if path.suffix.lower() in ('.exe','.dll','.cmd','.bat'):
                 raise ValueError(f'Unexpected executable in source tree: {relative}')
             files.append(path)
     return sorted(files)
@@ -52,7 +50,7 @@ def main():
         for name in archive.namelist():
             relative=Path(name).relative_to('nte-music-desk')
             assert not PRIVATE_DIRS.intersection(relative.parts)
-            if relative.suffix.lower() in ('.exe','.dll','.cmd','.bat'):assert relative.as_posix() in HOST_BINARIES
+            assert relative.suffix.lower() not in ('.exe','.dll','.cmd','.bat')
     digest=hashlib.sha256(output.read_bytes()).hexdigest()
     output.with_suffix(".zip.sha256").write_text(f"{digest}  {output.name}\n",encoding="ascii")
     print(f"Source package: {len(files)} files, {output.stat().st_size:,} bytes")

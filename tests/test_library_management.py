@@ -193,8 +193,7 @@ class ShelfManagementChecks(unittest.TestCase):
                 app.rename_library(path)
                 app.rename_window.destroy()
                 self.assertEqual(app.title.get(), '小星星')
-                for field, value in [('active', {'phase': 'playing'}), ('preview_token', 'preview'),
-                                     ('light_audio', SimpleNamespace(busy=True)), ('audio_dialog', SimpleNamespace(job=True))]:
+                for field, value in [('active', {'phase': 'playing'}), ('preview_token', 'preview')]:
                     previous = getattr(app, field)
                     try:
                         setattr(app, field, value)

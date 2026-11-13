@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import ttk
 from PIL import Image, ImageDraw, ImageTk
+from .display import pixels
 
 COLORS = {
     # Four paints: background, content, text/borders, primary action/selection.
@@ -142,17 +143,20 @@ def style_comboboxes(root):
     if 'Desk.Combobox.field' not in style.element_names():
         images = {}
         for name, border in (('normal', None), ('hover', None), ('focus', COLORS['teal'])):
-            images[name] = ImageTk.PhotoImage(rounded_bitmap(64, 44, COLORS['bg'], COLORS['paper'], 10, border), master=root)
+            bitmap = rounded_bitmap(pixels(root, 64), pixels(root, 44), COLORS['bg'],
+                                    COLORS['paper'], pixels(root, 10), border)
+            images[name] = ImageTk.PhotoImage(bitmap, master=root)
         for name, color in (('arrow', COLORS['ink']), ('arrow_focus', COLORS['teal'])):
             arrow = Image.new('RGBA', (72, 60))
             draw = ImageDraw.Draw(arrow)
             draw.line(((21, 23), (36, 38), (51, 23)), fill=color, width=5, joint='curve')
-            images[name] = ImageTk.PhotoImage(arrow.resize((18, 15), Image.Resampling.LANCZOS), master=root)
+            images[name] = ImageTk.PhotoImage(
+                arrow.resize((pixels(root, 18), pixels(root, 15)), Image.Resampling.LANCZOS), master=root)
         # Tcl elements keep image names, so Python must retain their owners too.
         root._desk_combobox_images = images
         style.element_create('Desk.Combobox.field', 'image', images['normal'],
             ('disabled', images['normal']), ('focus', images['focus']), ('active', images['hover']),
-            border=(10, 8, 10, 8), sticky='nsew')
+            border=tuple(pixels(root, margin) for margin in (10, 8, 10, 8)), sticky='nsew')
         style.element_create('Desk.Combobox.downarrow', 'image', images['arrow'],
             ('focus', images['arrow_focus']), sticky='')
     style.layout('TCombobox', [('Desk.Combobox.field', {'sticky': 'nsew', 'children': [

@@ -44,7 +44,9 @@ def main():
             if resolved.suffix.lower() in ('.safetensors', '.pt', '.onnx', '.ckpt', '.pth', '.gguf'):
                 relative = Path(item.filename).as_posix()
                 assert '/assets/offline_audio/models/' in relative
-            assert not {'__pycache__', 'catalogs', 'audio-models', 'transcriptions', 'downloaded_midis', 'audio-engine'} & set(Path(item.filename).parts)
+            assert not {'__pycache__', 'catalogs', 'audio-models', 'transcriptions', 'downloaded_midis', 'audio-engine',
+                        'light_audio', 'audio_window', 'audio_worker.py', 'melody_worker.py', 'separation_runtime.py',
+                        'audio_runtime.py'} & set(Path(item.filename).parts), item.filename
         bundle.extractall(target)
     app = target / '异环演奏工作台'
     exe = app / '异环演奏工作台.exe'

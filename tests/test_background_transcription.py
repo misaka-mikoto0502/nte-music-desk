@@ -43,24 +43,14 @@ class BackgroundTranscriptionChecks(unittest.TestCase):
         (midi.parent/'result.json').write_text(json.dumps({'status':'ok','midi':str(midi)}))
         return {'kind':'done','midi':str(midi),'notes':42,'start':0}
 
-    def test_main_and_mini_allow_offline_but_keep_legacy_playback_lock(self):
+    def test_main_and_mini_remain_available_during_transcription(self):
         app, dialog = self.create()
         dialog.job = self.job()
         app.refresh_controls()
         self.assertTrue(app.audio_busy())
-        self.assertFalse(app.exclusive_audio_busy())
         self.assertEqual(str(app.play_button.cget('state')), 'normal')
         self.assertEqual(str(app.mini.play.cget('state')), 'normal')
         self.assertEqual(str(app.import_button.cget('state')), 'normal')
-        for legacy in ('audio_dialog', 'light_audio'):
-            with self.subTest(legacy=legacy):
-                setattr(app, legacy, SimpleNamespace(job=object(), busy=True))
-                app.refresh_controls()
-                self.assertTrue(app.exclusive_audio_busy())
-                self.assertEqual(str(app.play_button.cget('state')), 'disabled')
-                self.assertEqual(str(app.mini.play.cget('state')), 'disabled')
-                setattr(app, legacy, None)
-
     def test_background_start_and_cancel_do_not_stop_existing_preview(self):
         app, dialog = self.create()
         app.preview_token = 'existing-preview'
@@ -96,7 +86,6 @@ class BackgroundTranscriptionChecks(unittest.TestCase):
                 self.assertEqual(app.current_path, path)
                 self.assertIs(app.active, active); self.assertEqual(app.preview_token, token)
                 self.assertIs(app.audio_audition, audition)
-                self.assertIsNone(app.pending_import)
                 self.assertIn(Path(result['midi']), [p for _,p in app.library_buttons])
                 if audition: audition.close.assert_not_called()
                 app.active = None
@@ -138,13 +127,15 @@ class BackgroundTranscriptionChecks(unittest.TestCase):
         dialog.run_in_background()
         self.assertEqual(dialog.window.state(), 'withdrawn')
         job.cancel.assert_not_called()
-        app.open_offline_audio()
+        self.assertEqual(app.transcription_button.cget('text'), '查看转谱进度')
+        self.assertEqual(app.transcription_button.winfo_manager(), 'pack')
+        app.transcription_button.invoke()
+        self.assertFalse(app.transcription_button.winfo_manager())
         self.assertIs(app.offline_dialog, dialog)
         self.assertIs(dialog.job, job)
         result = self.result(app)
         dialog.finish(result)
         self.assertEqual(app.current_path, original)
-        self.assertIsNone(app.pending_import)
         self.assertIn(Path(result['midi']), [p for _,p in app.library_buttons])
         self.assertFalse(dialog.background_button.winfo_manager())
 

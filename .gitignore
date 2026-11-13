@@ -23,12 +23,6 @@ dist/
 *.exe
 *.dll
 
-# Prebuilt host required by the legacy lightweight transcription window.
-!/src/nte_music_desk/assets/audio_window/NteAudioWindow.exe
-!/src/nte_music_desk/assets/audio_window/Microsoft.Web.WebView2.Core.dll
-!/src/nte_music_desk/assets/audio_window/Microsoft.Web.WebView2.WinForms.dll
-!/src/nte_music_desk/assets/audio_window/WebView2Loader.dll
-
 # Local workspace outputs; source and build recipes stay versioned
 /work/
 /outputs/

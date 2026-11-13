@@ -69,6 +69,70 @@ class MiniPlayerChecks(unittest.TestCase):
                 self.assertEqual(u.GetForegroundWindow(),foreground)
             finally:app.close()
 
+    def test_f6_hides_and_restores_only_in_the_confirmed_foreground(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = self.create(directory)
+            mini = app.mini
+            game, other = 123, 456
+            user32 = mini.native.user32
+
+            def poll(foreground, pressed):
+                app.root.after_cancel(mini.shortcut_job)
+                with patch.object(user32, 'GetForegroundWindow', return_value=foreground), \
+                     patch.object(user32, 'GetAsyncKeyState', return_value=0x8000 if pressed else 0):
+                    mini.poll_visibility_shortcut()
+
+            try:
+                with patch('nte_music_desk.ui.threading.Thread'):
+                    app.play(None)
+                active = app.active
+                active['progress'].write_text(json.dumps({
+                    'phase': 'countdown', 'remaining': 2, 'game_focused': True, 'game_hwnd': game,
+                }), encoding='utf-8')
+                app.update_progress()
+                self.assertEqual(active['game_hwnd'], game)
+                self.assertTrue(app.mini_visible.get())
+                mini.toggle_songs()
+                self.assertIsNotNone(mini.songs)
+
+                poll(other, False)
+                poll(other, True)
+                poll(game, True)  # A held key from another window does not toggle.
+                self.assertTrue(app.mini_visible.get())
+
+                poll(game, False)
+                poll(game, True)
+                self.assertFalse(app.mini_visible.get())
+                self.assertFalse(user32.IsWindowVisible(mini.native.hwnd))
+                self.assertIsNone(mini.songs)
+                poll(game, True)  # Holding F6 does not repeatedly toggle.
+                app.update_progress()
+                self.assertFalse(app.mini_visible.get())
+
+                active['progress'].write_text(json.dumps({
+                    'phase': 'paused', 'elapsed': 1, 'control_sequence': 0,
+                    'game_focused': True, 'game_hwnd': game,
+                }), encoding='utf-8')
+                app.update_progress()
+                poll(game, False)
+                poll(game, True)
+                self.assertTrue(app.mini_visible.get())
+                self.assertTrue(user32.IsWindowVisible(mini.native.hwnd))
+                self.assertIs(app.active, active)
+                self.assertTrue(active['pause_requested'])
+                self.assertFalse(active['cancel'].exists())
+                self.assertFalse(active['control'].exists())
+
+                app.active = None
+                poll(game, False)
+                poll(game, True)
+                self.assertTrue(app.mini_visible.get())
+                poll(mini.main_hwnd, False)
+                poll(mini.main_hwnd, True)
+                self.assertFalse(app.mini_visible.get())
+            finally:
+                app.close()
+
     def test_computer_preview_does_not_open_the_game_player(self):
         with tempfile.TemporaryDirectory() as d:
             app=self.create(d)
