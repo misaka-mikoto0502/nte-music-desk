@@ -1,12 +1,12 @@
 {
   "schema": "nte-light-web-v1",
-  "bytes": 2338936,
+  "bytes": 2338950,
   "versions": {
     "basic-pitch": "1.0.1",
     "tensorflow.js": "3.21.0"
   },
   "files": {
-    "index.html": "ed30fdb4636f83b70a397b1e701f69832a5552b1eb4dfec96b6dd0f9d54d4726",
+    "index.html": "c50752324b83b16c38bf29611c5de7a647bca70d98179b37c987e0595443c30d",
     "style.css": "a1b9fd5d8a01b3f13af4f37081ea898fd7968b3831bee1258a17cd0cf4c1007a",
     "main.js": "f9917476407b99596e99decd2a5745acca3749ed06f4bc2f990ebb816fd7d9ba",
     "pipeline.js": "6077d64125d62433d4119453e0e6c8672c0125070e7c40c0eb25ab5f9bbade51",

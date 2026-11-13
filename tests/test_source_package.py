@@ -20,7 +20,7 @@ class SourcePackageChecks(unittest.TestCase):
             names={p.relative_to(root).as_posix() for p in collect_files(root)}
             self.assertIn('.gitattributes',names)
             self.assertTrue(set(paths[:3]).issubset(names))
-            self.assertTrue(set(paths[3:6]).isdisjoint(names))
+            self.assertTrue(set(paths[3:]).isdisjoint(names))
             self.assertTrue(set(local_artifacts).isdisjoint(names))
             recipe=root/'tools/offline_audio/main.cpp';recipe.parent.mkdir(parents=True);recipe.write_text('build recipe')
             self.assertIn(recipe,collect_files(root))

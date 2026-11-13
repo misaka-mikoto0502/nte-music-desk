@@ -4,11 +4,11 @@
 
 **导入本地曲谱或音频，试听后，由工具自动操控《异环》中的钢琴或吉他钢琴模式演奏。无需自己按谱弹奏。**
 
-**2.0.2 · Windows x64 · 自有代码 MIT**
+**2.1.0 · Windows x64 · 自有代码 MIT**
 
-**2.0.2 将完整离线转谱、后台处理和迷你播放器改进整合为正式版本。** 模型与 CPU 环境一并打包，完整解压即可使用，无需额外配置或首次联网下载。既有版本标签与附件保留供回退。[近期更新](CHANGELOG.md) · [使用与构建](docs/OFFLINE_AUDIO.md) · [本版验证](docs/VALIDATION_2.0.2.md)。
+**2.1.0 增加密集钢琴谱自动适配。** 当黑白键切换或同键重复过密时，工作台会尝试合并、重新分组和局部延后，必要时才减少冲突音符。适配试听和报告可用于检查变化，原始 MIDI 保留完整。
 
-[下载便携版](https://github.com/misaka-mikoto0502/nte-music-desk/releases) · [使用说明](docs/USAGE.md) · [2.0.2 更新说明](docs/RELEASE_NOTES_2.0.2.md) · [问题反馈](https://github.com/misaka-mikoto0502/nte-music-desk/issues)
+**[下载 Windows 便携版](https://github.com/misaka-mikoto0502/nte-music-desk/releases/latest)** · [使用说明](docs/USAGE.md) · [2.1.0 更新说明](docs/RELEASE_NOTES_2.1.0.md) · [问题反馈](https://github.com/misaka-mikoto0502/nte-music-desk/issues)
 
 把文件拖进工作台 → 曲谱直接载入 / 音频本机转谱 → 试听与适配 → 在游戏中自动演奏。
 
@@ -32,7 +32,7 @@
 
 ## 下载与开始使用
 
-1. 从 GitHub [Releases](https://github.com/misaka-mikoto0502/nte-music-desk/releases) 下载 `NTE-Music-Desk-v2.0.2-Windows-x64.zip`。维护者待上传附件位于 `releases/v2.0.2/`，本地当前启动入口在 `.build/current/异环演奏工作台/异环演奏工作台.exe`。Source ZIP 供开发者使用，不含模型和运行环境。
+1. 从 GitHub [Releases](https://github.com/misaka-mikoto0502/nte-music-desk/releases/latest) 下载 `NTE-Music-Desk-v2.1.0-Windows-x64.zip`。便携包已包含完整运行环境与离线转谱模型。Release 下的 `Source code (zip)` 供开发者使用。
 2. 完整解压到新目录，保留 `_internal`，双击 **异环演奏工作台.exe**，手动确认启动权限提示。升级时先关闭旧版。
 3. 点击左侧“导入音乐”或将本地曲谱／音频拖入这个按钮。音频识别完成后自动载入曲谱，可先试听，选择乐器与声部，再通过进度条定位。
 4. 在游戏中进入相应的 36 键演奏界面，再点击演奏。默认倒计时 **3 秒**，**F7** 暂停/继续，**F8** 停止。
@@ -45,7 +45,7 @@
 
 ## 为什么请求管理员权限
 
-工具台通过 Windows 键盘输入接口模拟演奏按键。当游戏以管理员权限运行时，普通权限工具的模拟输入可能受到 Windows 权限隔离的限制，因此工具台申请管理员权限以兼容这类游戏窗口。演奏采用系统模拟按键，不通过修改游戏内存、注入游戏进程或修改游戏文件实现。[权限机制与使用说明](docs/USAGE.md#管理员权限说明)
+工作台通过 Windows 键盘输入接口模拟演奏按键。当游戏以管理员权限运行时，普通权限工具的模拟输入可能受到 Windows 权限隔离的限制，因此工作台申请管理员权限以兼容这类游戏窗口。演奏采用系统模拟按键，不通过修改游戏内存、注入游戏进程或修改游戏文件实现。[权限机制与使用说明](docs/USAGE.md#管理员权限说明)
 
 **当前版本在打开主界面时统一请求一次 UAC 授权**，需用户手动确认；取消则不启动主界面。授权作用于整个程序，从界面启动的演奏、音频处理等子进程也会继承权限。
 
@@ -72,6 +72,8 @@
 
 钢琴使用全局 Shift，全白键或全黑键可成组触发，混合黑白键约错开 **55 毫秒**快速分组；吉他钢琴模式没有这项分组限制。短暂的 Shift / 重复键冲突采用有上限的局部延后，原 MIDI 不改写。近同时起音对齐默认关闭，琶音不宜随意对齐。
 
+钢琴遇到密集曲谱时，先合并折回后的重叠同键音、有限重新分组，再以最多 **50 毫秒额外延后**消解冲突，仍无法安全执行时才局部剪枝，优先保留明确的旋律与低音。适配报告记录合并、剪枝及延后，原始 MIDI 与原谱对照保留完整。设计与样例验证见 [钢琴通用适配](docs/PIANO_ADAPTATION.md)。
+
 程序核对游戏进程与前台窗口，不能识别当前乐器界面。踏板、弯音、力度和原音色不转换为游戏操作；合成试听不等于游戏原音色。单旋律曲谱也不会自动生成伴奏。
 
 ## 可选高级音频处理
@@ -88,7 +90,7 @@
 
 ## 验证与已知边界
 
-2.0.2 的发布检查见 [本版验证](docs/VALIDATION_2.0.2.md)，钢琴／歌声样例评分、整首性能、后台转谱与换曲过程见 [详细验证记录](docs/VALIDATION_OFFLINE_AUDIO.md)。独立检查分别验证源码回归、真实模型、便携环境和产物一致性，不把端到端跑通当作识别准确率。
+2.1.0 的发布检查见 [本版验证](docs/VALIDATION_2.1.0.md)。钢琴／歌声样例评分、整首性能、后台转谱与换曲的评测方法见 [离线转谱验证记录](docs/VALIDATION_OFFLINE_AUDIO.md)。
 
 2026-11-09 复核：176 项 Python 检查、96 组样例转换及 JavaScript 检查通过。完整便携包处理 288.301 秒歌曲实测 149.813 秒，输出与已认可基准逐字节一致；后台转谱、换曲、取消及失败重试另行验证，不能以这一首样例推断所有硬件和曲目的耗时。
 
@@ -125,12 +127,12 @@ python -m pip install -r requirements-build.txt
 python tools/check_release.py
 python tools/prepare_offline_audio.py
 python tools/build_windows.py --output .build/current
-python tools/verify_release.py --archive .build/current/NTE-Music-Desk-v2.0.2-Windows-x64.zip --report .build/current/verification.json
-python tools/package_source.py --output .build/current/NTE-Music-Desk-v2.0.2-Source.zip
+python tools/verify_release.py --archive .build/current/NTE-Music-Desk-v2.1.0-Windows-x64.zip --report .build/current/verification.json
+python tools/package_source.py --output .build/current/NTE-Music-Desk-v2.1.0-Source.zip
 python tools/verify_current.py --folder .build/current --report .build/validation/current-identity.json
 ```
 
-本地当前应用在 `.build/current/`，不进入 Git；默认发布构建输出 `releases/v2.0.2/`。同名包默认拒绝覆盖，当前程序须正常关闭后才可明确使用 `--overwrite`；运行时应先在 `.build/cache/` 临时构建并验证，再替换当前入口。`verify_current.py` 使用与打包相同版本的 Python，检查源码包逐文件内容、EXE 内嵌代码、资源及 Windows ZIP。GitHub Actions 保存构建产物，公开 Release 需另行发布。
+本地当前应用在 `.build/current/`，默认发布构建输出 `releases/v2.1.0/`。构建产物不进入 Git。同名包默认拒绝覆盖，当前程序须正常关闭后才可明确使用 `--overwrite`。可以先在 `.build/cache/` 临时构建并验证，再替换当前入口。`verify_current.py` 使用与打包相同版本的 Python，检查源码包逐文件内容、EXE 内嵌代码、资源及 Windows ZIP。上传操作见 [2.1.0 发布指南](docs/PUBLISH_2.1.0.md)。
 
 2.x 的源码持续维护在 `release/2.0.0`，小版本通过版本标签区分；新大版本才建立新的长期分支。协作规则见 [AGENTS.md](AGENTS.md)。
 

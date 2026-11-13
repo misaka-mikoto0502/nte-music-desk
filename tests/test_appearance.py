@@ -11,6 +11,82 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 @unittest.skipUnless(sys.platform == 'win32', 'Windows desktop')
 class AppearanceChecks(unittest.TestCase):
+    def test_density_adaptation_statistics_and_full_key_table_share_the_performance(self):
+        import tkinter as tk
+        from tkinter import ttk
+        from nte_music_desk import cli
+        from nte_music_desk.midi import MidiNote, MidiSong, write_midi
+        from nte_music_desk.ui import App
+        from nte_music_desk.paths import asset_dir
+        from nte_music_desk.performance import performance_plan
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'dense.mid'
+            song = MidiSong('dense', 1, 480,
+                [MidiNote(0, 0, 60+i%2, 80, i*.001, .3+i*.001) for i in range(80)],
+                ['piano'], [(0, 500000)], .4, [])
+            write_midi(song, path); original = path.read_bytes()
+            root = tk.Tk(); root.withdraw()
+            app = App(root, SimpleNamespace(ROOT=Path(directory), ASSETS=asset_dir(), key_schedule=cli.key_schedule))
+            try:
+                app.syncing_settings = True
+                app.instrument.set('钢琴 · Shift 黑键'); app.applied_instrument = 'piano'
+                app.syncing_settings = False
+                self.assertTrue(app.open_path(path))
+                score = app.update_score(); plan = performance_plan(score, int(app.hold_ms.get()))
+                self.assertGreater(plan.pruned_notes, 0)
+                self.assertEqual(app.metric_values[1].cget('text'), f'{len(plan.notes):,}')
+                app.show_details()
+                def descendants(widget):
+                    for child in widget.winfo_children():
+                        yield child
+                        yield from descendants(child)
+                tables = [w for w in descendants(root) if isinstance(w, ttk.Treeview) and w['columns'][0] == 'index']
+                self.assertEqual(len(tables), 1)
+                rows = tables[0].get_children()
+                self.assertEqual(len(rows), len(plan.notes))
+                first = tables[0].item(rows[0], 'values')
+                self.assertEqual(first[1], f'{plan.notes[0].at:.3f}')
+                self.assertEqual(first[4], f'{plan.notes[0].duration:.3f}')
+                self.assertEqual(path.read_bytes(), original)
+            finally:
+                app.close()
+
+    def test_readonly_selection_clears_without_breaking_editable_fields_or_bindings(self):
+        import tkinter as tk
+        from tkinter import ttk
+        from nte_music_desk.appearance import style_comboboxes
+        root = tk.Tk(); root.withdraw()
+        try:
+            style_comboboxes(root)
+            binding = root.bind_class('TCombobox', '<<ComboboxSelected>>')
+            style_comboboxes(root)
+            self.assertEqual(binding, root.bind_class('TCombobox', '<<ComboboxSelected>>'))
+            readonly = ttk.Combobox(root, state='readonly', values=('钢琴', '吉他'))
+            editable = ttk.Combobox(root, values=('可编辑',)); editable.set('可编辑')
+            entry = ttk.Entry(root); entry.insert(0, '重命名')
+            for widget in (readonly, editable, entry):
+                widget.pack(); widget.configure(exportselection=False)
+            readonly.current(1)
+            for sequence in ('<<ComboboxSelected>>', '<FocusIn>', '<FocusOut>'):
+                for widget in (readonly, editable, entry): widget.selection_range(0, 'end')
+                readonly.event_generate(sequence)
+                editable.event_generate(sequence)
+                root.update_idletasks()
+                self.assertFalse(readonly.selection_present())
+                self.assertTrue(editable.selection_present())
+                self.assertTrue(entry.selection_present())
+                self.assertEqual(readonly.get(), '吉他')
+            self.assertIn('ttk::combobox::Post', root.bind_class('TCombobox', '<Down>'))
+            tree = ttk.Treeview(root); row = tree.insert('', 'end', text='当前曲目')
+            tree.selection_set(row)
+            readonly.event_generate('<<ComboboxSelected>>'); root.update_idletasks()
+            self.assertEqual(tree.selection(), (row,))
+            # Deferred selection cleanup is safe when a dialog closes first.
+            readonly.event_generate('<<ComboboxSelected>>'); readonly.destroy()
+            root.update_idletasks()
+        finally:
+            root.destroy()
+
     def test_numeric_controls_respect_bounds_and_disabled_state(self):
         import tkinter as tk
         from nte_music_desk.controls import NumberStepper, CharacterSpeedScale

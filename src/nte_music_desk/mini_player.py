@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, font as tkfont
+from . import APP_NAME
 from .appearance import RoundedPanel, RoundedButton, COLORS as THEME
 from .controls import CharacterProgress
 
@@ -54,7 +55,7 @@ class SongDropdown:
     def __init__(self,mini,entries):
         self.mini,self.native=mini,None
         self.window=tk.Toplevel(mini.window);self.window.withdraw()
-        self.window.title('异环演奏工作台 · 选择曲目')
+        self.window.title(f'{APP_NAME} · 选择曲目')
         self.window.overrideredirect(True);self.window.attributes('-topmost',True)
         self.window.configure(bg='#010203')
         if sys.platform=='win32':self.window.attributes('-transparentcolor','#010203')
@@ -129,7 +130,7 @@ class MiniPlayer:
         self.songs=None;self.pending_song=None;self.notice='';self.notice_until=0
         self.window=tk.Toplevel(app.root)
         self.window.withdraw()
-        self.window.title('异环演奏工作台 · 迷你播放器')
+        self.window.title(f'{APP_NAME} · 迷你播放器')
         self.window.overrideredirect(True)
         self.window.attributes('-topmost',True)
         self.window.configure(bg='#010203')
@@ -137,7 +138,7 @@ class MiniPlayer:
         panel=RoundedPanel(self.window,fill=THEME['paper'],padx=13,pady=10,radius=18)
         panel.pack(fill='both',expand=True)
         header=tk.Frame(panel,bg=THEME['paper']);header.pack(fill='x')
-        branding=tk.Label(header,text='NTE  MUSIC DESK',bg=THEME['paper'],fg=THEME['teal'],font=('Microsoft YaHei UI',8))
+        branding=tk.Label(header,text=APP_NAME,bg=THEME['paper'],fg=THEME['teal'],font=('Microsoft YaHei UI',8))
         branding.pack(side='left')
         tk.Button(header,text='×',command=self.hide,bg=THEME['paper'],fg=THEME['ink'],relief='flat',borderwidth=0,takefocus=0,padx=5,pady=0).pack(side='right')
         self.title_row=RoundedPanel(panel,fill=THEME['bg'],padx=9,pady=4,radius=9)

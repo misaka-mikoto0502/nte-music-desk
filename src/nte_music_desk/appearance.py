@@ -162,6 +162,22 @@ def style_comboboxes(root):
     style.configure('TCombobox', padding=(6, 5), foreground=COLORS['ink'],
                     fieldbackground=COLORS['bg'], postoffset=(0, 4, 0, 0))
     style.map('TCombobox', fieldbackground=[('readonly', COLORS['bg']), ('disabled', COLORS['bg'])])
+    style.map('TCombobox', selectbackground=[('readonly', COLORS['bg'])],
+              selectforeground=[('readonly', COLORS['ink'])])
+    root.option_add('*TCombobox.exportSelection', False)
+    if not getattr(root, '_desk_combobox_selection_bound', False):
+        def clear_readonly_selection(event):
+            widget = event.widget
+            def clear():
+                try:
+                    if widget.winfo_exists() and widget.instate(['readonly']):
+                        widget.selection_clear()
+                except tk.TclError:
+                    pass  # A selection handler may have closed the dialog.
+            root.after_idle(clear)
+        for sequence in ('<<ComboboxSelected>>', '<FocusIn>', '<FocusOut>'):
+            root.bind_class('TCombobox', sequence, clear_readonly_selection, add='+')
+        root._desk_combobox_selection_bound = True
     style.configure('ComboboxPopdownFrame', background=COLORS['paper'], bordercolor=COLORS['bg'],
                     lightcolor=COLORS['paper'], darkcolor=COLORS['paper'], relief='solid', borderwidth=1)
     for option, value in (('background', COLORS['paper']), ('foreground', COLORS['ink']),

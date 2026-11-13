@@ -32,7 +32,6 @@ def collect_files(root=ROOT):
             if path.suffix.lower() in ('.exe','.dll','.cmd','.bat') and relative.as_posix() not in HOST_BINARIES:
                 raise ValueError(f'Unexpected executable in source tree: {relative}')
             files.append(path)
-    files.append(root/"releases/README.md")
     return sorted(files)
 
 def main():

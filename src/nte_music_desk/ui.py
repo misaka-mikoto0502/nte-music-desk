@@ -22,7 +22,7 @@ from .instruments import INSTRUMENTS, score_instrument
 from . import APP_NAME, __version__
 from .presets import PresetStore, fingerprint, DEFAULTS
 from .segments import parse_time
-from .analysis import recommend_transpositions, adaptation_report
+from .analysis import recommend_transpositions, adaptation_report, playability_summary
 from .performance import performance_plan
 from .track_ui import TrackPanel
 from .appearance import COLORS as C, RoundedButton, RoundedPanel, CanvasLabel, style_comboboxes
@@ -150,7 +150,7 @@ class App:
         if getattr(sys, 'frozen', False):
             try:
                 info = json.loads((Path(sys.executable).parent/'build-info.json').read_text(encoding='utf-8'))
-                if info.get('preview'):self.root.title(self.root.title()+' · 离线转谱开发预览')
+                if info.get('preview'):self.root.title(self.root.title()+' · 开发预览')
             except (OSError, ValueError):pass
         try:
             root.iconbitmap(str(self.assets / "icon.ico"))
@@ -361,7 +361,7 @@ class App:
         window.resizable(False, False)
         window.transient(self.root)
         self.label(window, '重命名曲目', 15, bold=True).pack(anchor='w', padx=22, pady=(20, 8))
-        self.label(window, '修改工具台中的显示名称，原文件名保留。', 9).pack(anchor='w', padx=22)
+        self.label(window, '修改工作台中的显示名称，原文件名保留。', 9).pack(anchor='w', padx=22)
         value = tk.StringVar(value=title)
         entry = tk.Entry(window, textvariable=value, font=(FONT, 11), width=34, relief='flat',
                          bg=C['bg'], fg=C['ink'], highlightthickness=1, highlightbackground=C['bg'], highlightcolor=C['teal'])
@@ -777,7 +777,7 @@ class App:
             return
         window = tk.Toplevel(self.root)
         self.guide_window = window
-        window.title('第一次演奏 · 异环演奏工作台')
+        window.title(f'第一次演奏 · {APP_NAME}')
         window.configure(bg=C['bg'])
         x = self.root.winfo_rootx() + max(0, (self.root.winfo_width() - 660) // 2)
         y = self.root.winfo_rooty() + max(0, (self.root.winfo_height() - 540) // 2)
@@ -1156,8 +1156,12 @@ class App:
         score['settings']['chord_alignment_ms']=24 if self.chord_align.get() else 0
         plan=performance_plan(score,hold)
         self.ready_duration=plan.duration
+        self.ready_notes=plan.notes
+        score['playability']=playability_summary(score,plan)
+        if plan.auto_adapted:
+            score['warnings'].append(f'钢琴自动适配：按键合并 {plan.merged_notes} 音、密集剪枝 {plan.pruned_notes} 音，实际演奏 {len(plan.notes)} 音；原始 MIDI 保持完整，详见适配报告。')
         if plan.timing_adjusted_notes:
-            score['warnings'].append(f'钢琴短间距校正 {plan.timing_adjusted_notes} 音，最多另延后 {plan.max_timing_adjustment_ms:g} 毫秒；该校正未删音，详见适配报告。')
+            score['warnings'].append(f'钢琴短间距校正 {plan.timing_adjusted_notes} 音，最多另延后 {plan.max_timing_adjustment_ms:g} 毫秒，详见适配报告。')
         if plan.aligned_notes:
             score['warnings'].append(f'近同时起音已对齐 {plan.aligned_notes} 音，当前速度最多提前 {plan.max_alignment_ms:g} 毫秒；分解和弦建议关闭此选项。')
         return validate_score(score)
@@ -1234,7 +1238,10 @@ class App:
             self.score = score
             summary = score["summary"]
             self.metric_values[0].configure(text=duration_label(summary["seconds"]))
-            self.metric_values[1].configure(text=f'{summary["notes"]:,}')
+            playable = score['playability']
+            self.metric_values[1].configure(text=f'{playable["planned_notes"]:,}')
+            self.metric_details[1].set(f'按键合并 {playable["key_merged"]} · 密集剪枝 {playable["density_pruned"]}'
+                                       if playable['auto_adapted'] else '')
             changed = summary["folded"] + summary["dropped"]
             self.metric_values[2].configure(text=f'{changed} 音' if changed else '直接适配', fg=C['ink'])
             self.metric_details[2].set(f'折回 {summary["folded"]} 音 · 丢弃 {summary["dropped"]} 音' if changed else '音域全部在当前键位内')
@@ -1243,12 +1250,12 @@ class App:
                     if settings['start'] > 0 or settings['end'] is not None else f'原曲 {duration_label(self.song.seconds)}')
             self.metric_details[0].set(f'{span} · {float(self.speed.get()):g}× 速度')
             for index, (key_label, note_label) in enumerate(self.key_cells):
-                if index < len(score["events"]):
-                    event = score["events"][index]
-                    name = note_name(event["midi"])
+                if index < len(self.ready_notes):
+                    event = self.ready_notes[index]
+                    name = note_name(event.midi)
                     key = profile.keys[name].label
                     key_label.configure(text=key, font=(FONT, 12 if len(key) > 2 else 17, "bold"))
-                    note_label.configure(text=f'{name} · {event["at"]:.1f}s')
+                    note_label.configure(text=f'{name} · {event.at:.1f}s')
                 else:
                     key_label.configure(text="—")
                     note_label.configure(text="")
@@ -1647,6 +1654,7 @@ class App:
         score = self.score if self.refresh_job is None else self.update_score()
         if score is None:
             return
+        plan = performance_plan(score, int(self.hold_ms.get()))
         window = tk.Toplevel(self.root)
         window.title(f"{self.song.title} · 曲谱明细")
         window.geometry("760x570")
@@ -1654,7 +1662,7 @@ class App:
         self.label(window, self.song.title, 18, bold=True, padx=20, pady=17).pack(anchor="w")
         self.label(window, str(self.current_path), 9, C["muted"], wraplength=710, justify="left", padx=20).pack(anchor="w")
         summary = score["summary"]
-        self.label(window, f'{summary["notes"]} 音 · {summary["seconds"]:.2f} 秒 · 折回 {summary["folded"]} 音 · 简化和弦音 {summary["chord_notes_removed"]} 个', 9, C["muted"], padx=20, pady=12).pack(anchor="w")
+        self.label(window, f'实际演奏 {len(plan.notes)} 音 · {plan.duration:.2f} 秒 · 按键合并 {plan.merged_notes} · 密集剪枝 {plan.pruned_notes}', 9, C["muted"], padx=20, pady=12).pack(anchor="w")
         frame = tk.Frame(window, bg=C["paper"])
         frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
         tree = ttk.Treeview(frame, columns=("index", "time", "note", "key", "duration"), show="headings", style="Desk.Treeview")
@@ -1665,9 +1673,9 @@ class App:
         scroll.pack(side="right", fill="y")
         tree.configure(yscrollcommand=scroll.set)
         tree.pack(fill="both", expand=True)
-        for index, event in enumerate(score["events"], 1):
-            name = note_name(event["midi"])
-            tree.insert("", "end", values=(index, f'{event["at"]:.3f}', name, score_instrument(score).keys[name].label, f'{event["duration"]:.3f}'))
+        for index, event in enumerate(plan.notes, 1):
+            name = note_name(event.midi)
+            tree.insert("", "end", values=(index, f'{event.at:.3f}', name, score_instrument(score).keys[name].label, f'{event.duration:.3f}'))
 
     def show_adaptation(self):
         score = self.update_score()
@@ -1684,6 +1692,9 @@ class App:
                 f'折回 {summary["folded"]}  ·  丢弃 {summary["dropped"]}  ·  重合合并 {summary.get("merged", 0)}')
         self.label(window, text, 9, C["muted"], padx=20).pack(anchor="w")
         timing = report['performance']
+        playable = report['playability']
+        self.label(window, f'实际排程 {playable["planned_notes"]} 音 · 按键合并 {playable["key_merged"]} · 密集剪枝 {playable["density_pruned"]}；原始 MIDI 保持完整。',
+                   10, padx=20).pack(anchor='w')
         timeline = report['timeline']
         original = duration_label(timeline['source_seconds']) if timeline['source_seconds'] is not None else '未记录'
         self.label(window, f'原曲总长 {original}  ·  本次演奏 {duration_label(timeline["performance_seconds"])}  ·  速度 {timeline["speed"]:g}×',
@@ -1712,9 +1723,12 @@ class App:
         scroll.pack(side='right', fill='y')
         tree.configure(yscrollcommand=scroll.set)
         tree.pack(fill='both', expand=True)
-        names = {'simplified': '声部简化', 'folded': '八度折回', 'dropped': '越界丢弃', 'merged': '同音重合合并'}
+        names = {'simplified': '声部简化', 'folded': '八度折回', 'dropped': '越界丢弃', 'merged': '同音重合合并',
+                 'key_merged': '折回按键合并', 'density_pruned': '密集剪枝', 'timing_adjusted': '局部延后'}
         for change in report['changes']:
-            tree.insert('', 'end', values=(position_label(change['source_at']), change['track'], names[change['action']],
+            action = names.get(change['action'], change['action'])
+            if change['action'] == 'timing_adjusted': action += f' {change["delay_ms"]:g}ms'
+            tree.insert('', 'end', values=(position_label(change['source_at']), change['track'], action,
                 f'{note_name(change["source_midi"])} → {note_name(change["requested_midi"])}',
                 note_name(change['midi']) if change['midi'] is not None else '—'))
 

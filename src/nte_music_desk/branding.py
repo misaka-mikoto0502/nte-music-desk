@@ -20,5 +20,5 @@ class DeskWordmark(tk.Label):
             super().__init__(parent, image=self.artwork, width=176, height=100,
                 bg=COLORS['paper'], borderwidth=0, padx=0, pady=0, takefocus=False)
         except (OSError, ValueError):
-            super().__init__(parent, text='异环演奏\n工具台', font=('Microsoft YaHei UI', 19, 'bold'),
+            super().__init__(parent, text='异环演奏\n工作台', font=('Microsoft YaHei UI', 19, 'bold'),
                 bg=COLORS['paper'], fg=COLORS['ink'], borderwidth=0, padx=0, pady=8, takefocus=False)
