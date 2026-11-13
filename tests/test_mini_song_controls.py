@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from nte_music_desk import cli
+from nte_music_desk.display import pixels
 from nte_music_desk.paths import asset_dir
 from nte_music_desk.ui import App
 
@@ -21,6 +22,14 @@ class MiniSongControlsChecks(unittest.TestCase):
         self.app=App(root,SimpleNamespace(ROOT=self.folder,ASSETS=asset_dir(),key_schedule=cli.key_schedule))
         self.addCleanup(self.app.close)
         self.mini=self.app.mini
+        # Keep desktop input from cancelling a synthetic switch or popup.
+        user32 = self.mini.native.user32
+        key_state = patch.object(user32, 'GetAsyncKeyState', return_value=0)
+        key_state.start()
+        self.addCleanup(key_state.stop)
+        dismiss_outside = patch('nte_music_desk.mini_player.SongDropdown.dismiss_outside')
+        dismiss_outside.start()
+        self.addCleanup(dismiss_outside.stop)
 
     def song(self,name):
         path=self.folder/(name+'.mid')
@@ -41,18 +50,20 @@ class MiniSongControlsChecks(unittest.TestCase):
     def test_portrait_track_and_seek_use_the_same_padded_geometry(self):
         self.mini.show();self.app.root.update()
         canvas=self.mini.progress;width=canvas.winfo_width()
-        self.assertEqual(canvas.avatar.width(),26)
-        self.assertEqual(canvas.fraction_at(18),0)
-        self.assertEqual(canvas.fraction_at(width-18),1)
+        inset = canvas.inset
+        self.assertEqual(canvas.avatar.width(), pixels(canvas, 26))
+        self.assertEqual(canvas.fraction_at(inset),0)
+        self.assertEqual(canvas.fraction_at(width-inset),1)
         for fraction in (0,.5,1):
             self.app.progress.set(fraction*100);self.mini.refresh()
             x,y=canvas.coords('portrait')
-            self.assertAlmostEqual(x,18+(width-36)*fraction)
-            self.assertGreaterEqual(x-15,0);self.assertLessEqual(x+15,width)
+            self.assertAlmostEqual(x,inset+(width-2*inset)*fraction)
+            radius = pixels(canvas, 15)
+            self.assertGreaterEqual(x-radius,0);self.assertLessEqual(x+radius,width)
         self.app.seek_drag={'canvas':canvas,'frame':self.app.position_frame(),'song':self.app.song_fingerprint,'paused':False}
-        event=SimpleNamespace(widget=canvas,x=18)
+        event=SimpleNamespace(widget=canvas,x=inset)
         self.app.move_seek(event);self.assertEqual(self.app.progress.get(),0)
-        event.x=width-18;self.app.end_seek(event)
+        event.x=width-inset;self.app.end_seek(event)
         self.assertAlmostEqual(self.app.progress.get(),100)
         self.assertLessEqual(self.mini.play.winfo_rooty()+self.mini.play.winfo_height(),
                              self.mini.window.winfo_rooty()+self.mini.window.winfo_height())

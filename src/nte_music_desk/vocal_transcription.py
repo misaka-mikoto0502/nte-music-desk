@@ -1,6 +1,6 @@
 """Bundled GAME small singing-note recognizer; no separation or downloads.
 
-Uses the official five-module ONNX API, as does assets/melody_worker.py.
+Uses the official five-module ONNX API.
 The encoder includes its own frontend. NumPy + the bundled CPU ORT suffice.
 """
 import json

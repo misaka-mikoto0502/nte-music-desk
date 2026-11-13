@@ -45,7 +45,7 @@ SHA-256 7a5b3c6c081cab2fe3bb6ce84925ea28d37e1fbba990bd9c5eca1d9ae37dd2f9
 
 同目录另有 Source ZIP、两个逐包 SHA-256 文件、`SHA256SUMS.txt` 和可直接复制到 GitHub 的 `发布正文.md`。Source 包包含应用、开发构建工具、测试、发布流程和历史文档，排除个人数据、模型、虚拟环境、缓存及构建输出。
 
-初始本地 2.0.1 检查点已用 `archive/v2.0.1-initial-20261108` 和 Git bundle 保存，初始更新说明及验证记录位于 `docs/history/2.0.1-initial/`。此前的安装包及本机证据已迁入私有归档；本目录四个 ZIP／校验附件才是本次公开发布材料。
+初始本地 2.0.1 检查点已用 `archive/v2.0.1-initial-20261108` 和 Git bundle 保存，初始更新说明及验证记录见 [2.0.2 标签中的历史记录](https://github.com/misaka-mikoto0502/nte-music-desk/tree/v2.0.2/docs/history/2.0.1-initial)。此前的安装包及本机证据已迁入私有归档；最终 ZIP 和校验文件随 2.0.1 Release 发布。
 
 ## 复现
 

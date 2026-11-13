@@ -6,8 +6,10 @@ import time
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, font as tkfont
+from . import APP_NAME
 from .appearance import RoundedPanel, RoundedButton, COLORS as THEME
 from .controls import CharacterProgress
+from .display import pixels
 
 
 class NonActivatingWindow:
@@ -54,7 +56,7 @@ class SongDropdown:
     def __init__(self,mini,entries):
         self.mini,self.native=mini,None
         self.window=tk.Toplevel(mini.window);self.window.withdraw()
-        self.window.title('异环演奏工作台 · 选择曲目')
+        self.window.title(f'{APP_NAME} · 选择曲目')
         self.window.overrideredirect(True);self.window.attributes('-topmost',True)
         self.window.configure(bg='#010203')
         if sys.platform=='win32':self.window.attributes('-transparentcolor','#010203')
@@ -123,13 +125,13 @@ class SongDropdown:
 
 
 class MiniPlayer:
-    WIDTH,HEIGHT=360,176
     def __init__(self,app):
+        self.WIDTH, self.HEIGHT = pixels(app.root, 360), pixels(app.root, 176)
         self.app,self.native,self.drag=app,None,None
         self.songs=None;self.pending_song=None;self.notice='';self.notice_until=0
         self.window=tk.Toplevel(app.root)
         self.window.withdraw()
-        self.window.title('异环演奏工作台 · 迷你播放器')
+        self.window.title(f'{APP_NAME} · 迷你播放器')
         self.window.overrideredirect(True)
         self.window.attributes('-topmost',True)
         self.window.configure(bg='#010203')
@@ -137,9 +139,11 @@ class MiniPlayer:
         panel=RoundedPanel(self.window,fill=THEME['paper'],padx=13,pady=10,radius=18)
         panel.pack(fill='both',expand=True)
         header=tk.Frame(panel,bg=THEME['paper']);header.pack(fill='x')
-        branding=tk.Label(header,text='NTE  MUSIC DESK',bg=THEME['paper'],fg=THEME['teal'],font=('Microsoft YaHei UI',8))
+        branding=tk.Label(header,text=APP_NAME,bg=THEME['paper'],fg=THEME['teal'],font=('Microsoft YaHei UI',8))
         branding.pack(side='left')
         tk.Button(header,text='×',command=self.hide,bg=THEME['paper'],fg=THEME['ink'],relief='flat',borderwidth=0,takefocus=0,padx=5,pady=0).pack(side='right')
+        tk.Label(header, text='F6 隐藏', bg=THEME['paper'], fg=THEME['ink'],
+                 font=('Microsoft YaHei UI', 8)).pack(side='right', padx=(0, 5))
         self.title_row=RoundedPanel(panel,fill=THEME['bg'],padx=9,pady=4,radius=9)
         self.title_row.pack(fill='x',pady=(3,5))
         self.title=tk.Label(self.title_row,text='',bg=THEME['bg'],fg=THEME['ink'],font=('Microsoft YaHei UI',11,'bold'),anchor='w',cursor='hand2')
@@ -172,8 +176,30 @@ class MiniPlayer:
         x,y=self.position
         self.window.geometry(f'{self.WIDTH}x{self.HEIGHT}{x:+d}{y:+d}')
         self.window.update_idletasks()
-        if sys.platform=='win32':self.native=NonActivatingWindow(self.window)
+        self.shortcut_job = None
+        self.shortcut_window = None
+        self.shortcut_down = False
+        if sys.platform == 'win32':
+            self.native = NonActivatingWindow(self.window)
+            self.main_hwnd = self.native.user32.GetAncestor(app.root.winfo_id(), 2)
+            self.shortcut_job = app.root.after(25, self.poll_visibility_shortcut)
         self.refresh()
+
+    def poll_visibility_shortcut(self):
+        user32 = self.native.user32
+        foreground = user32.GetForegroundWindow()
+        active = self.app.active
+        game_hwnd = active.get('game_hwnd') if active and not self.app.stop_requested else None
+        if foreground and foreground in (self.main_hwnd, game_hwnd):
+            down = bool(user32.GetAsyncKeyState(0x75) & 0x8000)  # F6
+            # Require a fresh press when focus moves from another application.
+            if foreground == self.shortcut_window and down and not self.shortcut_down:
+                if not self.app.seek_drag:
+                    self.app.toggle_mini()
+            self.shortcut_window, self.shortcut_down = foreground, down
+        else:
+            self.shortcut_window = None
+        self.shortcut_job = self.app.root.after(25, self.poll_visibility_shortcut)
 
     def clamp(self,x,y):
         left,top,width,height=self.screen_bounds()
@@ -202,6 +228,7 @@ class MiniPlayer:
 
     def hide(self):
         self.close_songs()
+        self.drag = None
         self.app.mini_visible.set(False);self.window.withdraw()
         if self.native:self.native.user32.ShowWindow(self.native.hwnd,0)
         self.app.save_preferences()
@@ -236,7 +263,7 @@ class MiniPlayer:
         phase=active.get('phase','waiting') if active else ''
         paused=active.get('pause_requested',False) if active else False
         caption='▶ 继续' if paused else ('Ⅱ 暂停' if active else ('▶ 续播' if self.app.score and self.app.playback_offset()>.05 else '▶ 演奏'))
-        ready=bool(self.app.score) and not self.app.preview_token and not self.app.exclusive_audio_busy()
+        ready=bool(self.app.score) and not self.app.preview_token
         enabled=(phase in ('playing','paused') and not self.app.stop_requested) if active else ready
         state='normal' if enabled else 'disabled'
         if self.play.cget('text')!=caption or str(self.play.cget('state'))!=state:self.play.configure(text=caption,state=state)
@@ -247,7 +274,7 @@ class MiniPlayer:
         self.status.configure(text=('已暂停 · F7 继续 · F8 停止' if phase=='paused' else 'F7 暂停 · F8 停止')
                               if active and phase in ('playing','paused') else ('准备演奏…' if active else
                               ('就绪 · 本地转谱在后台进行' if getattr(getattr(self.app,'offline_dialog',None),'job',None)
-                               else ('音频处理中' if self.app.exclusive_audio_busy() else '就绪 · 拖动顶部可移动'))))
+                               else '就绪 · 拖动顶部可移动')))
         if self.pending_song:self.status.configure(text='正在停止旧曲并切换…')
         elif time.monotonic()<self.notice_until:self.status.configure(text=self.notice)
         self.progress.draw(self.app.progress.get()/100)
@@ -265,8 +292,6 @@ class MiniPlayer:
 
     def toggle_songs(self):
         if self.songs:self.close_songs();return
-        if self.app.exclusive_audio_busy():
-            self.show_notice('音频处理中，暂不能换曲');return
         entries=self.app.library_entries()
         if not entries:self.show_notice('曲目列表为空，请先导入曲谱');return
         self.songs=SongDropdown(self,entries)
@@ -281,13 +306,10 @@ class MiniPlayer:
             self.close_songs();self.show_notice('文件已移动，请在主窗重新导入');return
         if path==self.app.current_path and self.pending_song is None:
             self.close_songs();return
-        if self.app.exclusive_audio_busy():
-            self.close_songs();self.show_notice('音频处理中，暂不能换曲');return
         self.close_songs()
         if self.app.active:
             autoplay=self.pending_song[1] if self.pending_song else not self.app.active.get('pause_requested',False)
             self.pending_song=(path,autoplay)
-            self.app.pending_import=None
             self.app.stop(switching_song=True)
         else:
             self.app.open_path(path)
@@ -314,6 +336,8 @@ class MiniPlayer:
             self.app.play(None)
 
     def close(self):
+        if self.shortcut_job is not None:
+            self.app.root.after_cancel(self.shortcut_job)
         self.close_songs()
         if self.native:self.native.close()
         self.window.destroy()

@@ -82,7 +82,7 @@ class FidelityChecks(unittest.TestCase):
     def test_unplayable_density_still_rejects_instead_of_drifting_the_song(self):
         score=convert(fixture([MidiNote(0,0,60+i%2,80,i*.001,.3+i*.001) for i in range(10)]),mode='faithful',instrument='piano')
         with self.assertRaisesRegex(ValueError,'50 毫秒'):
-            performance_plan(score)
+            performance_plan(score, strict=True)
 
     def test_final_shift_release_waits_for_earlier_overlapping_black_note(self):
         score=convert(fixture([MidiNote(0,0,61,80,0,.8),MidiNote(0,0,63,80,.1,.15)]),mode='faithful',instrument='piano')

@@ -103,9 +103,10 @@ def play_file(args):
             raise PlaybackStopped("演奏已取消。")
         print(f"请进入 {score_instrument(score).title} 的 36 键界面。F8 / Esc 停止；切出游戏也会停止。", flush=True)
         backend.focus_game()
-        write_progress(destination, 'focused', game_focused=True)
+        focused_window = {'game_focused': True, 'game_hwnd': backend.hwnd}
+        write_progress(destination, 'focused', **focused_window)
         for remaining in range(args.countdown, 0, -1):
-            write_progress(destination, "countdown", remaining=remaining, game_focused=True)
+            write_progress(destination, "countdown", remaining=remaining, **focused_window)
             print(f"{remaining} 秒后开始……", flush=True)
             deadline = time.perf_counter() + 1
             while time.perf_counter() < deadline:
@@ -118,7 +119,7 @@ def play_file(args):
         def progress(phase,elapsed,sequence):
             nonlocal last_elapsed,last_sequence
             last_elapsed,last_sequence=elapsed,sequence
-            write_progress(destination,phase,elapsed=elapsed,seconds=duration,control_sequence=sequence,game_focused=True)
+            write_progress(destination,phase,elapsed=elapsed,seconds=duration,control_sequence=sequence,**focused_window)
         report["sent_notes"] = play_timed(score, backend, args.hold_ms,control=control,on_progress=progress,start_at=start_at)
         report["status"] = "completed"
         print("演奏按键已发送完毕。实际发声请在游戏中确认。", flush=True)
@@ -267,6 +268,8 @@ def main(argv=None):
         return 0
     if args.play:
         return play_file(args)
+    from .display import enable_system_dpi_awareness
+    enable_system_dpi_awareness()
     import tkinter as tk
     from .ui import App
     App(tk.Tk(), engine=sys.modules[__name__]).root.mainloop()

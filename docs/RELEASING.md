@@ -20,12 +20,13 @@ python -m venv .venv
 .venv/Scripts/python.exe -m pip install -e .
 .venv/Scripts/python.exe -m unittest discover -s tests -v
 .venv/Scripts/python.exe tools/check_release.py
+.venv/Scripts/python.exe tools/prepare_offline_audio.py
 .venv/Scripts/python.exe tools/build_windows.py
 .venv/Scripts/python.exe tools/verify_release.py
 .venv/Scripts/python.exe tools/package_source.py
 ```
 
-releases/v2.0.2 中会生成“异环演奏工作台”目录、Windows x64 ZIP、Source ZIP 及各自 SHA-256 文件。完整解压即可运行 EXE。发布时上传整个 ZIP，不能只复制 EXE 而丢掉 _internal。已有同名 ZIP 默认拒绝覆盖；确认重建才传 --overwrite。源码与应用版本、Windows 属性和随包帮助先由 check_release.py 校验。
+`releases/v2.1.0/` 中会生成“异环演奏工作台”目录、Windows x64 ZIP、用于本地归档及一致性检查的 Source ZIP，以及各自 SHA-256 文件。发布时上传整个 Windows ZIP 及校验文件，开发者可使用 GitHub 自动提供的标签源码。已有同名 ZIP 默认拒绝覆盖，确认重建才传 `--overwrite`。源码与应用版本、Windows 属性和随包帮助由 `check_release.py` 校验。
 
 使用目录便携版以便启动提权后的界面与演奏进程共享安装资源，不使用自解压单文件管理员程序。构建方式见 [PyInstaller 目录打包说明](https://pyinstaller.org/en/stable/operating-mode.html#bundling-to-one-folder)。
 
@@ -47,25 +48,29 @@ releases/v2.0.2 中会生成“异环演奏工作台”目录、Windows x64 ZIP�
 
 ## 上传 GitHub
 
-使用者确认界面／排版并完成上传后，执行一次发布收尾：核对 `main` 已包含该轮提交、远端标签与发布附件校验值、私有归档；删除已合并的临时功能／文档分支及过期构建副本。保留 `main`、大版本 `release/*`、正式版本标签、正式发布包和当前未发布工作。详细规则见 `AGENTS.md`；2026-11-08 的执行记录见 [构建与分支清理](history/maintenance-2026-11-08.md)。
+使用者确认界面／排版并完成上传后，执行一次发布收尾：核对 `main` 已包含该轮提交、远端标签与发布附件校验值、私有归档；删除已合并的临时功能／文档分支及过期构建副本。保留 `main`、大版本 `release/*`、正式版本标签、正式发布包和当前未发布工作。详细规则见 `AGENTS.md`。
 
-源码目录包含 README、MIT 许可、第三方说明、pyproject.toml、构建依赖、src、tests、tools、docs 和 .github。可把这些内容作为仓库根目录，或解压 Source 源码包后上传。不要上传父目录的 outputs/work。
+在本仓库用 Git 提交并推送 `release/2.0.0`。源码、构建与测试脚本、必要文档、随包运行资源和 GitHub Actions 配置都保留在仓库中。
 
-.gitignore 已排除 releases 二进制、构建环境、缓存、下载、运行记录、个人设置和日志。个人曲谱、绝对文件路径与账号信息不应加入源码仓库。release 可执行文件作为 GitHub Release 附件分发，不作为源码提交。
+发布包、构建缓存、模型、个人数据、录制素材和本地归档由 `.gitignore` 排除。日常素材放在仓库外或 `work/`、`recordings/` 等忽略目录。提交前用 `git status --short` 核对变更，用 `git ls-files -ci --exclude-standard` 查找已经跟踪但匹配忽略规则的文件。忽略规则只对未跟踪文件的常规添加生效，通过网页手动上传时仍需自己筛选。
 
 Actions 在 pull_request、手动触发或推送 v* 标签时运行自包含测试、构建 EXE、运行冻结自检并保存构建产物。工作流仅有 contents:read 权限，不会自动创建公开 Release；可以下载 Actions 产物后自行发布。
 
-README、项目简介和 GitHub 首页信息需要分别维护：README 与 `pyproject.toml` 随源码提交，网站 About、Topics 和 Release 说明需单独保存。当前推荐描述、标签及对外发布清单见 [GitHub 首页与发布信息](GITHUB_PRESENTATION.md)。
+README 与 `pyproject.toml` 随源码提交。网站 About、Topics 和 Release 说明由维护者分别更新。附件清单见 [2.1.0 发布指南](PUBLISH_2.1.0.md)。
 
 ## 升级版本
 
 同步修改 src/nte_music_desk/__init__.py、pyproject.toml、tools/version_info.txt 和 CHANGELOG.md。再次测试、构建，校验 ZIP 与 SHA-256。检查第三方曲谱没有被复制进资源目录。
 
-更新 docs 中的当前使用说明后，将对应六份帮助同步到 src/nte_music_desk/assets；过期副本会阻止打包。执行 `node tools/light_audio_web/test.mjs` 检查 ETA、回退与共享参数。修改轻量页面/算法时，在 tools/light_audio_web 内 npm ci、npm run build 并提交生成资源与清单；未改页面时直接复用已校验资源，不需要把 Node 放进便携包。
+更新 docs 中的使用说明后，将对应帮助同步到 src/nte_music_desk/assets，过期副本会阻止打包。
 
-## v2.0.2 本地定版
+## v2.1.0 本地定版
 
-2026-11-09 使用者确认将稳定的离线转谱与后台演奏版本定为 2.0.2。继续使用 `release/2.0.0`，以 `v2.0.2` 标签保留本次提交，上传步骤见 [PUBLISH_2.0.2.md](PUBLISH_2.0.2.md)。当前应用统一放在 `.build/current`，发布目录 `releases/v2.0.2` 仅保留压缩附件、校验值、发布正文及验证报告，不再长期保留第二套展开应用。GitHub 推送、合并与公开发布由维护者执行。
+2.1.0 继续在 `release/2.0.0` 上维护，以 `v2.1.0` 标签记录本轮提交。录制提纲、历史过程记录及已停用的城市背景移入私有归档。使用说明、构建资料、测试及历史版本标签继续用于开发与回退。发布入口见 [2.1.0 发布指南](PUBLISH_2.1.0.md)。
+
+## v2.0.2 本地定版（历史记录）
+
+2026-11-09 使用者确认将稳定的离线转谱与后台演奏版本定为 2.0.2。继续使用 `release/2.0.0`，以 `v2.0.2` 标签保留本次提交，上传步骤见 [PUBLISH_2.0.2.md](PUBLISH_2.0.2.md)。开发入口统一放在 `.build/current`，发布目录 `releases/v2.0.2` 保留压缩附件、校验值、发布正文及验证报告。使用者另明确要求保留 `releases/v2.0.2/异环演奏工作台/` 完整可运行目录，用于录制与测试；该目录从正式 ZIP 校验恢复，后续开发不覆盖，普通清理不删除。GitHub 推送、合并与公开发布由维护者执行。
 
 ## v2.0.1 本地定版（历史记录）
 
