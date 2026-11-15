@@ -79,18 +79,20 @@ def main():
                           ('resource_spec_sha256','tools/offline_audio/resources.json'),('recipe_sha256','tools/prepare_offline_audio.py')]:
         if manifest.get(key) != hashlib.sha256((ROOT/relative).read_bytes()).hexdigest():
             parser.error('Offline runtime is stale. Run python tools/prepare_offline_audio.py before building.')
+    spec = json.loads((ROOT / 'tools/offline_audio/resources.json').read_text(encoding='utf-8'))
+    approved_models = {model['file'] for model in spec['models']}
+    approved_models.update('models/game/' + model['file'] for model in spec['vocal_model']['files'])
+    approved_models.add('models/game/verified.json')
+    actual_models = {path.relative_to(offline).as_posix() for path in (offline / 'models').rglob('*') if path.is_file()}
+    if actual_models != approved_models:
+        parser.error('Bundled model files differ from the fixed resource list: ' +
+                     ', '.join(sorted(actual_models ^ approved_models)))
     label = '-' + args.label if args.label else ''
     archive = output / f"NTE-Music-Desk-v{__version__}{label}-Windows-x64.zip"
     if archive.exists() and not args.overwrite:
         parser.error("Archive already exists; choose a new --output or explicitly use --overwrite.")
     output.mkdir(parents=True, exist_ok=True)
     work.mkdir(parents=True, exist_ok=True)
-    host_manifest=ROOT/'src/nte_music_desk/assets/audio_window/manifest.json'
-    source_hash=hashlib.sha256((ROOT/'tools/audio_window/AudioWindow.cs').read_text(encoding='utf-8').encode('utf-8')).hexdigest()
-    if not host_manifest.is_file() or json.loads(host_manifest.read_text(encoding='utf-8')).get('source_sha256')!=source_hash:
-        subprocess.run([sys.executable,str(ROOT/'tools/build_audio_window.py')],check=True,cwd=ROOT)
-    from nte_music_desk.audio_window import verify_host
-    verify_host(host_manifest.parent)
     # Never copy bytecode caches from local audio-engine checks into the app.
     # Use a fresh staging folder so removed resources cannot survive a rebuild.
     with tempfile.TemporaryDirectory(prefix='resources-', dir=work) as stage:
@@ -102,6 +104,7 @@ def main():
                         "--specpath", str(work), "--paths", str(ROOT / "src"),
                         "--add-data", f"{resources}:nte_music_desk/assets",
                         "--icon", str(ROOT / "src/nte_music_desk/assets/icon.ico"),
+                        "--manifest", str(ROOT / "tools/windows.manifest"),
                         "--version-file", str(ROOT / "tools/version_info.txt"),
                         str(ROOT / "src/nte_music_desk/_bootstrap.py")], check=True, cwd=ROOT)
     app = output / "异环演奏工作台"
@@ -156,14 +159,14 @@ def main():
         f"异环演奏工作台 v{__version__}\n\n双击“异环演奏工作台.exe”打开，无需安装 Python。\n"
         "请完整解压并保留 _internal 文件夹。\n导入音乐（点击或拖入）→ 选择游戏乐器与方案 → 试听／原谱对照 → 进度定位 → 开始演奏。\n"
         "本地音频转谱已包含钢琴／歌曲模型、CPU 运行库与解码器；首次使用也无需联网、安装 Python、CUDA 或 WebView2。\n"
-        "本地转谱可点击“后台运行”，继续用主窗或迷你播放器演奏／试听；从“文件 → 本地音频转谱”查看进度。后台完成只加入曲目列表，当前播放保持不变；关闭转谱窗口仍会取消任务。\n"
+        "本地转谱可点击“后台运行”，继续用主窗或演奏小窗；从“导入音乐”下方查看转谱进度或结果。后台完成只加入曲目列表；关闭转谱窗口会取消任务。\n"
         "为什么需要管理员权限：自动演奏通过 Windows 接口模拟按键；游戏以管理员权限运行时，普通权限工具的输入可能被系统权限隔离限制。\n"
         "当前版本在打开主界面前统一请求一次 UAC，由用户手动确认；取消则不启动主界面。授权作用于整个程序，演奏、音频处理等子进程也会继承权限。\n"
         "读谱、音频转谱和本地试听本身不需要管理员权限；命令行分析、转换与离线自检可普通权限运行。详细说明见“使用说明.md”的“管理员权限说明”。\n"
-        "F7 暂停/继续，F8 停止。\n"
-        "点击“开始演奏”后自动聚焦游戏并显示迷你播放器，无需手动打开；小窗不抢游戏焦点。迷你播放器适合无边框全屏，独占全屏请用 F7/F8；切出游戏自动停止。\n"
+        "顶部“迷你播放器”或 F6 隐藏/显示演奏小窗，F7 暂停/继续，F8 停止。\n"
+        "点击“开始演奏”后自动聚焦游戏并显示迷你播放器，无需手动打开；小窗不抢游戏焦点。录制时按 F6 隐藏小窗，再按一次恢复。切出游戏自动停止。\n"
         "小窗可拖动明音头像定位进度，点击曲名展开列表换曲；演奏中换曲先停止旧曲再播放，暂停或空闲时只载入。拖动顶部标识栏移动小窗。\n"
-        "个人数据在 %LOCALAPPDATA%\\NteMusicDesk；可从“文件 → 打开数据目录”查看。\n", encoding="utf-8")
+        "个人数据在 %LOCALAPPDATA%\\NteMusicDesk；可从“帮助 → 打开数据目录”查看。\n", encoding="utf-8")
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as bundle:
         for path in sorted(app.rglob("*")):
             if path.is_file():

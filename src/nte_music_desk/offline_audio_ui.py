@@ -7,6 +7,7 @@ import tkinter as tk
 from tkinter import filedialog, ttk
 
 from .appearance import COLORS as C, RoundedPanel
+from .display import available_window_size, pixels
 from .offline_audio import OfflineJob, OfflineRequest, PROFILES, verify_bundle
 from .segments import parse_time
 
@@ -30,7 +31,7 @@ class OfflineAudioDialog:
         self.window = tk.Toplevel(app.root)
         self.window.title('本地音频转谱')
         self.window.configure(bg=C['bg'])
-        self.window.geometry('700x610'); self.window.minsize(620, 570)
+        self.window.geometry(f'{pixels(self.window, 700)}x{pixels(self.window, 610)}')
         self.window.protocol('WM_DELETE_WINDOW', self.close)
         try: self.window.iconbitmap(str(app.assets / 'icon.ico'))
         except tk.TclError: pass
@@ -100,10 +101,13 @@ class OfflineAudioDialog:
         self.fit_window()
 
     def fit_window(self):
-        self.window.update_idletasks()
-        height = min(self.window.winfo_screenheight() - 90, max(610, self.window.winfo_reqheight()))
-        self.window.minsize(620, height)
-        self.window.geometry(f'{max(700, self.window.winfo_width())}x{height}')
+        window = self.window
+        window.update_idletasks()
+        available_width, available_height = available_window_size(window)
+        width = min(available_width, max(pixels(window, 700), window.winfo_reqwidth(), window.winfo_width()))
+        height = min(available_height, max(pixels(window, 610), window.winfo_reqheight()))
+        window.minsize(min(width, pixels(window, 620)), height)
+        window.geometry(f'{width}x{height}')
 
     def select_profile(self, profile):
         if self.job: return
@@ -176,15 +180,14 @@ class OfflineAudioDialog:
         try:
             request = OfflineRequest(Path(self.source.get()).expanduser(), self.profile,
                 parse_time(self.start.get()), parse_time(self.end.get()) if self.end.get().strip() else None)
-            with self.app.task_lock:
-                if self.app.audio_busy(): return
-                # Bind each worker to its own queue. Late callbacks from an old
-                # task cannot change the state of a subsequent recording.
-                self.messages = queue.Queue()
-                self.workbench_path = self.app.current_path
-                self.workbench_revision = self.app.song_revision
-                self.job = OfflineJob(self.app.directory, request, self.messages.put)
-                self.job.start()
+            # Bind each worker to its own queue. Late callbacks from an old
+            # task cannot change the state of a subsequent recording.
+            self.messages = queue.Queue()
+            self.workbench_path = self.app.current_path
+            self.workbench_revision = self.app.song_revision
+            job = OfflineJob(self.app.directory, request, self.messages.put)
+            job.start()
+            self.job = job
         except (ValueError, OSError) as error:
             self.state.set(str(error)); return
         self.result = None; self.result_row.pack_forget()
@@ -210,8 +213,9 @@ class OfflineAudioDialog:
         if not self.job: return
         self.background_requested = True
         self.window.withdraw()
+        self.app.refresh_controls()
         if not self.app.playback_busy():
-            self.app.set_status('本地转谱在后台进行，可继续选曲和演奏；从“文件 → 本地音频转谱”查看进度。','后台转谱中','blue')
+            self.app.set_status('本地转谱在后台进行，可继续选曲和演奏。','后台转谱中','blue')
 
     def finish(self, message):
         cancelled = self.job and self.job.cancelled.is_set()

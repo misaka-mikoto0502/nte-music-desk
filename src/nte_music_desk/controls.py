@@ -4,14 +4,17 @@ import tkinter as tk
 from PIL import Image, ImageDraw, ImageOps, ImageTk
 
 from .appearance import COLORS as C, RoundedButton, RoundedPanel
+from .display import pixels
 
 
 def character_thumb(master, path, size=36):
     """Render the existing portrait without changing the bundled artwork."""
+    size = pixels(master, size)
+    mask_size = max(96, size * 3)
     with Image.open(Path(path)) as source:
-        portrait = ImageOps.fit(source.convert('RGBA'), (96, 96), method=Image.Resampling.LANCZOS)
+        portrait = ImageOps.fit(source.convert('RGBA'), (mask_size, mask_size), method=Image.Resampling.LANCZOS)
     mask = Image.new('L', portrait.size)
-    ImageDraw.Draw(mask).ellipse((0, 0, 95, 95), fill=255)
+    ImageDraw.Draw(mask).ellipse((0, 0, mask_size - 1, mask_size - 1), fill=255)
     face = Image.new('RGBA', portrait.size, C['paper'])
     face.alpha_composite(portrait); face.putalpha(mask)
     return ImageTk.PhotoImage(face.resize((size, size), Image.Resampling.LANCZOS), master=master)
@@ -19,10 +22,10 @@ def character_thumb(master, path, size=36):
 
 class CharacterProgress(tk.Canvas):
     """A compact portrait thumb; seek coordinates include its end margins."""
-    inset = 18
     def __init__(self, parent, avatar):
-        super().__init__(parent, height=36, width=320, bg=C['paper'], borderwidth=0,
+        super().__init__(parent, height=pixels(parent, 36), width=pixels(parent, 320), bg=C['paper'], borderwidth=0,
                          highlightthickness=0, cursor='hand2', takefocus=False)
+        self.inset = pixels(parent, 18)
         self.avatar = character_thumb(self, avatar, 26)
         self.fraction = 0
         self.bind('<Configure>', lambda _: self.draw(self.fraction))
@@ -33,12 +36,13 @@ class CharacterProgress(tk.Canvas):
     def draw(self, fraction):
         self.fraction = min(1, max(0, fraction))
         width = self.winfo_width() if self.winfo_width()>1 else int(self.cget('width'))
-        left, right, y = self.inset, max(self.inset+1, width-self.inset), 18
+        left, right, y = self.inset, max(self.inset+1, width-self.inset), self.inset
         x = left+(right-left)*self.fraction
+        radius, thickness = pixels(self, 15), max(1, pixels(self, 5))
         self.delete('all')
-        self.create_line(left,y,right,y,fill=C['bg'],width=5,capstyle='round',tags='track')
-        self.create_line(left,y,x,y,fill=C['teal'],width=5,capstyle='round',tags='track')
-        self.create_oval(x-15,y-15,x+15,y+15,fill=C['paper'],outline=C['teal'],tags='thumb')
+        self.create_line(left,y,right,y,fill=C['bg'],width=thickness,capstyle='round',tags='track')
+        self.create_line(left,y,x,y,fill=C['teal'],width=thickness,capstyle='round',tags='track')
+        self.create_oval(x-radius,y-radius,x+radius,y+radius,fill=C['paper'],outline=C['teal'],tags='thumb')
         self.create_image(x,y,image=self.avatar,tags='portrait')
 
 
@@ -94,9 +98,10 @@ class CharacterSpeedScale(tk.Canvas):
     minimum, maximum = .25, 2.0
 
     def __init__(self, parent, variable, command, avatar):
-        super().__init__(parent, height=76, width=220, bg=C['paper'],
+        super().__init__(parent, height=pixels(parent, 76), width=pixels(parent, 220), bg=C['paper'],
             highlightthickness=0, borderwidth=0, takefocus=True, cursor='hand2')
         self.variable, self.command = variable, command
+        self.inset = pixels(parent, 22)
         self._focused = False
         # The original artwork is retained; this mask is only the widget's view.
         self.avatar = character_thumb(self, avatar)
@@ -130,7 +135,7 @@ class CharacterSpeedScale(tk.Canvas):
         if self.cget('state') == 'disabled':
             return
         self.focus_set()
-        fraction = min(1, max(0, (event.x - 22) / max(1, self.winfo_width() - 44)))
+        fraction = min(1, max(0, (event.x - self.inset) / max(1, self.winfo_width() - 2 * self.inset)))
         self.set_value(self.minimum + fraction * (self.maximum - self.minimum))
 
     def focus_ring(self, focused):
@@ -140,17 +145,18 @@ class CharacterSpeedScale(tk.Canvas):
     def draw(self, *_):
         if not self.winfo_exists():
             return
-        left, right, y = 22, max(23, self.winfo_width() - 22), 26
+        left, right, y = self.inset, max(self.inset + 1, self.winfo_width() - self.inset), pixels(self, 26)
         x = left + (right - left) * (self.value() - self.minimum) / (self.maximum - self.minimum)
         self.delete('all')
-        self.create_line(left, y, right, y, fill=C['bg'], width=5, capstyle='round')
-        self.create_line(left, y, x, y, fill=C['teal'], width=5, capstyle='round')
+        thickness = max(1, pixels(self, 5))
+        self.create_line(left, y, right, y, fill=C['bg'], width=thickness, capstyle='round')
+        self.create_line(left, y, x, y, fill=C['teal'], width=thickness, capstyle='round')
         for value, label, anchor in ((.25, '0.25×', 'w'), (1, '1×', 'center'), (2, '2×', 'e')):
             tick = left + (right - left) * (value - self.minimum) / (self.maximum - self.minimum)
-            self.create_line(tick, y + 9, tick, y + 13, fill=C['ink'])
-            self.create_text(tick, 57, text=label, anchor=anchor,
+            self.create_line(tick, y + pixels(self, 9), tick, y + pixels(self, 13), fill=C['ink'])
+            self.create_text(tick, pixels(self, 57), text=label, anchor=anchor,
                 fill=C['ink'], font=('Microsoft YaHei UI', 8))
-        radius = 22 if self._focused else 21
+        radius = pixels(self, 22 if self._focused else 21)
         self.create_oval(x-radius, y-radius, x+radius, y+radius,
             fill=C['paper'], outline=C['teal'], width=2 if self._focused else 1)
         self.create_image(x, y, image=self.avatar)

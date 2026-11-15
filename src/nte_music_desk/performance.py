@@ -29,6 +29,16 @@ class PerformancePlan:
     max_timing_adjustment_ms: float = 0
     aligned_notes: int = 0
     max_alignment_ms: float = 0
+    auto_adapted: bool = False
+    merged_notes: int = 0
+    pruned_notes: int = 0
+    regrouped_notes: int = 0
+    adaptation_changes: tuple = ()
+    adaptation_total_changes: int = 0
+
+
+class PianoDensityError(ValueError):
+    """A valid score needs game-key adaptation, rather than input repair."""
 
 
 def _record(notes, event, at, release):
@@ -112,7 +122,7 @@ def piano_schedule(score, hold_ms, notes=None, timing=None):
             gap = 0.025 if mapped.shifted != next_shift else 0.008
             release = min(release, following["at"] + 0.02 - gap)
         if release - at < 0.005:
-            raise ValueError("钢琴音符过密，无法留出 Shift 切换时间，请降低速度倍率。")
+            raise PianoDensityError("钢琴音符过密，无法留出 Shift 切换时间，请降低速度倍率。")
         if mapped.shifted != shifted:
             events.append((at - 0.015, int(mapped.shifted), SHIFT))
             shifted = mapped.shifted
@@ -138,7 +148,7 @@ def _settle_piano_batches(batches, timing):
         delay=at-desired
         if delay>.050+1e-9:
             source_at=part[0][0].get('source_at',desired)
-            raise ValueError(f'钢琴在原曲 {source_at:.2f} 秒附近过密，所需局部延后超过 50 毫秒；请使用吉他钢琴模式、减少声部或降低速度。')
+            raise PianoDensityError(f'钢琴在原曲 {source_at:.2f} 秒附近过密，所需局部延后超过 50 毫秒；请使用吉他钢琴模式、减少声部或降低速度。')
         if timing is not None and delay>1e-9:
             timing['adjusted_notes']+=len(part)
             timing['max_delay_ms']=max(timing['max_delay_ms'],delay*1000)
@@ -171,7 +181,7 @@ def piano_chord_schedule(score, hold_ms, notes=None, timing=None):
             if existing is None or existing["duration"] < note["duration"]:
                 unique[note["midi"]] = note
         if len(unique) > score.get('settings', {}).get('max_polyphony', 6):
-            raise ValueError("钢琴同组音符超过配置上限，请调整和弦音数。")
+            raise PianoDensityError("钢琴同组音符超过配置上限，请调整和弦音数。")
         parts = []
         for shifted in (False, True):
             part = [(note, profile.keys[note_name(note["midi"])]) for note in unique.values()
@@ -180,11 +190,15 @@ def piano_chord_schedule(score, hold_ms, notes=None, timing=None):
                 parts.append((shifted, part))
         for offset, (shifted, part) in enumerate(parts):
             batches.append((group[0]["at"] + 0.02 + offset * 0.055, shifted, part))
-    events, owns_shift, last_release = [], False, 0
     preserving = score['mode'] in ('faithful', 'balanced')
     # The 55 ms black-key roll can cross later source onsets. Future release
     # constraints must use chronological batches, not source-group order.
     batches=(_settle_piano_batches(batches,timing) if preserving else sorted(batches,key=lambda batch:batch[0]))
+    return _piano_batch_events(score, hold_ms, batches, preserving, notes)
+
+
+def _piano_batch_events(score, hold_ms, batches, preserving, notes, *, minimum_attack=False):
+    events, owns_shift, last_release = [], False, 0
     switch_at, next_switch = float('inf'), {}
     for i in range(len(batches) - 1, -1, -1):
         if i + 1 < len(batches) and batches[i][1] != batches[i + 1][1]:
@@ -204,18 +218,22 @@ def piano_chord_schedule(score, hold_ms, notes=None, timing=None):
             next_at, next_shift, _ = batches[index + 1]
             release_cap = next_at - (0.025 if shifted != next_shift else 0.008)
         if release_cap - at < 0.005-1e-9:
-            raise ValueError("钢琴和弦过密，无法留出分组与松键时间，请降低速度倍率或减少音轨。")
+            raise PianoDensityError("钢琴和弦过密，无法留出分组与松键时间，请降低速度倍率或减少音轨。")
         if shifted != owns_shift:
             events.append((at - 0.015, int(shifted), SHIFT))
             owns_shift = shifted
         last_release = max(last_release,at)
         for note, mapped in part:
             key = PianoKey(mapped.label.replace("Shift + ", ""), mapped.virtual_key, mapped.scan_code)
-            release = min(at + min(hold_ms / 1000, note["duration"] * 0.8), release_cap)
+            hold = min(hold_ms / 1000, note["duration"] * 0.8)
+            if minimum_attack: hold = max(.005, hold)
+            elif hold < .005 - 1e-9:
+                raise PianoDensityError('钢琴音符时值过短，需适配最短按键时间。')
+            release = min(at + hold, release_cap)
             if preserving:
                 release = min(release, same_key_at[index, mapped.virtual_key] - .008)
                 if release - at < .005-1e-9:
-                    raise ValueError('钢琴声部在 Shift 切换或重复键处过密，请降低速度或使用吉他钢琴模式。')
+                    raise PianoDensityError('钢琴声部在 Shift 切换或重复键处过密，请降低速度或使用吉他钢琴模式。')
             events.extend([(at, 1, key), (release, 0, key)])
             _record(notes, note, at, release)
             last_release = max(last_release, release)
@@ -225,12 +243,44 @@ def piano_chord_schedule(score, hold_ms, notes=None, timing=None):
     return events
 
 
-def performance_plan(score, hold_ms=300):
+def _validate_piano_key_events(events):
+    held, released = {}, {}
+    shifted, last_shift = False, -float('inf')
+    for at, down, key in events:
+        if key == SHIFT:
+            if held: raise ValueError('内部排程错误：Shift 切换时仍有琴键按下。')
+            shifted, last_shift = bool(down), at
+        elif down:
+            if key.virtual_key in held or at - released.get(key.virtual_key, -float('inf')) < .008 - 1e-9:
+                raise ValueError('内部排程错误：重复键缺少松键间隔。')
+            if at - last_shift < .015 - 1e-9:
+                raise ValueError('内部排程错误：Shift 状态尚未稳定。')
+            held[key.virtual_key] = at
+        else:
+            start = held.pop(key.virtual_key, None)
+            if start is None or at - start < .005 - 1e-9:
+                raise ValueError('内部排程错误：琴键时长不足或重复释放。')
+            released[key.virtual_key] = at
+    if held or shifted: raise ValueError('内部排程错误：曲末按键未释放。')
+
+
+def performance_plan(score, hold_ms=300, *, strict=False):
     notes = []
     validate_score(score)
     timing={'adjusted_notes':0,'max_delay_ms':0,'aligned_notes':0,'max_alignment_ms':0}
     score=_align_score(score,timing)
-    keys = _compile_keys(score, hold_ms, notes, timing)
+    adapted = None
+    try:
+        keys = _compile_keys(score, hold_ms, notes, timing)
+    except PianoDensityError:
+        if strict: raise
+        from .piano_adaptation import adapt_piano_batches
+        adapted = adapt_piano_batches(score)
+        notes = []
+        keys = _piano_batch_events(score, hold_ms, adapted.batches, score['mode'] in ('faithful', 'balanced'),
+                                   notes, minimum_attack=True)
+        _validate_piano_key_events(keys)
+        timing['adjusted_notes'], timing['max_delay_ms'] = adapted.adjusted, adapted.max_delay_ms
     if not notes:
         raise ValueError("曲谱没有可执行的音符。")
     notes.sort(key=lambda n: (n.at, n.midi))
@@ -244,7 +294,10 @@ def performance_plan(score, hold_ms=300):
     mixed = sum(len({profile.keys[note_name(e["midi"])].shifted for e in group}) > 1 for group in groups) if profile.id == "piano" else 0
     duration = max(score.get("summary", {}).get("seconds", 0), keys[-1][0],
                    max(n.at + n.duration for n in notes))
-    return PerformancePlan(tuple(keys), tuple(notes), duration, mixed,timing['adjusted_notes'],round(timing['max_delay_ms'],3),timing['aligned_notes'],round(timing['max_alignment_ms'],3))
+    return PerformancePlan(tuple(keys), tuple(notes), duration, mixed,timing['adjusted_notes'],round(timing['max_delay_ms'],3),
+        timing['aligned_notes'],round(timing['max_alignment_ms'],3), adapted is not None,
+        adapted.merged if adapted else 0, adapted.pruned if adapted else 0, adapted.regrouped if adapted else 0,
+        adapted.changes if adapted else (), adapted.total_changes if adapted else 0)
 
 
 def key_schedule(score, hold_ms=300):

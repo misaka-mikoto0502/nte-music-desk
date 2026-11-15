@@ -65,10 +65,11 @@ class GameHandoffChecks(unittest.TestCase):
                      patch.object(cli.time,'sleep'):
                     self.assertEqual(cli.play_file(args),0)
                 self.assertEqual(order[0],'focus')
-                self.assertEqual(order[1],('focused',{'game_focused':True}))
+                self.assertEqual(order[1], ('focused', {'game_focused': True, 'game_hwnd': 123}))
                 for event in order:
                     if isinstance(event,tuple) and event[0] in ('countdown','playing'):
                         self.assertTrue(event[1]['game_focused'])
+                        self.assertEqual(event[1]['game_hwnd'], 123)
                 backend.user32.keybd_event.assert_not_called()
 
     def test_workbench_stop_is_distinguished_from_safety_interruptions(self):

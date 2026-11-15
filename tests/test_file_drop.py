@@ -11,7 +11,7 @@ from nte_music_desk.ui import App
 class ImportRoutingChecks(unittest.TestCase):
     def test_audio_scores_busy_and_unsupported_drops(self):
         app=App.__new__(App)
-        app.active=app.preview_token=app.audio_dialog=app.light_audio=None
+        app.active=app.preview_token=None
         app.set_status=MagicMock();app.open_path=MagicMock(return_value=True);app.open_offline_audio=MagicMock()
         with tempfile.TemporaryDirectory() as d:
             score=Path(d)/'自己的 乐谱.MID';score.touch()

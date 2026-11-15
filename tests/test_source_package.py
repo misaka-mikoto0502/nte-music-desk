@@ -7,9 +7,9 @@ class SourcePackageChecks(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d)
             for name in TOP_FILES:(root/name).write_text('fixture')
-            paths=['src/nte_music_desk/assets/audio_window/NteAudioWindow.exe',
-                   'tools/audio_window/AudioWindow.cs','tools/light_audio_web/pipeline.js',
-                   'tools/light_audio_web/node_modules/vendor/index.js',
+            paths=['src/nte_music_desk/assets/scores/twinkle.mid',
+                   'src/nte_music_desk/assets/USAGE.md','src/nte_music_desk/offline_audio.py',
+                   'tools/node_modules/vendor/index.js',
                    'src/nte_music_desk/assets/midi_ui_settings.json','tools/.env.local','releases/README.md']
             local_artifacts=['tests/.pytest_cache/v/cache/nodeids','tools/.mypy_cache/check.json',
                              'docs/.DS_Store','tools/.coverage.machine','tools/launch.lnk','tools/local.tmp',
@@ -20,7 +20,7 @@ class SourcePackageChecks(unittest.TestCase):
             names={p.relative_to(root).as_posix() for p in collect_files(root)}
             self.assertIn('.gitattributes',names)
             self.assertTrue(set(paths[:3]).issubset(names))
-            self.assertTrue(set(paths[3:6]).isdisjoint(names))
+            self.assertTrue(set(paths[3:]).isdisjoint(names))
             self.assertTrue(set(local_artifacts).isdisjoint(names))
             recipe=root/'tools/offline_audio/main.cpp';recipe.parent.mkdir(parents=True);recipe.write_text('build recipe')
             self.assertIn(recipe,collect_files(root))

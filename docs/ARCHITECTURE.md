@@ -24,15 +24,8 @@ nte-music-desk/
 │   ├── offline_audio_ui.py # 原生转谱窗口、ETA、后台任务与结果状态
 │   ├── piano_transcription.py # Transkun 2 ONNX 钢琴推理与解码
 │   ├── vocal_transcription.py # GAME small 歌声与多乐器预测去重
-│   ├── transcription.py    # 可选高级 MuScriptor 子进程与结果校验
-│   ├── audio_ui.py         # 引擎配置、安装、转谱与取消界面
-│   ├── light_audio.py      # 轻量转谱本机服务、保存与工作台交接
-│   ├── audio_window.py     # WebView2 桌面宿主与浏览器兼容入口
 │   ├── audio_audition.py   # MCI WAV 同位置对照、定位、暂停和循环
 │   ├── audio_quality.py    # 已知 MIDI 参考的一对一起音/音高评估
-│   ├── audio_pipeline.py   # 本地选段、伴奏与独立旋律 Beta 流程
-│   ├── melody.py           # GAME 权重确认/校验与旋律结果转换
-│   ├── rights.py           # 用户来源说明与逐模型条款检查
 │   ├── notation.py         # MusicXML/MXL、KAR/RMI 统一导入
 │   ├── instruments.py      # 乐器键位表
 │   ├── keyboard.py         # 前台核对、按键及 UAC 启动
@@ -41,7 +34,7 @@ nte-music-desk/
 │   ├── diagnostics.py      # 不发送按键的离线发布自检
 │   └── assets/             # 图标、帮助、示例 MIDI
 ├── tests/                  # 自包含离线测试，不使用个人曲谱
-├── tools/                  # EXE 构建、轻量音频前端与 WebView2 宿主源码
+├── tools/                  # EXE 构建、离线转谱和验证
 ├── docs/                   # 使用、结构与发布说明
 ├── .github/workflows/      # Windows 自动构建
 └── releases/               # 本地发布产物，Git 忽略二进制
@@ -51,7 +44,7 @@ nte-music-desk/
 
 Pillow 用于界面绘制与角色滑块显示，核心转换和演奏调度继续使用标准库。圆角按钮继承原生 Tk Button，保留焦点、空格触发与禁用语义。当前主窗采用纯色背景与四种基础色，历史背景和旧偏好继续保留；角色头像用于速度滑块和小窗进度。数值步进以原生 Entry 和 Button 组合，头像速度条保留拖动、键盘、禁用状态与变量同步。构建环境、CI 和源码启动显式安装依赖；提权演奏子进程继续保持原有隔离参数。
 
-2.0.2 默认音频入口为原生离线窗口。任务由独立进程及 Windows 作业对象管理，以较低优先级运行；钢琴采用 Transkun 2 ONNX，歌曲采用 GAME small 与 MuScriptor small F16。固定资源清单与 SHA-256 由准备脚本生成，用户包自带完整模型、NumPy／ONNX Runtime、解码器及本机程序。界面按任务队列隔离迟到消息，以选曲变化次数保护当前曲目；停止演奏与取消转谱各自独立。旧轻量与高级流程继续保留在兼容菜单。
+2.0.2 默认音频入口为原生离线窗口。任务由独立进程及 Windows 作业对象管理，以较低优先级运行；钢琴采用 Transkun 2 ONNX，歌曲采用 GAME small 与 MuScriptor small F16。固定资源清单与 SHA-256 由准备脚本生成，用户包自带完整模型、NumPy／ONNX Runtime、解码器及本机程序。界面按任务队列隔离迟到消息，以选曲变化次数保护当前曲目；停止演奏与取消转谱各自独立。已保存的旧版 MIDI 继续由曲目列表读取。
 
 移调推荐逐一转换 −36 至 +36 的全部 73 个半音，并使用统一 performance_plan 检查实际排程。评分成本为丢音×100＋重合×20＋折回×4＋轮廓反向×8＋音程变形÷12＋混合组×0.15＋延后音数×0.5＋最大延后毫秒÷10；同分优先接近当前移调。轮廓取起音组中的最高原音，只是旋律近似。此算法未分析调性、真实旋律与和声、音色或游戏实际发声；权重是可解释的启发式，音乐质量需要独立试听验证。报告的原曲时间点、原曲总长和演奏时长分别记录，界面只格式化时间显示，JSON 保留秒数。
 
@@ -71,17 +64,8 @@ Pillow 用于界面绘制与角色滑块显示，核心转换和演奏调度继�
 
 faithful/balanced 模式保留独立起音，整体八度选择后再处理残余越界，先合并同音再按角色减音。软件每组音数与实际按住键峰值分别报告；钢琴同色音可重叠，遇修饰键切换或重复键提前释放。指标基于计划，不测量游戏声音。
 
-轻量入口由 light_audio.py 启动仅绑定 127.0.0.1 的标准库 HTTP 服务，随机会话路径、资源白名单、严格 Host/Origin 和有界消息；桌面 WebView2 页面或浏览器兼容页在本机 Worker 中使用 Basic Pitch / TensorFlow.js 单线程 WASM 加速（JS CPU 回退），按窗口释放 Tensor，页面选音频时只传回音符和来源记录；桌面拖入的指定音频通过本机接口交给页面。主线程消息队列完成导入，忙碌时阻止启动游戏演奏；过期任务不能发布结果。轻量转谱资源约 2.34 MB，包含官方小模型、JS 和许可，无 Node/Python 音频环境；WebView2 宿主资源单独校验，模型输出仍为 Beta。
-
-高级音频引擎在独立环境或指定的外部 Python 中执行；冻结 EXE 不作为开发环境。MuScriptor 处理已有伴奏，GAME 为独立歌声 Beta。任务在子进程中解码选段、识别并校验 MIDI，保留原曲选段偏移；取消终止本任务及其后代，取消后的消息不自动导入。源码与便携包不含高级引擎的 PyTorch / ONNX 运行时或大权重。
-
-rights.py 在识别前要求素材使用说明及当前受限模型条款确认，记录为用户说明而非已核验授权。换文件清空素材说明及旧结果。GAME 的下载和缓存使用都检查确认项；分离只允许 UMX-HQ，ViperX 在父流程与 worker 均拒绝调用。separation_runtime.py 获取并校验四份官方 MIT 权重，以 weights_only 加载；20 秒窗口交叉淡化，输出共同增益及相同帧数的伴奏和人声。日志遮盖 HF 令牌，任务目录仍含音频与私人说明，应由用户自行保管。
-
-音频试听准备只解码最多 30 秒，使用独立子进程。对照试听先在后台渲染选中 MIDI 的轻量合成音，再用 Windows MCI waveaudio 按共同毫秒位置切换音源，不控制游戏；开始新任务、输入变更或游戏演奏时关闭。使用 Windows 已有短路径兼容旧 waveaudio 驱动，不修改文件名或系统设置。模型访问检查只有用户主动点击时才请求授权文件元数据，不把登录记录或缓存等同于已加载模型。
+对照试听使用转谱任务准备的 WAV，通过 Windows MCI waveaudio 在同一毫秒位置切换原音频和合成曲谱。更换输入或开始游戏演奏时关闭试听。
 
 playback.py 以单调时钟扣除暂停区间，暂停释放全部键，继续恢复仍处于按住区间的按键，修饰键先于琴键。控制文件带 schema 与递增序号，原子替换；F7 以按下边沿切换。进度直接回报演奏时间，较旧回报不覆盖新的 UI 请求，暂停后不靠系统时间推进游标。游戏失焦和取消检查不放宽。
 
 mini_player.py 只修改本进程小窗：WS_EX_NOACTIVATE、WS_EX_TOOLWINDOW、TOPMOST 和 WM_MOUSEACTIVATE 的 MA_NOACTIVATE，关闭时恢复窗口过程。独立顶层所有权使主窗最小化时保留显示。窗口置顶不代表能够跨越独占全屏或安全桌面；无游戏 DLL 注入或全局鼠标钩子。
-
-
-轻量转谱默认由 audio_window.py 启动独立的 WebView2 宿主（tools/audio_window/AudioWindow.cs），继承现有进程权限，通过私有 stdin 管道唤回/关闭；不再把普通音频交给系统浏览器。宿主仅允许当前随机本机会话的页面/资源，禁用通用宿主对象，MIDI 下载限定到该会话的结果路由；新窗口请求只允许用户主动查看当前许可。当前窗口关闭后立即取消未完成任务，过期窗口消息不影响新窗口。系统 WebView2/.NET 不分发，SDK 文件逐项校验，浏览器兼容入口独立保留。

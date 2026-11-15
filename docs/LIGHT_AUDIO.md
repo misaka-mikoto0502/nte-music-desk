@@ -1,5 +1,7 @@
 # 轻量音频转谱（Beta）
 
+> 历史记录：此工具已退出当前版本。当前操作见 [本地音频转谱](OFFLINE_AUDIO.md)。
+
 本页介绍“文件 → 其他音频工具”中的旧轻量流程。2.0.2 默认使用自带模型的原生转谱，参见 OFFLINE_AUDIO.md；本页的 WebView2／浏览器依赖仅适用于兼容工具。
 
 使用 Spotify Basic Pitch 1.0.1 与 TensorFlow.js 3.21.0，默认在独立桌面窗口的本机 CPU 上计算，复用系统 Microsoft Edge WebView2 Runtime 与 .NET Framework 4.6.2+，不打开默认浏览器。页面、脚本、官方未修改模型、单线程 WASM/SIMD 及许可约 2.33 MB；无需 GPU、Python、Node 或账号，不随包分发浏览器内核。新增窗口宿主与 SDK 约 0.85 MB，连同转谱资源合计约 3.18 MB。系统没有 WebView2 时窗口会提示原因，可手动使用“文件 → 轻量转谱（浏览器兼容）”；不会静默安装运行时。WASM 不可用时自动回退到 JavaScript CPU。此大小为新增磁盘资源，不是运行内存。

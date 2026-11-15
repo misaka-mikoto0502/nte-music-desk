@@ -4,9 +4,7 @@ from contextlib import contextmanager
 import json
 import math
 from pathlib import Path
-import subprocess
 import sys
-import time
 from types import SimpleNamespace
 import uuid
 import wave
@@ -197,57 +195,10 @@ def timeline_report(output):
     return {'source_total': '03:20', 'performance_total': '00:20', 'first_change': '03:00.000', 'json_source_seconds': 180}
 
 
-def real_audio_handoff(audio, expected, output, reference=None):
-    from nte_music_desk.audio_window import verify_host
-    from nte_music_desk.light_audio import LightAudioSession
-    folder = output / 'real-audio'
-    with desk(folder) as app:
-        session = app.light_audio = LightAudioSession(folder, app.messages.put)
-        session.select_desktop_audio(audio)
-        report = folder / 'host.json'
-        process = subprocess.Popen([str(verify_host(asset_dir() / 'audio_window')), session.url,
-            str(folder / 'profile'), str(report), '--diagnostic', 'polyphonic', '0'], stdin=subprocess.PIPE)
-        try:
-            deadline = time.monotonic() + 60
-            while process.poll() is None and time.monotonic() < deadline:
-                app.root.update()
-                time.sleep(.02)
-            if process.poll() is None:
-                raise TimeoutError('Native audio sample exceeded 60 seconds')
-            result = json.loads(report.read_text(encoding='utf-8-sig'))
-            assert result['state'] == 'diagnostic', result
-            deadline = time.monotonic() + 3
-            while (app.current_path != session.result or not app.messages.empty()) and time.monotonic() < deadline:
-                app.root.update()
-                time.sleep(.02)
-            assert app.current_path == session.result
-            assert app.song.notes
-            if expected is not None:
-                assert len(app.song.notes) == expected
-            assert session.latest_result['workbench']['state'] == 'loaded'
-            assert session.result.read_bytes() == Path(result['download']).read_bytes()
-            evidence = {'notes': len(app.song.notes), 'saved_midi_matches_download': True,
-                'workbench': 'loaded_without_manual_import', 'layout_cases': len(result['layout'])}
-            if reference is not None:
-                from nte_music_desk.audio_quality import compare_notes
-                evidence['reference_comparison'] = compare_notes(read_score(reference), app.song, tolerance=.1)
-            return evidence
-        finally:
-            if process.poll() is None:
-                process.terminate()
-                process.wait(timeout=5)
-            process.stdin.close()
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=ROOT / '.build/validation' / ('workflow-check-' + uuid.uuid4().hex[:8]))
-    parser.add_argument('--audio', type=Path, help='Optional local synthetic WAV for real WebView2 inference and workbench handoff')
-    parser.add_argument('--expected-notes', type=int, help='Optional model regression count, not an accuracy score')
-    parser.add_argument('--reference-midi', type=Path, help='Known matching reference; report pitch/onset quality separately')
     args = parser.parse_args()
-    if args.reference_midi and not args.audio:
-        parser.error('--reference-midi requires --audio')
     if sys.platform != 'win32':
         parser.error('Native workflow checks require Windows with Tcl/Tk')
     output = args.output.resolve()
@@ -257,9 +208,6 @@ def main():
              ('import_seek_and_audition', lambda: import_seek_and_audition(paths, output)),
              ('legacy_and_invalid_settings', lambda: legacy_and_invalid_settings(paths, output)),
              ('recommendations', lambda: recommendations(output)), ('timeline_report', lambda: timeline_report(output))]
-    if args.audio:
-        cases.append(('real_audio_handoff', lambda: real_audio_handoff(args.audio.resolve(), args.expected_notes,
-            output, args.reference_midi.resolve() if args.reference_midi else None)))
     report = {'schema': 'nte-workflow-check-v1', 'game_input_sent': False, 'cases': {}}
     for name, check in cases:
         try:

@@ -45,11 +45,12 @@ def recommend_transpositions(song, *, tracks=None, mode="melody", speed=1, trans
                 planner(score, hold_ms)
             metrics = adaptation_metrics(score)
             metrics.update(mixed_groups=plan.mixed_groups,
+                density_pruned=plan.pruned_notes, key_merged=plan.merged_notes,
                 timing_adjusted_notes=plan.timing_adjusted_notes,
                 max_timing_adjustment_ms=plan.max_timing_adjustment_ms)
             cost = (metrics["dropped"] * 100 + metrics["collisions"] * 20 + metrics["folded"] * 4
                     + metrics["contour_reversals"] * 8 + metrics["interval_distortion"] / 12
-                    + metrics["mixed_groups"] * .15
+                    + metrics["mixed_groups"] * .15 + plan.pruned_notes * 100 + plan.merged_notes * 20
                     + metrics['timing_adjusted_notes'] * .5 + metrics['max_timing_adjustment_ms'] / 10)
             candidates.append({"transpose": shift, **metrics, "cost": cost})
         except ValueError:
@@ -60,12 +61,18 @@ def recommend_transpositions(song, *, tracks=None, mode="melody", speed=1, trans
     return candidates[:limit]
 
 
+def playability_summary(score, plan):
+    return dict(auto_adapted=plan.auto_adapted, input_notes=len(score['events']), planned_notes=len(plan.notes),
+                key_merged=plan.merged_notes, density_pruned=plan.pruned_notes, regrouped_notes=plan.regrouped_notes,
+                max_extra_delay_ms=plan.max_timing_adjustment_ms)
+
+
 def adaptation_report(score, plan=None):
     result = {"schema": "nte-adaptation-report-v1", "title": score.get("title", "曲谱"),
             "instrument": score.get("instrument", "guitar"), "mode": score["mode"],
             "settings": dict(score.get("settings", {})), "summary": dict(score["summary"]),
             "metrics": adaptation_metrics(score), "warnings": list(score.get("warnings", [])),
-            "changes": score.get("adaptation", {}).get("changes", []),
+            "changes": list(score.get("adaptation", {}).get("changes", [])),
             "total_changes": score.get("adaptation", {}).get("total_changes", 0),
             "truncated": score.get("adaptation", {}).get("truncated", False),
             "voice_octaves": score.get('adaptation', {}).get('voice_octaves', {}),
@@ -76,6 +83,11 @@ def adaptation_report(score, plan=None):
             "note": "规则适配结果，不代表听感还原度或游戏实际发声；变更明细最多保存 2000 条，统计为完整计数。"}
     if plan is not None:
         from dataclasses import asdict
+        result['playability'] = playability_summary(score, plan)
+        result['changes'] = sorted(result['changes'] + list(plan.adaptation_changes),
+                                   key=lambda c: (c['source_at'], c['track']))[:2000]
+        result['total_changes'] += plan.adaptation_total_changes
+        result['truncated'] = result['truncated'] or result['total_changes'] > len(result['changes'])
         result["performance"] = {"seconds": plan.duration, "planned_notes": len(plan.notes),
                                  'timing_adjusted_notes':plan.timing_adjusted_notes,'max_timing_adjustment_ms':plan.max_timing_adjustment_ms,
                                  'aligned_notes':plan.aligned_notes,'max_alignment_ms':plan.max_alignment_ms,
