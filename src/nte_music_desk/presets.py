@@ -9,7 +9,7 @@ from pathlib import Path
 from .instruments import INSTRUMENTS
 
 DEFAULTS = {"tracks": [], "mode": "melody", "speed": 1.0, "transpose": 0,
-            "range_policy": "fold", "start": 0.0, "end": None, "countdown": 3, "hold_ms": 300, "roles": {}, "max_polyphony": 12,"chord_alignment_ms":0}
+            "range_policy": "fold", "start": 0.0, "end": None, "countdown": 3, "hold_ms": 300, "roles": {}, "max_polyphony": 12,"chord_alignment_ms":0, "segments": []}
 
 
 def fingerprint(path):
@@ -41,6 +41,8 @@ def validate_settings(value):
     end = result["end"]
     if end is not None and (type(end) not in (int, float) or not math.isfinite(end) or not result["start"] < end <= 7200):
         raise ValueError("演奏方案的片段终点无效。")
+    from .arrangement import validate_segments
+    result['segments'] = validate_segments(result['segments'])
     return result
 
 

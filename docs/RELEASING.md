@@ -4,13 +4,19 @@
 
 每个大版本维护一条长期代码分支。当前 `2.0.1`、`2.0.2`、`2.1.0` 等 2.x 版本持续提交到已有的 `release/2.0.0`；进入 3.0.0 时再创建 `release/3.0.0`。小版本不创建新发布分支，使用 `v2.0.1`、`v2.0.2` 等标签保留准确快照。通过正常提交更新同一分支的最新文件，保留历史和回退能力。协作规则同时记录于仓库根目录 `AGENTS.md`。
 
+## 开发与打包节奏
+
+日常通过源码开发快捷方式运行当前实现，只测试当前改动和直接受影响的功能。开发过程中不构建 EXE／ZIP，不运行全套回归、样例矩阵和整包验证。使用者明确确认阶段开发完成并要求打包对应版本后，再执行下述整体测试、构建及产物验证。已有便携包是上次打包时的快照，开发中允许其与源码不同。
+
 ## 本地构建
+
+2026-11-23 的 2.1.1 更新归档位于 `releases/v2.1.1/final-20261123/`；`final/` 保留 2026-11-19 的快照。新版包内自检覆盖游戏 A/B 的模拟启动、续播保护、视图选中态、32 逻辑像素头像和社区计划占位；自检不启动社区服务，也不创建真实游戏按键后端。
 
 当前预览统一输出 `.build/current/`，工具下载和中间构建统一写入 `.build/cache/`，样例及验证记录统一写入 `.build/validation/`。原生组件准备、Windows 打包和独立验证的默认工作目录已经按此分类。历史文档中的旧时间戳目录仅用于追溯；当前入口见 `.build/README.md`。
 
 2.0.2 正式包含完整离线转谱。先运行 `python tools/prepare_offline_audio.py`，在构建机准备固定模型、本机 CPU 引擎、解码器、源码及声明；用户不执行此步骤。构建机需 Visual Studio C++/CMake，支持 `--vs-root`。当前应用使用 `build_windows.py --output .build/current`，正式包不传 `--label offline-preview`。`verify_offline_audio.py` 验证完整 EXE 的真实模型转谱，详见 [完整离线转谱](OFFLINE_AUDIO.md)。
 
-开发期间可先运行 `python tools/check_workflows.py` 验证内置和合成样例，再使用 `build_windows.py --output <验证目录> --work <构建目录>` 创建独立验证包。运行 `verify_release.py --archive <验证ZIP> --report <独立报告.json>` 可将证据写到单独位置，保留正式版本的验证记录。
+在使用者明确要求打包后，可先运行 `python tools/check_workflows.py` 验证内置和合成样例，再使用 `build_windows.py --output <验证目录> --work <构建目录>` 创建独立验证包。运行 `verify_release.py --archive <验证ZIP> --report <独立报告.json>` 可将证据写到单独位置，保留正式版本的验证记录。
 
 在 Windows x64 上安装带 Tcl/Tk 的 Python（推荐 python.org 的 Python 3.12），进入仓库根目录：
 
@@ -26,7 +32,7 @@ python -m venv .venv
 .venv/Scripts/python.exe tools/package_source.py
 ```
 
-`releases/v2.1.0/` 中会生成“异环演奏工作台”目录、Windows x64 ZIP、用于本地归档及一致性检查的 Source ZIP，以及各自 SHA-256 文件。发布时上传整个 Windows ZIP 及校验文件，开发者可使用 GitHub 自动提供的标签源码。已有同名 ZIP 默认拒绝覆盖，确认重建才传 `--overwrite`。源码与应用版本、Windows 属性和随包帮助由 `check_release.py` 校验。
+默认构建目录为 `releases/v2.1.1/`，可生成“异环演奏工作台”目录、Windows x64 ZIP、用于本地归档及一致性检查的 Source ZIP，以及各自 SHA-256 文件。发布时上传整个 Windows ZIP 及校验文件，开发者可使用 GitHub 自动提供的标签源码。已有同名 ZIP 默认拒绝覆盖，确认重建才传 `--overwrite`。源码与应用版本、Windows 属性和随包帮助由 `check_release.py` 校验。
 
 使用目录便携版以便启动提权后的界面与演奏进程共享安装资源，不使用自解压单文件管理员程序。构建方式见 [PyInstaller 目录打包说明](https://pyinstaller.org/en/stable/operating-mode.html#bundling-to-one-folder)。
 
@@ -56,7 +62,7 @@ python -m venv .venv
 
 Actions 在 pull_request、手动触发或推送 v* 标签时运行自包含测试、构建 EXE、运行冻结自检并保存构建产物。工作流仅有 contents:read 权限，不会自动创建公开 Release；可以下载 Actions 产物后自行发布。
 
-README 与 `pyproject.toml` 随源码提交。网站 About、Topics 和 Release 说明由维护者分别更新。附件清单见 [2.1.0 发布指南](PUBLISH_2.1.0.md)。
+README 与 `pyproject.toml` 随源码提交。网站 About、Topics 和 Release 说明由维护者分别更新。2.1.1 发布正文见 [更新说明](RELEASE_NOTES_2.1.1.md)，公开附件为 `NTE-Music-Desk-v2.1.1-Windows-x64.zip` 及对应 `.sha256`。
 
 ## 升级版本
 
@@ -64,7 +70,7 @@ README 与 `pyproject.toml` 随源码提交。网站 About、Topics 和 Release 
 
 更新 docs 中的使用说明后，将对应帮助同步到 src/nte_music_desk/assets，过期副本会阻止打包。
 
-## v2.1.0 本地定版
+## v2.1.0 本地定版（历史记录）
 
 2.1.0 继续在 `release/2.0.0` 上维护，以 `v2.1.0` 标签记录本轮提交。录制提纲、历史过程记录及已停用的城市背景移入私有归档。使用说明、构建资料、测试及历史版本标签继续用于开发与回退。发布入口见 [2.1.0 发布指南](PUBLISH_2.1.0.md)。
 

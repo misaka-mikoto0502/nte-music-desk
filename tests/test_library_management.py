@@ -52,6 +52,32 @@ class ShelfManagementChecks(unittest.TestCase):
     def button(self, app, path):
         return next(button for button, entry in app.library_buttons if entry == path)
 
+    def test_selection_keeps_imported_and_generated_song_order_after_restart(self):
+        with tempfile.TemporaryDirectory() as d:
+            directory = Path(d).resolve()
+            imported = [self.score_file(directory, name) for name in ('B.mid', 'A.mid', 'C.mid')]
+            generated = [self.score_file(directory, name) for name in
+                         ('light-transcriptions/one/第一首_轻量Beta.mid', 'transcriptions/two/第二首.mid')]
+            settings = {'shelf_files': [{'path': str(path), 'title': path.stem} for path in imported]}
+            (directory / 'midi_ui_settings.json').write_text(json.dumps(settings), encoding='utf-8')
+            with workbench(directory) as app:
+                original = [path for _, path in app.library_buttons]
+                self.assertEqual(original[1:4], imported)
+                self.assertTrue(set(generated).issubset(original))
+                # Select existing entries through both main and mini players.
+                for path in (imported[1], generated[0], imported[2], generated[1]):
+                    self.button(app, path).invoke()
+                    self.assertEqual(app.current_path, path)
+                    self.assertEqual([entry for _, entry in app.library_buttons], original)
+                app.mini.choose_song(imported[0])
+                self.assertEqual(app.current_path, imported[0])
+                self.assertEqual([entry for _, entry, _ in app.library_entries()], original)
+                self.assertEqual([item['path'] for item in app.preferences['shelf_files']],
+                                 [str(path) for path in imported])
+            with workbench(directory) as app:
+                self.assertEqual(app.current_path, imported[0])
+                self.assertEqual([entry for _, entry in app.library_buttons], original)
+
     def test_alias_updates_both_titles_and_mini_and_preserves_arrangement_after_restart(self):
         with tempfile.TemporaryDirectory() as d:
             directory = Path(d).resolve()

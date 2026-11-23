@@ -7,7 +7,7 @@ import tkinter as tk
 from tkinter import filedialog, ttk
 
 from .appearance import COLORS as C, RoundedPanel
-from .display import available_window_size, pixels
+from .display import pixels
 from .offline_audio import OfflineJob, OfflineRequest, PROFILES, verify_bundle
 from .segments import parse_time
 
@@ -23,18 +23,17 @@ def remaining_label(seconds):
 
 
 class OfflineAudioDialog:
-    def __init__(self, app, source=None):
+    def __init__(self, app, source=None, parent=None):
         self.app, self.closed, self.job = app, False, None
         self.messages = queue.Queue()
         self.result = self.audition = None
         self.background_requested = False
-        self.window = tk.Toplevel(app.root)
-        self.window.title('本地音频转谱')
-        self.window.configure(bg=C['bg'])
-        self.window.geometry(f'{pixels(self.window, 700)}x{pixels(self.window, 610)}')
-        self.window.protocol('WM_DELETE_WINDOW', self.close)
-        try: self.window.iconbitmap(str(app.assets / 'icon.ico'))
-        except tk.TclError: pass
+        self.window = tk.Frame(parent or app.transcription_page, bg=C['bg'])
+        self.window.pack(fill='both', expand=True)
+        from .workspace_pages import ScrollArea
+        area = ScrollArea(self.window)
+        area.pack(fill='both', expand=True)
+        self.canvas = area.canvas
         self.source = tk.StringVar(value=str(source) if source else '')
         saved = app.preferences.get('offline_audio_profile', 'piano')
         self.profile = saved if saved in PROFILES else 'piano'
@@ -43,10 +42,10 @@ class OfflineAudioDialog:
         self.eta = tk.StringVar()
         self.value = tk.DoubleVar()
         self.controls = []
-        body = RoundedPanel(self.window, padx=24, pady=22)
-        body.pack(fill='both', expand=True, padx=18, pady=(18, 12))
-        app.label(body, '把录音变成曲谱', 20, bold=True).pack(anchor='w')
-        app.label(body, '选择音频类型，即可开始。完整包已包含模型和运行组件。', 10).pack(anchor='w', pady=(7, 24))
+        body = RoundedPanel(area.body, padx=24, pady=22)
+        body.pack(fill='x', pady=(0, 12))
+        app.label(body, '把录音变成曲谱', 18, bold=True).pack(anchor='w')
+        app.label(body, '本机识别，音频留在这台电脑。处理时可切换页面继续演奏。', 10).pack(anchor='w', pady=(7, 20))
         app.label(body, '音频文件', 10, bold=True).pack(anchor='w')
         row = tk.Frame(body, bg=C['paper']); row.pack(fill='x', pady=(9, 24))
         field = RoundedPanel(row, fill=C['bg'], padx=12, pady=10, radius=10)
@@ -77,8 +76,8 @@ class OfflineAudioDialog:
             entry.pack(); self.controls.append(entry)
         app.label(self.segment, '分:秒；终点留空至曲末', 9).pack(side='left')
         self.segment_visible = False
-        footer = RoundedPanel(self.window, padx=22, pady=18)
-        footer.pack(side='bottom', before=body, fill='x', padx=18, pady=(0, 18))
+        footer = RoundedPanel(self.window, padx=22, pady=12)
+        footer.pack(side='bottom', fill='x', pady=(8, 0), before=area)
         app.label(footer, textvariable=self.state, size=10, wraplength=610, justify='left').pack(anchor='w')
         self.progress_row = tk.Frame(footer, bg=C['paper'])
         ttk.Progressbar(self.progress_row, maximum=100, variable=self.value, style='Desk.Horizontal.TProgressbar').pack(fill='x', pady=(12, 6))
@@ -90,7 +89,7 @@ class OfflineAudioDialog:
         self.start_button = app.button(actions, '开始转谱', self.begin, 'primary', 11)
         self.start_button.pack(side='right')
         self.cancel_button = app.button(actions, '取消任务', self.cancel, size=10)
-        self.background_button = app.button(actions, '后台运行', self.run_in_background, 'nav', 10)
+        self.background_button = app.button(actions, '返回演奏', self.run_in_background, 'nav', 10)
         self.stage, self.fraction, self.audio_seconds = 'decode', 0, None
         self.started = self.recognize_started = self.vocal_started = None
         self._changing_inputs = False
@@ -101,13 +100,7 @@ class OfflineAudioDialog:
         self.fit_window()
 
     def fit_window(self):
-        window = self.window
-        window.update_idletasks()
-        available_width, available_height = available_window_size(window)
-        width = min(available_width, max(pixels(window, 700), window.winfo_reqwidth(), window.winfo_width()))
-        height = min(available_height, max(pixels(window, 610), window.winfo_reqheight()))
-        window.minsize(min(width, pixels(window, 620)), height)
-        window.geometry(f'{width}x{height}')
+        self.window.update_idletasks()
 
     def select_profile(self, profile):
         if self.job: return
@@ -166,13 +159,13 @@ class OfflineAudioDialog:
 
     def choose(self):
         if self.job: return
-        source = filedialog.askopenfilename(parent=self.window, title='选择本地音频', filetypes=[('音频文件', '*.wav *.mp3 *.flac *.ogg *.m4a *.aac *.wma *.opus *.webm *.aif *.aiff'), ('所有文件', '*.*')])
+        source = filedialog.askopenfilename(parent=self.app.root, title='选择本地音频', filetypes=[('音频文件', '*.wav *.mp3 *.flac *.ogg *.m4a *.aac *.wma *.opus *.webm *.aif *.aiff'), ('所有文件', '*.*')])
         if source: self.choose_source(source)
 
     def choose_source(self, source):
         if not self.job:
             self.source.set(str(source))
-            self.window.deiconify(); self.window.lift()
+            self.app.show_page('transcription')
 
     def begin(self):
         if self.job or self.app.audio_busy(): return
@@ -212,7 +205,7 @@ class OfflineAudioDialog:
     def run_in_background(self):
         if not self.job: return
         self.background_requested = True
-        self.window.withdraw()
+        self.app.show_page('performance')
         self.app.refresh_controls()
         if not self.app.playback_busy():
             self.app.set_status('本地转谱在后台进行，可继续选曲和演奏。','后台转谱中','blue')
@@ -233,7 +226,7 @@ class OfflineAudioDialog:
             self.start_button.configure(text='再次转谱')
             self.progress_row.pack(fill='x', before=self.start_button.master)
             self.value.set(100); self.eta.set('已完成 · 100%')
-            auto_load = (not background and not self.app.playback_busy() and
+            auto_load = (not background and self.app.current_page == 'transcription' and not self.app.playback_busy() and
                          self.app.current_path == getattr(self, 'workbench_path', self.app.current_path) and
                          self.app.song_revision == getattr(self, 'workbench_revision', self.app.song_revision))
             state = self.app.accept_transcription(Path(message['midi']), auto_load=auto_load)

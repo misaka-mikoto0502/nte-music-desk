@@ -18,6 +18,7 @@ class DeskWordmark(tk.Label):
                 raise ValueError('The wordmark is empty')
             artwork = artwork.crop(bounds)
             artwork.thumbnail((width, height), Image.Resampling.LANCZOS)
+            self._backdrop_artwork = artwork
             self.artwork = ImageTk.PhotoImage(artwork, master=parent)
             super().__init__(parent, image=self.artwork, width=width, height=height,
                 bg=COLORS['paper'], borderwidth=0, padx=0, pady=0, takefocus=False)

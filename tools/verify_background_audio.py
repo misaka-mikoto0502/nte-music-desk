@@ -92,7 +92,7 @@ def run(args):
     app.open_path(score)
     app.countdown.set('0')
     app.open_offline_audio(args.source.resolve())
-    dialog = app.offline_dialog; dialog.window.withdraw(); dialog.select_profile('song')
+    dialog = app.offline_dialog; dialog.select_profile('song')
     def pump(predicate, timeout):
         deadline = time.monotonic()+timeout
         while not predicate() and time.monotonic()<deadline:
@@ -101,7 +101,10 @@ def run(args):
     report = {'game_input_sent':False, 'real_keyboard_created':False}
     try:
         # Cancel a real inference tree while a separate playback process runs.
-        dialog.end.set('0:30'); dialog.begin(); app.play(None)
+        dialog.end.set('0:30'); dialog.begin()
+        app.show_page('segments')
+        assert dialog.job is not None and dialog.background_requested
+        app.play(None)
         pump(lambda: bool(processes) and dialog.stage in ('vocal', 'recognize'), 60)
         playing = app.active; player = processes[-1]
         dialog.cancel(); pump(lambda: dialog.job is None, 15)
@@ -112,6 +115,11 @@ def run(args):
 
         # Preview generation is real, but mute device output for this test.
         dialog.end.set('' if args.end is None else str(args.end)); dialog.begin()
+        for page in ('community', 'adjustments', 'segments', 'transcription', 'performance'):
+            app.show_page(page)
+            root.update()
+            assert dialog.job is not None
+        report['embedded_transcription_survived_all_page_switches'] = True
         with patch('winsound.PlaySound') as sound:
             app.preview(); pump(lambda: app.preview_started is not None, 20)
             assert dialog.job is not None and app.preview_token

@@ -87,6 +87,37 @@ class AppearanceChecks(unittest.TestCase):
         finally:
             root.destroy()
 
+    def test_open_combobox_list_keeps_scrolling_and_explicit_selection(self):
+        import tkinter as tk
+        from tkinter import ttk
+        from nte_music_desk.appearance import style_comboboxes
+        root = tk.Tk()
+        try:
+            style_comboboxes(root)
+            box = ttk.Combobox(root, values=tuple(f'选项 {i}' for i in range(40)),
+                               state='readonly', height=5)
+            box.current(0); box.pack(); root.update()
+            box.event_generate('<ButtonPress-1>', x=box.winfo_width() - 6, y=10, when='now')
+            root.update()
+            popdown = root.tk.call('ttk::combobox::PopdownWindow', str(box))
+            listing = f'{popdown}.f.l'
+            self.assertTrue(root.tk.getboolean(root.tk.call('winfo', 'ismapped', listing)))
+            before = root.tk.call(listing, 'yview')
+            root.tk.call('event', 'generate', listing, '<MouseWheel>', '-delta', -120, '-when', 'now')
+            root.update()
+            self.assertNotEqual(root.tk.call(listing, 'yview'), before)
+            self.assertEqual(box.current(), 0)
+            # Explicit confirmation still commits the highlighted option.
+            root.tk.call(listing, 'selection', 'clear', 0, 'end')
+            root.tk.call(listing, 'selection', 'set', 10)
+            root.tk.call(listing, 'activate', 10)
+            root.tk.call('event', 'generate', listing, '<Return>', '-when', 'now')
+            root.update()
+            self.assertEqual(box.current(), 10)
+            self.assertFalse(root.tk.getboolean(root.tk.call('winfo', 'ismapped', listing)))
+        finally:
+            root.destroy()
+
     def test_numeric_controls_respect_bounds_and_disabled_state(self):
         import tkinter as tk
         from nte_music_desk.controls import NumberStepper, CharacterSpeedScale

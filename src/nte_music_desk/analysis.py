@@ -32,13 +32,20 @@ def adaptation_metrics(score):
 
 def recommend_transpositions(song, *, tracks=None, mode="melody", speed=1, transpose=0,
                              range_policy="fold", start=0, end=None, instrument="guitar", hold_ms=300,
-                             planner=None, limit=3, cancel=None, roles=None, max_polyphony=12,chord_alignment_ms=0):
+                             planner=None, limit=3, cancel=None, roles=None, max_polyphony=12,chord_alignment_ms=0,
+                             segments=None):
     candidates = []
     for shift in range(-36, 37):
         if cancel is not None and cancel():
             raise ValueError("移调分析已取消。")
         try:
-            score = convert(song, tracks, mode, speed, shift, range_policy, start, instrument, end, max_polyphony, roles)
+            if segments:
+                from .arrangement import compile_arrangement
+                score = compile_arrangement(song, dict(tracks=tracks, mode=mode, speed=speed, transpose=shift,
+                    range_policy=range_policy, start=start, end=end, max_polyphony=max_polyphony,
+                    roles=roles, chord_alignment_ms=chord_alignment_ms, segments=segments), instrument)
+            else:
+                score = convert(song, tracks, mode, speed, shift, range_policy, start, instrument, end, max_polyphony, roles)
             score['settings']['chord_alignment_ms']=chord_alignment_ms
             plan = performance_plan(score, hold_ms)
             if planner is not None and planner is not key_schedule:

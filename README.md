@@ -4,13 +4,21 @@
 
 **导入本地曲谱或音频，试听后，由工具自动操控《异环》中的钢琴或吉他钢琴模式演奏。无需自己按谱弹奏。**
 
-**2.1.0 · Windows x64 · 自有代码 MIT**
+**2.1.1 · Windows x64 · 自有代码 MIT**
+
+> **启动前请知悉 · 每次从普通权限打开工作台时，Windows 会请求一次管理员权限。**
+>
+> 这是为了向以管理员权限运行的《异环》发送演奏按键。授权适用于本次运行的工作台及其启动的子进程。演奏、换曲和续播时无需再次确认。取消授权则退出工作台。
+
+**[下载最新公开 Windows 便携版](https://github.com/misaka-mikoto0502/nte-music-desk/releases/latest)** · [使用说明](docs/USAGE.md) · [2.1.1 更新说明](docs/RELEASE_NOTES_2.1.1.md) · [问题反馈](https://github.com/misaka-mikoto0502/nte-music-desk/issues)
+
+**当前 2.1.1 已完成 2026-11-23 本地阶段归档，尚未公开发布。** “分段”支持拖选、四种方案／声部／移调的游戏内 A/B 试奏、应用及撤销重做；“社区”暂以“计划实现”占位，分享、浏览、上传和下载入口尚未开放。最新本地产物位于 `releases/v2.1.1/final-20261123/`，详见[使用说明](docs/USAGE.md#分段精修-demo)与[阶段验证](docs/VALIDATION_2.1.1.md)。旧阶段归档保留，后续日常源码更新不自动重打包。
+
+**2.1.1 更新国服与国际服的窗口识别。** 两个客户端共用一个便携包，工作台通过游戏进程和窗口类识别主窗口，兼容不同语言的标题。
 
 **2.1.0 增加密集钢琴谱自动适配。** 当黑白键切换或同键重复过密时，工作台会尝试合并、重新分组和局部延后，必要时才减少冲突音符。适配试听和报告可用于检查变化，原始 MIDI 保留完整。
 
 主窗口默认更紧凑，支持 Windows 高 DPI 显示。顶部可直接开关迷你播放器，游戏内按 F6 可在录制时隐藏小窗。音频统一通过「导入音乐」进入本地转谱。
-
-**[下载 Windows 便携版](https://github.com/misaka-mikoto0502/nte-music-desk/releases/latest)** · [使用说明](docs/USAGE.md) · [2.1.0 更新说明](docs/RELEASE_NOTES_2.1.0.md) · [问题反馈](https://github.com/misaka-mikoto0502/nte-music-desk/issues)
 
 把文件拖进工作台 → 曲谱直接载入 / 音频本机转谱 → 试听与适配 → 在游戏中自动演奏。
 
@@ -23,18 +31,18 @@
 | 功能 | 使用体验 |
 | --- | --- |
 | 本地音频转 MIDI · Beta | 钢琴采用 Transkun 2 ONNX，歌曲采用 GAME small＋MuScriptor small；完整包自带环境，无需额外配置或联网。显示真实阶段和动态剩余时间。 |
-| 拖入与曲目架 | 曲谱直接载入，音频打开原生转谱窗口。曲目跨重启保留，右键可重命名显示名称或从列表移除，原文件与方案保留。 |
+| 拖入与曲目架 | 曲谱直接载入，音频切换到“转谱”页。曲目跨重启保留，右键可重命名显示名称或从列表移除，原文件与方案保留。 |
 | 自动保存与载入 | MIDI、原始预测和对照试听保存在个人数据目录。普通前台任务完成后载入，后台任务只入库，保留当前曲目和播放。 |
 | 从中间演奏 | 主窗与迷你播放器支持点击、拖动进度；记住暂停、停止和退出时的位置，变速后也能续播。 |
-| 迷你播放器 | 置顶小窗提供演奏、暂停/继续和停止，明音进度滑块与曲名下拉换曲；启动时确认一次 UAC，演奏过程中继承权限。 |
-| 后台转谱 | 转谱时继续选曲、演奏与试听；停止播放和取消转谱互不影响。“导入音乐”下方可重新打开转谱窗口。 |
+| 迷你播放器 | 置顶小窗提供演奏、暂停/继续和停止，明音进度滑块与曲名下拉换曲。 |
+| 后台转谱 | 转谱时继续选曲、演奏与试听；停止播放和取消转谱互不影响。切回“转谱”页查看进度和结果。 |
 | 多轨与演奏适配 | 查看音轨、乐器与音符，独奏/静音声部，选择音域、移调与速度；提供进度定位、适配报告及可选的近同时起音对齐。 |
 
 界面采用纯色背景和圆角面板。顶部“迷你播放器”打开演奏小窗，“帮助”内可查看使用说明、许可和数据目录。
 
 ## 下载与开始使用
 
-1. 从 GitHub [Releases](https://github.com/misaka-mikoto0502/nte-music-desk/releases/latest) 下载 `NTE-Music-Desk-v2.1.0-Windows-x64.zip`。便携包已包含完整运行环境与离线转谱模型。Release 下的 `Source code (zip)` 供开发者使用。
+1. 从 GitHub [Releases](https://github.com/misaka-mikoto0502/nte-music-desk/releases/latest) 下载 Windows x64 便携 ZIP。便携包已包含完整运行环境与离线转谱模型。Release 下的 `Source code (zip)` 供开发者使用。
 2. 完整解压到新目录，保留 `_internal`，双击 **异环演奏工作台.exe**，手动确认启动权限提示。升级时先关闭旧版。
 3. 点击左侧“导入音乐”或将本地曲谱／音频拖入这个按钮。音频识别完成后自动载入曲谱，可先试听，选择乐器与声部，再通过进度条定位。
 4. 在游戏中进入相应的 36 键演奏界面，再点击演奏。默认倒计时 **3 秒**，**F7** 暂停/继续，**F8** 停止。
@@ -47,9 +55,7 @@
 
 ## 为什么请求管理员权限
 
-工作台通过 Windows 键盘输入接口模拟演奏按键。当游戏以管理员权限运行时，普通权限工具的模拟输入可能受到 Windows 权限隔离的限制，因此工作台申请管理员权限以兼容这类游戏窗口。演奏采用系统模拟按键，不通过修改游戏内存、注入游戏进程或修改游戏文件实现。[权限机制与使用说明](docs/USAGE.md#管理员权限说明)
-
-**当前版本在打开主界面时统一请求一次 UAC 授权**，需用户手动确认；取消则不启动主界面。授权作用于整个程序，从界面启动的演奏、音频处理等子进程也会继承权限。
+Windows 的权限隔离可能阻止普通权限应用向高权限游戏窗口模拟按键。工作台使用 Windows 键盘输入接口，在确认游戏处于前台后发送按键。[权限机制与使用说明](docs/USAGE.md#管理员权限说明)
 
 读谱、音频转谱和本地试听本身不需要管理员权限；命令行分析、转换与离线自检可在普通权限下运行。请从本项目 Releases 获取便携包，并按随包 SHA-256 文件核对下载内容。
 
@@ -57,6 +63,7 @@
 
 | 输入 | 处理方式 |
 | --- | --- |
+| `.nteproject` | 载入可继续编辑的演奏工程，恢复声部与分段设置。 |
 | `.mid` / `.midi` / `.kar` / `.rmi` | 直接读取曲谱，选择声部并适配游戏键位。 |
 | `.musicxml` / `.xml` / `.mxl` | 读取 MusicXML 曲谱，也可将全部原声部另存为标准 MIDI。复杂反复与装饰记号有支持边界，见使用说明。 |
 | MP3、WAV、FLAC 等本地音频 | 使用自带解码器与本地模型识别为 MIDI，再试听和适配；不依赖浏览器解码。 |
@@ -80,7 +87,7 @@
 
 ## 验证与已知边界
 
-2.1.0 的发布检查见 [本版验证](docs/VALIDATION_2.1.0.md)。钢琴／歌声样例评分、整首性能、后台转谱与换曲的评测方法见 [离线转谱验证记录](docs/VALIDATION_OFFLINE_AUDIO.md)。
+2.1.1 的窗口识别范围和国际服实机验收项见 [本版更新说明](docs/RELEASE_NOTES_2.1.1.md)，密集谱适配与离线转谱的历史验证见 [2.1.0 发布验证](docs/VALIDATION_2.1.0.md) 和 [离线转谱验证记录](docs/VALIDATION_OFFLINE_AUDIO.md)。
 
 2026-11-09 复核：当时版本通过 176 项 Python 检查、96 组样例转换及 JavaScript 检查。完整便携包处理 288.301 秒歌曲实测 149.813 秒，输出与已认可基准逐字节一致；后台转谱、换曲、取消及失败重试另行验证，不能以这一首样例推断所有硬件和曲目的耗时。
 
@@ -115,12 +122,12 @@ python -m pip install -r requirements-build.txt
 python tools/check_release.py
 python tools/prepare_offline_audio.py
 python tools/build_windows.py --output .build/current
-python tools/verify_release.py --archive .build/current/NTE-Music-Desk-v2.1.0-Windows-x64.zip --report .build/current/verification.json
-python tools/package_source.py --output .build/current/NTE-Music-Desk-v2.1.0-Source.zip
+python tools/verify_release.py --archive .build/current/NTE-Music-Desk-v2.1.1-Windows-x64.zip --report .build/current/verification.json
+python tools/package_source.py --output .build/current/NTE-Music-Desk-v2.1.1-Source.zip
 python tools/verify_current.py --folder .build/current --report .build/validation/current-identity.json
 ```
 
-本地当前应用在 `.build/current/`，默认发布构建输出 `releases/v2.1.0/`。构建产物不进入 Git。同名包默认拒绝覆盖，当前程序须正常关闭后才可明确使用 `--overwrite`。可以先在 `.build/cache/` 临时构建并验证，再替换当前入口。`verify_current.py` 使用与打包相同版本的 Python，检查源码包逐文件内容、EXE 内嵌代码、资源及 Windows ZIP。上传操作见 [2.1.0 发布指南](docs/PUBLISH_2.1.0.md)。
+本地当前应用在 `.build/current/`，默认发布构建输出 `releases/v2.1.1/`。构建产物不进入 Git。同名包默认拒绝覆盖，当前程序须正常关闭后才可明确使用 `--overwrite`。可以先在 `.build/cache/` 临时构建并验证，再替换当前入口。`verify_current.py` 使用与打包相同版本的 Python，检查源码包逐文件内容、EXE 内嵌代码、资源及 Windows ZIP。上传操作见 [构建与发布](docs/RELEASING.md#上传-github)。
 
 2.x 的源码持续维护在 `release/2.0.0`，小版本通过版本标签区分；新大版本才建立新的长期分支。协作规则见 [AGENTS.md](AGENTS.md)。
 
