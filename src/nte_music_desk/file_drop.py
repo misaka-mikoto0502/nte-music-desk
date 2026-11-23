@@ -3,7 +3,7 @@ import ctypes as C
 from ctypes import wintypes as W
 from pathlib import Path
 
-SCORE_EXTENSIONS = {'.mid', '.midi', '.kar', '.rmi', '.musicxml', '.xml', '.mxl'}
+SCORE_EXTENSIONS = {'.mid', '.midi', '.kar', '.rmi', '.musicxml', '.xml', '.mxl', '.nteproject'}
 
 
 class FileDropTarget:

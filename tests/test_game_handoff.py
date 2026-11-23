@@ -11,6 +11,63 @@ from nte_music_desk import cli
 from nte_music_desk.keyboard import WindowsKeyboard, PlaybackStopped
 
 
+@unittest.skipUnless(sys.platform == 'win32', 'Windows window enumeration')
+class GameWindowDetectionChecks(unittest.TestCase):
+    def find_game(self, windows):
+        windows_by_handle = dict(enumerate(windows, start=1))
+        keyboard = WindowsKeyboard.__new__(WindowsKeyboard)
+        keyboard.user32 = MagicMock()
+        keyboard.user32.EnumWindows.side_effect = lambda callback, param: all(
+            callback(hwnd, param) for hwnd in windows_by_handle)
+        keyboard.user32.IsWindowVisible.side_effect = lambda hwnd: windows_by_handle[hwnd].get('visible', True)
+        keyboard.user32.GetWindow.side_effect = lambda hwnd, _: windows_by_handle[hwnd].get('owner')
+
+        def copy_text(field):
+            def read(hwnd, buffer, size):
+                buffer.value = windows_by_handle[hwnd].get(field, '')[:size - 1]
+                return len(buffer.value)
+            return read
+
+        keyboard.user32.GetWindowTextW.side_effect = copy_text('title')
+        keyboard.user32.GetClassNameW.side_effect = copy_text('window_class')
+        keyboard.window_pid = lambda hwnd: 100 + hwnd
+        keyboard.process_path = lambda pid: windows_by_handle[pid - 100]['path']
+        try:
+            return keyboard.find_game()
+        finally:
+            keyboard.user32.SetForegroundWindow.assert_not_called()
+            keyboard.user32.keybd_event.assert_not_called()
+
+    def test_find_game_across_window_titles(self):
+        for title, window_class in (('异环', ''), ('Neverness to Everness', 'UnrealWindow'),
+                                    ('異環', 'UnrealWindow'), ('', 'UnrealWindow')):
+            with self.subTest(title=title, window_class=window_class):
+                self.assertEqual(self.find_game([
+                    {'title': title, 'window_class': window_class, 'path': r'D:\Games\NTE\HTGame.EXE'},
+                ]), (1, 101))
+
+    def test_skips_launchers_other_games_secondary_and_unverifiable_windows(self):
+        with self.assertRaisesRegex(RuntimeError, '未找到'):
+            self.find_game([
+                {'title': '异环', 'path': r'D:\Games\NTE\NTEGlobalLauncher.exe'},
+                {'window_class': 'UnrealWindow', 'path': r'D:\Games\NTE\NTEGlobalGame.exe'},
+                {'window_class': 'UnrealWindow', 'path': r'D:\Games\OtherGame.exe'},
+                {'title': '异环', 'path': r'D:\Games\NTE\OtherHTGame.exe'},
+                {'window_class': 'UnrealWindow', 'path': ''},
+                {'window_class': 'UnrealWindow', 'path': r'D:\Games\NTE\HTGame.exe', 'visible': False},
+                {'window_class': 'UnrealWindow', 'path': r'D:\Games\NTE\HTGame.exe', 'owner': 9},
+                {'title': 'Error', 'window_class': '#32770', 'path': r'D:\Games\NTE\HTGame.exe'},
+            ])
+
+    def test_multiple_game_windows_require_user_to_leave_only_one(self):
+        with self.assertRaisesRegex(RuntimeError, '找到 2 个'):
+            self.find_game([
+                {'title': '异环', 'window_class': 'UnrealWindow', 'path': r'D:\Games\CN\HTGame.exe'},
+                {'title': 'Neverness to Everness', 'window_class': 'UnrealWindow',
+                 'path': r'D:\Games\Global\HTGame.exe'},
+            ])
+
+
 @unittest.skipUnless(sys.platform=='win32','Windows foreground handoff')
 class GameHandoffChecks(unittest.TestCase):
     def keyboard(self):

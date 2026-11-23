@@ -235,7 +235,7 @@ def parse_midi(data, title="MIDI"):
     return normalize_parts(MidiSong(title, fmt, division, notes, names, list(zip(ticks, tempos)), duration, warnings))
 
 
-def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_policy="fold", start=0.0, instrument="guitar", end=None, max_polyphony=12, roles=None):
+def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_policy="fold", start=0.0, instrument="guitar", end=None, max_polyphony=12, roles=None, change_limit=2000):
     profile = get_instrument(instrument)
     low, high = profile.low, profile.high
     if mode not in ("melody", "chords", "faithful", "balanced") or range_policy not in ("fold", "drop", "strict"):
@@ -269,7 +269,7 @@ def convert(song, tracks=None, mode="melody", speed=1.0, transpose=0, range_poli
     def record(action, note, adapted=None):
         nonlocal change_count
         change_count += 1
-        if len(changes) < 2000:
+        if len(changes) < change_limit:
             changes.append({"action": action, "source_at": round(note.start, 6), "track": note.track,
                             "source_midi": note.pitch, "requested_midi": note.pitch + transpose, "midi": adapted})
     groups = []

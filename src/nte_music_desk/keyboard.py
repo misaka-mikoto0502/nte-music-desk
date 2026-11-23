@@ -77,6 +77,10 @@ class WindowsKeyboard:
         self.user32.IsWindow.restype = W.BOOL
         self.user32.IsWindowVisible.argtypes = [W.HWND]
         self.user32.IsWindowVisible.restype = W.BOOL
+        self.user32.GetWindow.argtypes = [W.HWND, W.UINT]
+        self.user32.GetWindow.restype = W.HWND
+        self.user32.GetClassNameW.argtypes = [W.HWND, W.LPWSTR, C.c_int]
+        self.user32.GetClassNameW.restype = C.c_int
         self.user32.GetWindowTextW.argtypes = [W.HWND, W.LPWSTR, C.c_int]
         self.user32.GetWindowThreadProcessId.argtypes = [W.HWND, C.POINTER(W.DWORD)]
         self.user32.SetForegroundWindow.argtypes = [W.HWND]
@@ -118,20 +122,30 @@ class WindowsKeyboard:
 
         @callback_type
         def collect(hwnd, _):
-            if self.user32.IsWindowVisible(hwnd):
+            if not self.user32.IsWindowVisible(hwnd) or self.user32.GetWindow(hwnd, 4):  # GW_OWNER
+                return True
+
+            window_class = C.create_unicode_buffer(256)
+            self.user32.GetClassNameW(hwnd, window_class, len(window_class))
+            if window_class.value != "UnrealWindow":
+                # Preserve recognition of the original Chinese client by its exact title.
                 title = C.create_unicode_buffer(1024)
                 self.user32.GetWindowTextW(hwnd, title, len(title))
-                if title.value.strip() == "异环":
-                    pid = self.window_pid(hwnd)
-                    if self.process_path(pid).lower().endswith("\\htgame.exe"):
-                        matches.append((hwnd, pid))
+                if title.value.strip() != "异环":
+                    return True
+
+            pid = self.window_pid(hwnd)
+            if Path(self.process_path(pid)).name.casefold() == "htgame.exe":
+                matches.append((hwnd, pid))
             return True
 
         self.user32.EnumWindows.argtypes = [callback_type, C.c_ssize_t]
         if not self.user32.EnumWindows(collect, 0):
             raise OSError("无法枚举游戏窗口。")
-        if len(matches) != 1:
-            raise RuntimeError(f"需要一个打开的《异环》游戏窗口，当前找到 {len(matches)} 个。")
+        if not matches:
+            raise RuntimeError("未找到《异环》游戏窗口。请启动游戏客户端，进入游戏内的乐器界面后重试。")
+        if len(matches) > 1:
+            raise RuntimeError(f"找到 {len(matches)} 个《异环》游戏窗口。请只保留一个游戏客户端后重试。")
         return matches[0]
 
     def focus_game(self, timeout=.5):

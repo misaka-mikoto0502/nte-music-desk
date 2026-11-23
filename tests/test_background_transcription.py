@@ -30,7 +30,6 @@ class BackgroundTranscriptionChecks(unittest.TestCase):
         app.load_demo()
         source = app.directory/'new.wav'; source.touch()
         app.open_offline_audio(source)
-        app.offline_dialog.window.withdraw()
         return app, app.offline_dialog
 
     def job(self):
@@ -125,7 +124,8 @@ class BackgroundTranscriptionChecks(unittest.TestCase):
         dialog.job = self.job()
         job, original = dialog.job, app.current_path
         dialog.run_in_background()
-        self.assertEqual(dialog.window.state(), 'withdrawn')
+        self.assertEqual(app.current_page, 'performance')
+        self.assertEqual(dialog.window.winfo_toplevel(), app.root)
         job.cancel.assert_not_called()
         self.assertEqual(app.transcription_button.cget('text'), '查看转谱进度')
         self.assertEqual(app.transcription_button.winfo_manager(), 'pack')

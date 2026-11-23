@@ -276,6 +276,10 @@ class MiniPlayer:
                               ('就绪 · 本地转谱在后台进行' if getattr(getattr(self.app,'offline_dialog',None),'job',None)
                                else '就绪 · 拖动顶部可移动')))
         if self.pending_song:self.status.configure(text='正在停止旧曲并切换…')
+        elif active and active.get('comparison'):
+            self.status.configure(text=f'{active["comparison"]} · ' +
+                                  ('已暂停 · F7 继续 · F8 停止' if phase == 'paused' else
+                                   'F7 暂停 · F8 停止' if phase == 'playing' else '准备游戏试奏…'))
         elif time.monotonic()<self.notice_until:self.status.configure(text=self.notice)
         self.progress.draw(self.app.progress.get()/100)
 

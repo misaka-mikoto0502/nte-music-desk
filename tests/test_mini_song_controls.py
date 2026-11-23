@@ -51,14 +51,14 @@ class MiniSongControlsChecks(unittest.TestCase):
         self.mini.show();self.app.root.update()
         canvas=self.mini.progress;width=canvas.winfo_width()
         inset = canvas.inset
-        self.assertEqual(canvas.avatar.width(), pixels(canvas, 26))
+        self.assertEqual(canvas.avatar.width(), pixels(canvas, 32))
         self.assertEqual(canvas.fraction_at(inset),0)
         self.assertEqual(canvas.fraction_at(width-inset),1)
         for fraction in (0,.5,1):
             self.app.progress.set(fraction*100);self.mini.refresh()
             x,y=canvas.coords('portrait')
             self.assertAlmostEqual(x,inset+(width-2*inset)*fraction)
-            radius = pixels(canvas, 15)
+            radius = pixels(canvas, 18)
             self.assertGreaterEqual(x-radius,0);self.assertLessEqual(x+radius,width)
         self.app.seek_drag={'canvas':canvas,'frame':self.app.position_frame(),'song':self.app.song_fingerprint,'paused':False}
         event=SimpleNamespace(widget=canvas,x=inset)

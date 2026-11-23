@@ -1,6 +1,7 @@
 """Tkinter performance desk. Local files only; game input lives in the engine."""
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 from pathlib import Path
 import queue
@@ -27,7 +28,7 @@ from .performance import performance_plan
 from .track_ui import TrackPanel
 from .appearance import COLORS as C, RoundedButton, RoundedPanel, CanvasLabel, style_comboboxes
 from .branding import DeskWordmark
-from .controls import NumberStepper, CharacterSpeedScale
+from .controls import NumberStepper, CharacterSpeedScale, CharacterProgress, GlassEntry
 from .display import pixels, set_main_window_size
 
 
@@ -103,6 +104,8 @@ class App:
         self.directory.mkdir(parents=True, exist_ok=True)
         self.assets = getattr(engine, "ASSETS", self.directory)
         self.offline_dialog = None
+        self.segment_edits = []
+        self.current_page = 'performance'
         self.file_drop = None
         self.audio_audition = None
         self.song, self.score, self.active = None, None, None
@@ -159,6 +162,8 @@ class App:
         root.option_add('*selectBackground', C['teal'])
         root.option_add('*selectForeground', C['paper'])
         root.option_add('*insertBackground', C['ink'])
+        from .backdrop import WorkspaceBackdrop
+        self.backdrop = WorkspaceBackdrop(root, self.assets / 'background-city-cropped.png')
         self.configure_styles()
         self.build_toolbar()
         self.build_layout()
@@ -220,12 +225,13 @@ class App:
         dialog = getattr(self, 'offline_dialog', None)
         if dialog and not dialog.closed:
             if source is not None and not dialog.job: dialog.choose_source(source)
-            dialog.window.deiconify(); dialog.window.lift()
+            self.show_page('transcription')
             self.refresh_controls()
             return
         if self.audio_busy(): return
         from .offline_audio_ui import OfflineAudioDialog
         self.offline_dialog = OfflineAudioDialog(self, source)
+        self.show_page('transcription')
 
     def show_help(self, filename='USAGE.md'):
         path = self.assets / filename
@@ -385,6 +391,8 @@ class App:
         self.song, self.score, self.current_path, self.song_fingerprint = None, None, None, None
         self.song_revision += 1
         self.track_ids = []
+        self.segment_edits = []
+        self.segment_page.refresh()
         self.ready_duration = 0
         self.tracks.load_song(None)
         self.title.set('选择一首曲子')
@@ -459,16 +467,18 @@ class App:
         return button
 
     def enabled(self, widget, enabled, normal="normal"):
-        widget.configure(state=normal if enabled else "disabled")
+        options = dict(state=normal if enabled else "disabled")
         if hasattr(widget, "palette"):
             bg, fg, _ = widget.palette
-            widget.configure(bg=bg if enabled else C["disabled"], fg=fg if enabled else C["disabled_ink"],
-                             disabledforeground=C["disabled_ink"], cursor="hand2" if enabled else "arrow")
+            options.update(bg=bg if enabled else C["disabled"], fg=fg if enabled else C["disabled_ink"],
+                           disabledforeground=C["disabled_ink"], cursor="hand2" if enabled else "arrow")
+        widget.configure(**options)
 
     def card(self, parent):
         return RoundedPanel(parent)
 
     def build_layout(self):
+        from .scrolling import SceneScrollCanvas
         sidebar = tk.Frame(self.root, bg=C['paper'], width=pixels(self.root, 220),
                            padx=pixels(self.root, 20), pady=pixels(self.root, 24))
         sidebar.pack(side='left', fill='y')
@@ -486,7 +496,7 @@ class App:
         self.label(sidebar, '曲目', 10, bold=True).pack(anchor='w', pady=(0, 10))
         nav_area = tk.Frame(sidebar, bg=C['paper'])
         nav_area.pack(fill='both', expand=True)
-        self.nav_canvas = tk.Canvas(nav_area, bg=C['paper'], highlightthickness=0, width=165)
+        self.nav_canvas = SceneScrollCanvas(nav_area, bg=C['paper'], highlightthickness=0, width=165)
         nav_scroll = ttk.Scrollbar(nav_area, orient='vertical', command=self.nav_canvas.yview, style='Nav.Vertical.TScrollbar')
         nav_scroll.pack(side='right', fill='y')
         self.nav_canvas.pack(side='left', fill='both', expand=True)
@@ -496,9 +506,10 @@ class App:
                 nav_scroll.pack_forget()
             else:
                 nav_scroll.pack(side='right', fill='y', before=self.nav_canvas)
-        self.nav_canvas.configure(yscrollcommand=update_shelf_scroll)
         self.nav_content = tk.Frame(self.nav_canvas, bg=C['paper'])
         nav_window = self.nav_canvas.create_window((0, 0), window=self.nav_content, anchor='nw')
+        from .workspace_pages import watch_scene_scroll
+        watch_scene_scroll(self.nav_canvas, self.nav_content, nav_window, update_shelf_scroll)
         self.nav_content.bind('<Configure>', lambda _: self.nav_canvas.configure(scrollregion=self.nav_canvas.bbox('all')))
         self.nav_canvas.bind('<Configure>', lambda e: self.nav_canvas.itemconfigure(nav_window, width=e.width))
         self.shelf_content = tk.Frame(self.nav_content, bg=C['paper'])
@@ -518,28 +529,32 @@ class App:
         tabs = tk.Frame(main, bg=C['bg'])
         tabs.pack(fill='x', padx=28)
         self.page_tabs = []
-        for caption, selected in (('演奏', False), ('调整', True)):
+        for caption, selected in (('演奏', 'performance'), ('调整', 'adjustments'),
+                                  ('分段', 'segments'), ('转谱', 'transcription'), ('社区', 'community')):
             tab = tk.Frame(tabs, bg=C['bg'])
-            tab.pack(side='left', padx=(0, 24))
-            button = self.button(tab, caption, lambda value=selected: self.toggle_adjustments(value), 'nav', 11)
+            tab.pack(side='left', padx=(0, 22))
+            button = self.button(tab, caption, lambda value=selected: self.show_page(value), 'nav', 11)
             button.configure(bg=C['bg'], activebackground=C['bg'], padx=3, pady=8)
             button.pack()
             line = tk.Frame(tab, height=2, bg=C['bg'])
             line.pack(fill='x')
             self.page_tabs.append((button, line))
         self.build_footer(main)
-        workspace = tk.Frame(main, bg=C['bg'])
+        self.workspace = workspace = tk.Frame(main, bg=C['bg'])
         workspace.pack(fill='both', expand=True, padx=28, pady=(20, 0))
-        self.performance_page = tk.Frame(workspace, bg=C['bg'])
-        self.adjustments_page = tk.Frame(workspace, bg=C['bg'])
+        self.pages = {name: tk.Frame(workspace, bg=C['bg'])
+                      for name in ('performance', 'adjustments', 'segments', 'transcription', 'community')}
+        self.performance_page = self.pages['performance']
+        self.adjustments_page = self.pages['adjustments']
+        self.transcription_page = self.pages['transcription']
         self.build_performance_page(self.performance_page)
-        canvas = tk.Canvas(self.adjustments_page, bg=C['bg'], highlightthickness=0, borderwidth=0)
+        canvas = SceneScrollCanvas(self.adjustments_page, bg=C['bg'], highlightthickness=0, borderwidth=0)
         scrollbar = ttk.Scrollbar(self.adjustments_page, orient='vertical', command=canvas.yview, style='Desk.Vertical.TScrollbar')
         scrollbar.pack(side='right', fill='y')
         canvas.pack(side='left', fill='both', expand=True)
-        canvas.configure(yscrollcommand=scrollbar.set)
         self.adjustment_body = tk.Frame(canvas, bg=C['bg'])
         content_window = canvas.create_window((0, 0), window=self.adjustment_body, anchor='nw')
+        watch_scene_scroll(canvas, self.adjustment_body, content_window, scrollbar.set)
         self.adjustment_body.bind('<Configure>', lambda _: canvas.configure(scrollregion=canvas.bbox('all')))
         canvas.bind('<Configure>', lambda e: canvas.itemconfigure(content_window, width=e.width))
         self.body_canvas = canvas
@@ -564,10 +579,10 @@ class App:
         speed_row = tk.Frame(settings, bg=C["paper"])
         speed_row.pack(fill="x")
         self.label(speed_row, "播放速度", 10).pack(side="left")
-        speed_value = RoundedPanel(speed_row, fill=C['bg'], padx=9, pady=5, radius=9)
+        speed_value = tk.Frame(speed_row, bg=C['paper'], padx=5, pady=2)
         speed_value.pack(side='right')
-        speed_entry = tk.Entry(speed_value, textvariable=self.speed, width=4, justify='right',
-            relief='flat', borderwidth=0, fg=C['ink'], bg=C['bg'], font=(FONT, 12, 'bold'))
+        self.speed_entry = speed_entry = GlassEntry(speed_value, self.speed, width=4,
+                                                   justify='right', font=(FONT, 12, 'bold'))
         speed_entry.pack(side='left')
         self.label(speed_value, '×', 10).pack(side='left', padx=(4, 0))
         self.controls.append((speed_entry, "normal"))
@@ -686,6 +701,10 @@ class App:
             note = self.label(cap, "", 8, C["muted"])
             note.pack(pady=(3, 0))
             self.key_cells.append((key, note))
+        from .segment_ui import SegmentPage
+        from .community_ui import CommunityPage
+        self.segment_page = SegmentPage(self, self.pages['segments'])
+        self.community_page = CommunityPage(self, self.pages['community'])
         self.toggle_adjustments(self.adjustments_visible)
 
     def build_performance_page(self, parent):
@@ -770,19 +789,39 @@ class App:
         window.deiconify()
 
     def toggle_adjustments(self, show=None):
-        self.adjustments_visible = not self.adjustments_visible if show is None else show
-        self.performance_page.pack_forget()
-        self.adjustments_page.pack_forget()
-        page = self.adjustments_page if self.adjustments_visible else self.performance_page
-        page.pack(fill='both', expand=True)
+        selected = not self.adjustments_visible if show is None else show
+        self.show_page('adjustments' if selected else 'performance')
+
+    def show_page(self, name):
+        if name == 'transcription' and self.offline_dialog is None:
+            from .offline_audio_ui import OfflineAudioDialog
+            self.offline_dialog = OfflineAudioDialog(self)
+        if self.offline_dialog and self.offline_dialog.job and name != 'transcription':
+            self.offline_dialog.background_requested = True
+        for page in self.pages.values():
+            page.pack_forget()
+        if name == 'performance':
+            self.playback_footer.pack(side='bottom', fill='x', padx=28, pady=(20, 24), before=self.workspace)
+        else:
+            self.playback_footer.pack_forget()
+        self.workspace.pack_configure(pady=(20, 0 if name == 'performance' else 24))
+        self.pages[name].pack(fill='both', expand=True)
+        self.current_page = name
+        if hasattr(self, 'backdrop'):
+            self.backdrop.request()
+        self.adjustments_visible = name == 'adjustments'
         for index, (button, line) in enumerate(self.page_tabs):
-            selected = bool(index) == self.adjustments_visible
+            selected = tuple(self.pages)[index] == name
             button.configure(fg=C['teal'] if selected else C['ink'])
             line.configure(bg=C['teal'] if selected else C['bg'])
         self.save_preferences()
+        if hasattr(self, 'segment_page'):
+            self.segment_page.refresh()
+        if hasattr(self, 'play_button'):
+            self.refresh_controls()
 
     def build_footer(self, main):
-        footer = tk.Frame(main, bg=C['paper'], padx=24, pady=18)
+        self.playback_footer = footer = RoundedPanel(main, padx=24, pady=18)
         footer.pack(side='bottom', fill='x', padx=28, pady=(20, 24))
         status_row = tk.Frame(footer, bg=C['paper'])
         status_row.pack(fill='x')
@@ -791,8 +830,8 @@ class App:
         status_label.pack(side='left', fill='x', expand=True)
         Tooltip(status_label, self.status.get)
         self.label(status_row, size=9, textvariable=self.time_text).pack(side='right', padx=(12, 0))
-        self.progress_bar = tk.Canvas(footer, height=12, bg=C['paper'], borderwidth=0, highlightthickness=0, cursor='hand2')
-        self.progress_bar.pack(fill='x', pady=(12, 16))
+        self.progress_bar = CharacterProgress(footer, self.assets / 'mingyin-icon.webp')
+        self.progress_bar.pack(fill='x', pady=(6, 10))
         self.progress_bar.bind('<Configure>', self.draw_progress)
         self.bind_seek(self.progress_bar)
         Tooltip(self.progress_bar, '点击或拖动定位，演奏位置自动保存。')
@@ -818,44 +857,49 @@ class App:
         self.stop_button.configure(min_width=112, min_height=48)
 
     def scroll_body(self, event):
+        # Native combobox popups are Tcl widgets without Python wrappers.
+        # Their list scrolling, and events from dialogs, stay in that window.
+        if not isinstance(event.widget, tk.Misc) or event.widget.winfo_toplevel() is not self.root:
+            return
         widget = event.widget
         while widget is not None and widget is not self.root:
             if widget in (self.nav_content, self.nav_canvas):
                 self.nav_canvas.yview_scroll(-int(event.delta / 120), "units")
                 return
             widget = getattr(widget, "master", None)
-        if isinstance(event.widget, (tk.Listbox, tk.Text, ttk.Treeview, ttk.Combobox, tk.Spinbox)):
+        if isinstance(event.widget, (tk.Listbox, tk.Text, ttk.Treeview, tk.Spinbox)):
             return
-        if self.adjustments_visible and self.body_canvas.bbox('all') and self.body_canvas.winfo_height() < self.body_canvas.bbox('all')[3]:
-            self.body_canvas.yview_scroll(-int(event.delta / 120), "units")
+        canvas = self.body_canvas if self.adjustments_visible else None
+        if self.current_page == 'transcription' and self.offline_dialog:
+            canvas = self.offline_dialog.canvas
+        elif self.current_page in ('segments', 'community'):
+            canvas = getattr(self.segment_page if self.current_page == 'segments' else self.community_page, 'canvas', None)
+        if canvas and canvas.bbox('all') and canvas.winfo_height() < canvas.bbox('all')[3]:
+            canvas.yview_scroll(-int(event.delta / 120), 'units')
 
     def draw_progress(self, *_):
-        self.paint_progress(self.progress_bar,C['teal'],C['line'])
-
-    def paint_progress(self,canvas,fill,track):
-        canvas.delete('fill')
-        width=max(1,canvas.winfo_width());y=max(1,canvas.winfo_height())/2
-        x=width*min(100,max(0,self.progress.get()))/100
-        canvas.create_rectangle(0,y-1.5,width,y+1.5,fill=track,outline='',tags='fill')
-        canvas.create_rectangle(0,y-1.5,x,y+1.5,fill=fill,outline='',tags='fill')
-        x=max(4,min(width-4,x))
-        canvas.create_oval(x-4,y-4,x+4,y+4,fill=fill,outline='',tags='fill')
+        self.progress_bar.draw(self.progress.get() / 100)
 
     def position_frame(self):
-        if not self.score:return 0,1,0
         active=self.active if isinstance(self.active,dict) else {}
+        if not self.score:
+            return active.get('origin', 0), active.get('speed', 1), active.get('length', 0)
         return (active.get('origin',self.score['summary'].get('source_origin_seconds',0)),
                 active.get('speed',self.score['settings'].get('speed',1)),
                 active.get('length',getattr(self,'ready_duration',self.score['summary']['seconds'])))
 
     def playback_offset(self):
         origin,speed,length=self.position_frame()
+        if self.active and self.active.get('comparison'):
+            return min(length, max(0, self.active.get('elapsed', 0)))
         positions=self.preferences.get('playback_positions',{})
         position=positions.get(self.song_fingerprint,origin) if isinstance(positions,dict) else origin
         if type(position) not in (int,float) or not math.isfinite(position):position=origin
         return min(length,max(0,(position-origin)/speed))
 
     def remember_position(self,elapsed,force=False):
+        if self.active and self.active.get('comparison'):
+            return  # A/B trials use a temporary position, independent of full-song resume.
         if not self.score or not self.song_fingerprint:return
         origin,speed,length=self.position_frame()
         positions=self.preferences.get('playback_positions',{})
@@ -912,7 +956,7 @@ class App:
         if self.active:
             active=self.active;sequence=active.get('control_sequence',0)+1
             original=dict(active)
-            active.update(seek_to=position,seek_sequence=sequence,seek_control_sequence=sequence,elapsed=position)
+            active.update(seek_to=position + active.get('offset', 0),seek_sequence=sequence,seek_control_sequence=sequence,elapsed=position)
             if not self.request_pause(active.get('pause_requested',False) if paused is None else paused):
                 active.clear();active.update(original);return
         self.set_status(f'已定位 {duration_label(position)}，'+('正在更新演奏位置。' if self.active else '点击演奏从这里开始。'),'演奏定位','blue')
@@ -935,6 +979,7 @@ class App:
                       'shelf_hidden':self.preferences.get('shelf_hidden',[]),
                       'countdown':self.countdown.get(),
                       'playback_positions':self.preferences.get('playback_positions',{}),
+                      'community_author': self.preferences.get('community_author', ''),
                       "speed": self.speed.get(), "transpose": self.transpose.get(), "instrument": self.current_instrument().id,
                       'mini_player_visible':self.mini_visible.get(),
                       'mini_player_position':list(self.mini.position) if self.mini else self.preferences.get('mini_player_position')}
@@ -982,31 +1027,47 @@ class App:
             return
         try:
             path = Path(path).resolve()
-            song = read_score(path)
+            project = None
+            if path.suffix.lower() == '.nteproject':
+                from .community import read_project, project_song
+                project = read_project(path)
+                song = project_song(project['source'])
+            else:
+                song = read_score(path)
             recommended = song.suggested_track()
             digest = fingerprint(path)
             self.save_arrangement()
             self.recommend_token = None
             self.stop_preview()
             examples = {self.assets / "scores/twinkle.mid": "小星星"}
-            song.title = examples.get(path, local_title(path, self.directory) or song.title)
+            song.title = project['title'] if project else examples.get(path, local_title(path, self.directory) or song.title)
             self.song, self.current_path = song, path
             self.song_revision += 1
             self.song_fingerprint = digest
             names, hidden = shelf_customizations(self.preferences)
             hidden.discard(path)
             self.preferences['shelf_hidden'] = sorted(str(entry) for entry in hidden)
-            if path!=self.assets/'scores/twinkle.mid':
+            # Selecting an existing song must not turn the shelf into a
+            # recent-played list, including automatically discovered scores.
+            if path != self.assets / 'scores/twinkle.mid' and not any(entry == path for _, entry in self.library_buttons):
                 saved=self.preferences.get('shelf_files',[])
-                saved=[item for item in saved if isinstance(item,dict) and item.get('path')!=str(path)] if isinstance(saved,list) else []
-                self.preferences['shelf_files']=[{'path':str(path),'title':song.title},*saved]
+                saved=[item for item in saved if isinstance(item,dict)] if isinstance(saved,list) else []
+                if not any(item.get('path') == str(path) for item in saved):
+                    saved.append({'path': str(path), 'title': song.title})
+                self.preferences['shelf_files']=saved
             self.refresh_library()
             self.title.set(names.get(path, song.title))
             kind = "MusicXML" if path.suffix.lower() in (".xml",".musicxml",".mxl") else "MIDI"
             self.subtitle.set(f"{kind} 曲谱  ·  {path.name}")
             self.tracks.load_song(song)
             self.track_ids = [p['index'] for p in self.tracks.rows]
-            self.restore_arrangement()
+            if project:
+                self.syncing_settings = True
+                self.instrument.set(INSTRUMENTS[project['instrument']].title)
+                self.syncing_settings = False
+            self.restore_arrangement(project['settings'] if project else None)
+            self.community_page.on_song_changed(project)
+            self.segment_page.refresh()
             self.highlight_library()
             self.update_score(quiet=True)
             self.save_preferences()
@@ -1039,26 +1100,33 @@ class App:
                 "range_policy": {"超出音域折回八度": "fold", "丢弃超出音域的音": "drop", "超出音域时报错": "strict"}[self.range_policy.get()],
                 "start": parse_time(self.start.get()), "end": parse_time(self.end.get()) if self.end.get().strip() else None,
                 "countdown": int(self.countdown.get()), "hold_ms": int(self.hold_ms.get()), "roles": dict(self.tracks.roles),
-                'chord_alignment_ms':24 if self.chord_align.get() else 0}
+                'chord_alignment_ms':24 if self.chord_align.get() else 0,
+                'segments': self.segment_edits}
 
-    def save_arrangement(self):
+    def save_arrangement(self, *, validated=None):
         if not self.song_fingerprint or self.syncing_settings or self.song is None or (self.song_fingerprint, self.applied_instrument) in self.invalid_presets:
             return
         try:
             settings = self.arrangement_settings()
-            score = convert(self.song, settings["tracks"], settings["mode"], settings["speed"], settings["transpose"],
-                            settings["range_policy"], settings["start"], self.applied_instrument, settings["end"], settings["max_polyphony"], settings["roles"])
-            score['settings']['chord_alignment_ms']=settings['chord_alignment_ms']
-            performance_plan(score, settings["hold_ms"])
+            # A successful update has just compiled these exact inputs. Reuse
+            # that validation only within this operation; standalone saves or
+            # changed inputs still require the complete conversion and plan.
+            if validated != (self.song_fingerprint, self.applied_instrument, settings):
+                from .arrangement import compile_arrangement
+                score = compile_arrangement(self.song, settings, self.applied_instrument)
+                performance_plan(score, settings["hold_ms"])
             self.preset_store.save(self.song_fingerprint, self.applied_instrument, settings)
         except (OSError, ValueError, KeyError, tk.TclError):
             pass  # Incomplete edits must not replace a usable arrangement.
 
-    def restore_arrangement(self):
+    def restore_arrangement(self, imported_settings=None):
         self.applied_instrument = self.current_instrument().id
         if self.song is None:
             return
         settings = {**DEFAULTS, "mode": "faithful", "tracks": [p['index'] for p in self.tracks.rows if not p['drums']]}
+        if imported_settings is not None:
+            settings.update(imported_settings)
+        fallback = dict(settings)
         message = "本曲使用默认方案 · 修改后自动保存"
         try:
             saved = self.preset_store.load(self.song_fingerprint, self.applied_instrument,
@@ -1079,11 +1147,16 @@ class App:
                     positions.setdefault(self.song_fingerprint, saved['start'])
                     self.preferences['playback_positions'] = positions
                 message = "已恢复本曲方案 · 钢琴与吉他独立保存"
+            from .arrangement import validate_segments
+            settings['segments'] = validate_segments(settings.get('segments', []), duration=self.song.seconds,
+                                                       tracks=set(self.track_ids))
         except (OSError, ValueError):
+            settings = fallback
             message = "原方案读取失败，原文件已保留；点击恢复默认可重建方案"
             self.invalid_presets.add((self.song_fingerprint, self.applied_instrument))
         self.syncing_settings = True
         try:
+            self.segment_edits = settings.get('segments', [])
             for name in ("speed", "transpose", "start", "hold_ms", "max_polyphony"):
                 getattr(self, name).set(str(settings[name]))
             self.end.set("" if settings["end"] is None else str(settings["end"]))
@@ -1101,15 +1174,11 @@ class App:
     def build_score(self):
         if self.song is None:
             raise ValueError("请先从左侧选曲，或导入 MIDI。")
-        tracks = [self.track_ids[int(index)] for index in self.tracks.curselection()]
-        policies = {"超出音域折回八度": "fold", "丢弃超出音域的音": "drop", "超出音域时报错": "strict"}
         countdown, hold = int(self.countdown.get()), int(self.hold_ms.get())
         if not 0 <= countdown <= 60 or not 20 <= hold <= 400:
             raise ValueError("倒计时应为 0–60 秒，按键上限应为 20–400 毫秒。")
-        score = convert(self.song, tracks, mode_key(self.mode.get()),
-                        float(self.speed.get()), int(self.transpose.get()), policies[self.range_policy.get()], parse_time(self.start.get()), self.current_instrument().id,
-                        parse_time(self.end.get()) if self.end.get().strip() else None, int(self.max_polyphony.get()), dict(self.tracks.roles))
-        score['settings']['chord_alignment_ms']=24 if self.chord_align.get() else 0
+        from .arrangement import compile_arrangement
+        score = compile_arrangement(self.song, self.arrangement_settings(), self.current_instrument().id)
         plan=performance_plan(score,hold)
         self.ready_duration=plan.duration
         self.ready_notes=plan.notes
@@ -1188,6 +1257,7 @@ class App:
             return self.score
         try:
             profile = self.current_instrument()
+            validated = (self.song_fingerprint, profile.id, deepcopy(self.arrangement_settings()))
             self.mode_box.configure(values=list(MODES.values()))
             self.range_label.configure(text=f"36 键 · {profile.range_label}")
             score = self.build_score()
@@ -1231,7 +1301,8 @@ class App:
             self.set_status('准备就绪', '就绪', 'teal')
             self.refresh_controls()
             self.save_preferences()
-            self.save_arrangement()
+            self.save_arrangement(validated=validated)
+            self.segment_page.refresh()
             return score
         except Exception as error:
             self.score = None
@@ -1255,6 +1326,7 @@ class App:
                 self.show_error(error)
                 return
             self.invalid_presets.discard((self.song_fingerprint, self.applied_instrument))
+        self.segment_edits = []
         for variable, value in [(self.speed, "1.0"), (self.transpose, "0"), (self.start, "0"),
                                 (self.end, ""),
                                 (self.mode, MODES['faithful']), (self.max_polyphony, "12"), (self.range_policy, "超出音域折回八度"),
@@ -1266,6 +1338,7 @@ class App:
             self.tracks.render()
         self.arrangement_label.configure(text='已恢复默认方案 · 修改后自动保存')
         self.update_score(quiet=True)
+
 
     def toggle_advanced(self):
         self.advanced_visible = not self.advanced_visible
@@ -1291,7 +1364,7 @@ class App:
         for widget, normal in self.controls:
             self.enabled(widget, not locked, normal)
         dialog = self.offline_dialog
-        if dialog and dialog.window.state() in ('withdrawn', 'iconic'):
+        if dialog and (dialog.job or dialog.result) and self.current_page != 'transcription':
             caption = '查看转谱进度' if dialog.job else '查看转谱结果'
             self.transcription_button.configure(text=caption)
             if not self.transcription_button.winfo_manager():
@@ -1327,6 +1400,9 @@ class App:
                 self.preview_button.grid(row=0, column=1, padx=(12, 12), sticky='ew')
             self.play_button.grid(row=0, column=2, sticky='ew')
         if self.mini:self.mini.refresh()
+        if hasattr(self, 'segment_page'):
+            self.segment_page.refresh_controls()
+            self.community_page.refresh_controls()
 
     def toggle_mini(self):
         if self.mini_visible.get():
@@ -1399,12 +1475,12 @@ class App:
             if position<end:start=max(start,position)
         return start
 
-    def start_preview(self, score=None, source=None, options=None, caption="按键时序"):
+    def start_preview(self, score=None, source=None, options=None, caption="按键时序", *, start_at=None, seconds=20):
         hold_ms = int(self.hold_ms.get()) if source is None else 300
         token = uuid.uuid4().hex
         self.preview_token, self.preview_started = token, None
-        position=self.playback_offset() if source is None else 0
-        if source is None and position>=getattr(self,'ready_duration',score['summary']['seconds'])-.01:position=0
+        position=(self.playback_offset() if start_at is None else start_at) if source is None else 0
+        if source is None and start_at is None and position>=getattr(self,'ready_duration',score['summary']['seconds'])-.01:position=0
         self.preview_origin = options['start'] if source is not None else score['summary']['source_origin_seconds']+position*score['settings']['speed']
         self.preview_speed = options['speed'] if source is not None else score['settings']['speed']
         self.set_status("正在准备电脑试听…", "准备试听", "blue")
@@ -1416,9 +1492,9 @@ class App:
                 runs.mkdir(exist_ok=True)
                 path = runs / f"preview_{token}.wav"
                 cancel = lambda: self.closed or token != self.preview_token
-                seconds = (self.engine.render_song_preview(source, path, cancel=cancel, **options) if source is not None
-                           else self.engine.render_preview(score, path, hold_ms=hold_ms, cancel=cancel,start_at=position))
-                self.messages.put({"kind": "preview_ready", "token": token, "path": path, "seconds": seconds, "caption": caption})
+                length = (self.engine.render_song_preview(source, path, cancel=cancel, **options) if source is not None
+                          else self.engine.render_preview(score, path, seconds=seconds, hold_ms=hold_ms, cancel=cancel,start_at=position))
+                self.messages.put({"kind": "preview_ready", "token": token, "path": path, "seconds": length, "caption": caption})
             except Exception as error:
                 self.messages.put({"kind": "preview_error", "token": token, "text": str(error)})
 
@@ -1438,31 +1514,51 @@ class App:
         score = self.update_score()
         if score is None:
             return
+        position = self.playback_offset()
+        if position >= self.ready_duration - .01:
+            position = 0
+        return self.start_game_playback(score=score, start_at=position, seconds=seconds)
+
+    def start_game_playback(self, *, score, start_at=0, seconds=None, comparison=None):
+        """Run a verified score through the shared game focus/countdown/key engine."""
+        if self.active:
+            return False
+        self.recommend_token = None
+        self.stop_preview()
         try:
-            position=self.playback_offset()
-            if position>=self.ready_duration-.01:position=0
+            countdown, hold = int(self.countdown.get()), int(self.hold_ms.get())
+            if not 0 <= countdown <= 60 or not 20 <= hold <= 400:
+                raise ValueError('倒计时应为 0–60 秒，按键上限应为 20–400 毫秒。')
+            if type(start_at) not in (int, float) or not math.isfinite(start_at) or start_at < 0:
+                raise ValueError('演奏位置超出曲谱范围。')
             if seconds:
-                score = self.engine.limit_score(score, position+seconds)
+                from .cli import limit_score
+                score = limit_score(score, start_at + seconds)
+            plan = performance_plan(score, hold)
+            if start_at >= plan.duration or (comparison and not any(
+                    note.at + note.duration > start_at for note in plan.notes)):
+                raise ValueError('所选片段没有可演奏的音符，请调整选区或声部。')
             run = self.directory / "runs" / uuid.uuid4().hex
             run.mkdir(parents=True)
             path, cancel, report = run / "score.json", run / "stop", run / "result.json"
             save_score(score, path)
-            length = performance_plan(score, int(self.hold_ms.get())).duration
+            offset = start_at if comparison else 0
+            position, length = start_at - offset, plan.duration - offset
             self.active = {"cancel": cancel, "report": report, "progress": report.with_suffix(".progress.json"), "length": length,
                            'control':run/'control.json','control_sequence':0,'pause_requested':False,'phase':'waiting'}
-            self.active.update(origin=score['summary']['source_origin_seconds'],speed=score['settings']['speed'],elapsed=position)
+            self.active.update(origin=score['summary']['source_origin_seconds'] + offset * score['settings']['speed'],
+                               speed=score['settings']['speed'], elapsed=position, offset=offset, comparison=comparison)
             self.stop_requested = False
             self.progress.set(position/max(length,.001)*100)
             self.time_text.set(f"{duration_label(position)} / {duration_label(length)}")
-            self.set_status(f"请进入 {score_instrument(score).title} 的 36 键界面，保持游戏前台。", "准备演奏", "amber")
+            self.set_status(f'请进入 {score_instrument(score).title} 的 36 键界面，保持游戏前台。', "准备演奏", "amber")
             self.refresh_controls()
-            countdown, hold = int(self.countdown.get()), int(self.hold_ms.get())
 
             def worker():
                 try:
                     arguments = ["--play", str(path), "--cancel-file", str(cancel), "--report", str(report),
                                  "--countdown", str(countdown), "--hold-ms", str(hold), '--control-file',str(run/'control.json')]
-                    arguments.extend(['--position',str(position)])
+                    arguments.extend(['--position',str(start_at)])
                     arguments.extend(["--data-dir", str(self.directory)])
                     code = self.engine.run_playback_and_wait(None, arguments)
                     result = json.loads(report.read_text(encoding="utf-8")) if report.exists() else {}
@@ -1471,10 +1567,16 @@ class App:
                     self.messages.put({"kind": "game_done", "code": 1, "result": {"reason": str(error)}})
 
             threading.Thread(target=worker, daemon=True).start()
+            return True
         except Exception as error:
             self.active = None
             self.refresh_controls()
-            self.show_error(error)
+            if comparison:
+                self.update_score(quiet=True)
+                self.segment_page.note.set(str(error))
+            else:
+                self.show_error(error)
+            return False
 
     def stop(self, *, switching_song=False):
         if not switching_song and getattr(self,'mini',None):self.mini.cancel_song_change()
@@ -1513,13 +1615,14 @@ class App:
                     self.active['phase']=phase
                     if data.get('control_sequence',0)>=self.active['control_sequence']:
                         self.active['pause_requested']=phase=='paused'
-                    elapsed = min(self.active["length"], max(0, float(data.get('elapsed',0))))
+                    elapsed = min(self.active["length"], max(0, float(data.get('elapsed',0)) - self.active.get('offset', 0)))
                     self.active['elapsed']=elapsed
                     if self.seek_drag:return
                     self.remember_position(elapsed,phase=='paused' and previous_phase!='paused')
                     self.progress.set(elapsed / self.active["length"] * 100)
                     self.time_text.set(f'{duration_label(elapsed)} / {duration_label(self.active["length"])}')
-                    self.tracks.set_playhead(self.score['summary']['source_origin_seconds'] + elapsed * self.score['settings']['speed'])
+                    origin, speed, _ = self.position_frame()
+                    self.tracks.set_playhead(origin + elapsed * speed)
                     self.set_status('已暂停 · F7 继续 · F8 停止' if phase=='paused' else '正在演奏 · F7 暂停 · F8 停止',
                                     '已暂停' if phase=='paused' else '演奏中','amber' if phase=='paused' else 'teal')
                 self.refresh_controls()
@@ -1561,7 +1664,7 @@ class App:
                 import winsound
                 winsound.PlaySound(str(message["path"]), winsound.SND_FILENAME | winsound.SND_ASYNC)
                 self.preview_started, self.preview_length = time.perf_counter(), message["seconds"]
-                self.set_status(f'正在试听{message.get("caption", "适配曲谱")} · 最长 20 秒 · 合成音色', "电脑试听", "blue")
+                self.set_status(f'正在试听{message.get("caption", "适配曲谱")} · {message["seconds"]:.1f} 秒 · 合成音色', "电脑试听", "blue")
             self.refresh_controls()
         elif kind == "game_done":
             result = message["result"]
@@ -1579,6 +1682,13 @@ class App:
                 reason = result.get("reason") or ("演奏已停止。" if message["code"] == 2 else f'演奏进程退出：{message["code"]}')
                 self.set_status(reason, "已停止" if stopped else "演奏失败", "muted" if stopped else "red")
             self.active, self.stop_requested = None, False
+            if active.get('comparison'):
+                # Restore full-song displays and pending baseline settings;
+                # the candidate score was never assigned to the saved arrangement.
+                outcome = self.status.get()
+                self.update_score(quiet=True)
+                self.set_status(outcome)
+                self.segment_page.note.set(f'{active["comparison"]} · {outcome}')
             mini=getattr(self,'mini',None)
             if mini and mini.pending_song is not None:
                 mini.finish_song_change(message)
@@ -1708,6 +1818,8 @@ class App:
         messagebox.showerror("无法完成", str(error), parent=self.root)
 
     def close(self):
+        self.backdrop.close()
+        self.community_page.close()
         if self.offline_dialog is not None:self.offline_dialog.close()
         if self.file_drop is not None:self.file_drop.close()
         self.save_preferences()

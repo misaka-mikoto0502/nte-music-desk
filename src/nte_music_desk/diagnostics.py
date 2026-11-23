@@ -116,6 +116,67 @@ def run_self_test(engine, destination):
         engine.render_preview(app.score,preview,start_at=position,seconds=.1)
         assert preview.stat().st_size>1000
         preview.unlink()
+        # Exercise the packaged pages without launching a game input backend.
+        app.show_page('segments')
+        segment = app.segment_page
+        segment.set_range(1, 3)
+        segment.transpose.set('2')
+        before = list(app.segment_edits)
+        segment.apply()
+        assert app.segment_edits[0]['transpose'] == 2
+        segment.undo()
+        assert app.segment_edits == before
+        segment.redo()
+        assert app.segment_edits[0]['transpose'] == 2
+        segment.view_buttons['selection'].invoke()
+        assert segment.view_buttons['selection'].cget('text').startswith('✓ ')
+        segment.view_buttons['full'].invoke()
+        assert segment.view_buttons['full'].cget('text').startswith('✓ ')
+        from .display import pixels
+        assert app.progress_bar.avatar.width() == pixels(root, 32)
+        assert app.mini.progress.avatar.width() == pixels(root, 32)
+        from unittest.mock import patch
+        saved_edits = json.dumps(app.segment_edits, sort_keys=True)
+        saved_positions = dict(app.preferences.get('playback_positions', {}))
+        segment.transpose.set('5')
+        def simulated_game(_, arguments):
+            report = Path(arguments[arguments.index('--report') + 1])
+            assert '--control-file' in arguments and '--cancel-file' in arguments
+            report.write_text(json.dumps({'status': 'completed'}), encoding='utf-8')
+            return 0
+        class ImmediateThread:
+            def __init__(self, *, target, daemon): self.target = target
+            def start(self): self.target()
+        with patch('nte_music_desk.ui.threading.Thread', ImmediateThread), \
+             patch.object(engine, 'run_playback_and_wait', simulated_game, create=True):
+            for candidate, caption in ((False, 'A 当前'), (True, 'B 候选')):
+                segment.try_in_game(candidate)
+                assert app.active and app.active['comparison'] == caption, segment.note.get()
+                app.handle_message(app.messages.get_nowait())
+                assert app.active is None
+        assert json.dumps(app.segment_edits, sort_keys=True) == saved_edits
+        assert app.preferences.get('playback_positions', {}) == saved_positions
+        expected = performance_plan(app.build_score()).key_events
+        app.show_page('transcription')
+        assert app.offline_dialog.window.winfo_class() == 'Frame'
+        app.show_page('community')
+        community = app.community_page
+        assert not hasattr(community, 'poll_id') and not hasattr(community, 'start_demo')
+        def descendants(widget):
+            for child in widget.winfo_children():
+                yield child
+                yield from descendants(child)
+        widgets = list(descendants(app.pages['community']))
+        assert any(isinstance(widget, tk.Label) and widget.cget('text') == '计划实现' for widget in widgets)
+        from tkinter import ttk
+        assert not any(isinstance(widget, (tk.Button, tk.Checkbutton, ttk.Entry, ttk.Treeview)) for widget in widgets)
+        from .community import project_document, write_project
+        document = project_document(app.song, app.arrangement_settings(), app.current_instrument().id,
+                                    title='离线自检编排', author='离线自检')
+        project_path = engine.ROOT / 'self-test.nteproject'
+        write_project(project_path, document)
+        assert app.open_path(project_path)
+        assert performance_plan(app.build_score()).key_events == expected
     finally:
         App.show_error = original_error
         if app is not None:
@@ -135,6 +196,12 @@ def run_self_test(engine, destination):
               "bundled_offline_audio": 'passed_model_runtime_hashes_and_native_gui' if offline_resources else 'not_staged_source_build',
               "offline_model_inference": 'checked_separately_by_verify_offline_audio',
               "performance_preview": "passed", "game_input_sent": False}
+    result.update(segment_workspace='passed_apply_undo_redo_and_view_selection', embedded_transcription='passed_frame_and_page_switch',
+                  portable_project='passed_export_import_reproduces_plan',
+                  segment_game_trials='passed_a_b_shared_engine_simulation_no_game_input_and_resume_preserved',
+                  portrait_resolution='passed_main_and_mini_32_logical_pixels',
+                  community_page='passed_planned_placeholder_no_controls_or_polling',
+                  community_demo='not_exposed_planned_feature')
     destination = Path(destination).resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")

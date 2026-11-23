@@ -171,7 +171,7 @@ class OfflineWindowChecks(unittest.TestCase):
         self.addCleanup(app.close)
         source = directory/'原音频.wav'; source.touch()
         app.open_offline_audio(source)
-        dialog = app.offline_dialog; dialog.window.withdraw()
+        dialog = app.offline_dialog
         return app, dialog, directory
 
     def complete(self, dialog, directory):
@@ -295,11 +295,14 @@ class OfflineWindowChecks(unittest.TestCase):
             app = App(root, SimpleNamespace(ROOT=Path(folder), ASSETS=asset_dir(), key_schedule=cli.key_schedule))
             try:
                 app.open_offline_audio()
-                dialog = app.offline_dialog; dialog.window.withdraw()
+                dialog = app.offline_dialog
+                root.deiconify(); root.update_idletasks()
                 dialog.toggle_segment()
                 dialog.progress_row.pack(fill='x', before=dialog.start_button.master)
                 dialog.fit_window(); root.update_idletasks()
                 def check_action_visible():
+                    dialog.canvas.yview_moveto(0)
+                    root.update_idletasks()
                     action_bottom = dialog.start_button.winfo_rooty() + dialog.start_button.winfo_height()
                     client_bottom = dialog.window.winfo_rooty() + dialog.window.winfo_height()
                     self.assertLessEqual(action_bottom, client_bottom)

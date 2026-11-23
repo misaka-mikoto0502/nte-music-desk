@@ -8,12 +8,12 @@ from .display import pixels
 
 COLORS = {
     # Four paints: background, content, text/borders, primary action/selection.
-    'bg': '#F3F2ED', 'paper': '#FFFFFF', 'ink': '#293A32', 'teal': '#326B52',
-    'muted': '#293A32', 'line': '#F3F2ED',
-    'nav': '#FFFFFF', 'nav_hover': '#F3F2ED', 'nav_active': '#F3F2ED',
+    'bg': '#F1F3F4', 'paper': '#FFFFFF', 'ink': '#293A32', 'teal': '#326B52',
+    'muted': '#293A32', 'line': '#F1F3F4',
+    'nav': '#FFFFFF', 'nav_hover': '#F1F3F4', 'nav_active': '#F1F3F4',
     'teal_hover': '#326B52', 'teal_light': '#FFFFFF', 'mint': '#326B52',
     'blue': '#293A32', 'blue_light': '#FFFFFF', 'amber': '#293A32', 'amber_light': '#FFFFFF',
-    'red': '#293A32', 'red_light': '#FFFFFF', 'disabled': '#F3F2ED', 'disabled_ink': '#293A32',
+    'red': '#293A32', 'red_light': '#FFFFFF', 'disabled': '#F1F3F4', 'disabled_ink': '#293A32',
 }
 
 
@@ -68,8 +68,14 @@ class RoundedButton(tk.Button):
         self._request()
 
     def _request(self):
-        font = tkfont.Font(root=self, font=super().cget('font'))
-        lines = str(super().cget('text')).splitlines() or ['']
+        font_spec, text = super().cget('font'), str(super().cget('text'))
+        key = (str(font_spec), text, *self._padding, self._min_width, self._min_height)
+        if key == getattr(self, '_geometry_key', None):
+            self._paint()
+            return
+        self._geometry_key = key
+        font = tkfont.Font(root=self, font=font_spec)
+        lines = text.splitlines() or ['']
         width = max(font.measure(line) for line in lines) + 2*int(self._padding[0]) + 8
         height = font.metrics('linespace') * len(lines) + 2*int(self._padding[1]) + 4
         super().configure(width=max(24, self._min_width, width), height=max(24, self._min_height, height))
@@ -99,15 +105,25 @@ class RoundedButton(tk.Button):
         primary = self._fill == COLORS['teal']
         if self._pressed and enabled:
             fill = COLORS['ink'] if primary else COLORS['paper']
-        super().configure(fg=self._ink if enabled else COLORS['disabled_ink'])
-        border = COLORS['teal'] if self._focused and enabled else self._outline
+        super().configure(fg=self._ink if enabled else '#7C8982', disabledforeground='#7C8982')
+        border = (COLORS['teal'] if self._focused and enabled else
+                  self._outline or (COLORS['ink'] if enabled and not primary and not self._flat else None))
         if enabled and self._hover and not self._flat and not primary:
             border = COLORS['teal'] if self._focused or self._pressed else COLORS['ink']
-        key = (width, height, fill, self._outer, border)
+        key = (width, height, fill, self._outer, border, enabled)
         if key == self._skin_key: return
         self._skin_key = key
-        self._skin = (ImageTk.PhotoImage(rounded_bitmap(width, height, fill, self._outer, 10, border), master=self)
-                      if enabled else tk.PhotoImage(master=self, width=1, height=1))
+        backdrop = getattr(self.winfo_toplevel(), '_workspace_backdrop', None)
+        bitmap = (backdrop.rounded(self, width, height, fill, self._outer, 10, border)
+                  if backdrop and backdrop.enabled and backdrop.bitmap is not None
+                  else rounded_bitmap(width, height, fill, self._outer, 10, border))
+        if backdrop and backdrop.enabled and backdrop.bitmap is not None:
+            native_bg = backdrop.native_color(self, self._outer, (width, height))
+            super().configure(bg=native_bg, activebackground=native_bg)
+        # Classic Tk stipples a full-size disabled image. A transparent pixel
+        # avoids the checkerboard; the enabled-state cache key restores shape.
+        self._skin = (ImageTk.PhotoImage(bitmap, master=self) if enabled
+                      else tk.PhotoImage(master=self, width=1, height=1))
         super().configure(image=self._skin)
 
     def configure(self, cnf=None, **kwargs):
@@ -169,6 +185,10 @@ def style_comboboxes(root):
     style.map('TCombobox', selectbackground=[('readonly', COLORS['bg'])],
               selectforeground=[('readonly', COLORS['ink'])])
     root.option_add('*TCombobox.exportSelection', False)
+    # Closed selectors let wheel events reach the page instead of changing
+    # settings. The popup Listbox retains its own native scrolling bindings.
+    for sequence in ('<MouseWheel>', '<Shift-MouseWheel>', '<Button-4>', '<Button-5>'):
+        root.unbind_class('TCombobox', sequence)
     if not getattr(root, '_desk_combobox_selection_bound', False):
         def clear_readonly_selection(event):
             widget = event.widget
@@ -209,7 +229,15 @@ class RoundedPanel(tk.Frame):
         width, height = self.winfo_width(), self.winfo_height()
         if width < 2 or height < 2 or self._key == (width, height): return
         self._key = (width, height)
-        self._skin = ImageTk.PhotoImage(rounded_bitmap(width, height, self.fill, self.outside, self.radius), master=self)
+        backdrop = getattr(self.winfo_toplevel(), '_workspace_backdrop', None)
+        bitmap = (backdrop.rounded(self, width, height, self.fill, self.outside, self.radius)
+                  if backdrop and backdrop.enabled and backdrop.bitmap is not None
+                  else rounded_bitmap(width, height, self.fill, self.outside, self.radius))
+        if backdrop and backdrop.enabled and backdrop.bitmap is not None:
+            native_bg = backdrop.native_color(self, self.outside, (width, height))
+            super().configure(bg=native_bg)
+            self.surface.configure(bg=native_bg)
+        self._skin = ImageTk.PhotoImage(bitmap, master=self)
         self.surface.delete('all')
         self.surface.create_image(0, 0, anchor='nw', image=self._skin)
 
